@@ -25,7 +25,7 @@ export function LoginScreen({navigation}: any) {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.logo}>Alfiao</Text>
+      <Text style={styles.logo}>Tenderito</Text>
       <Text style={styles.sub}>Control de fiados para tu negocio</Text>
       <Card style={{marginTop: 24, gap: 12}}>
         <Input

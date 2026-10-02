@@ -26,7 +26,7 @@ export function DashboardScreen({navigation}: any) {
 
   return (
     <View style={styles.wrap}>
-      <Header title="Alfiao" subtitle="Resumen de cuentas por cobrar" />
+      <Header title="Tenderito" subtitle="Resumen de cuentas por cobrar" />
       <FlatList
         contentContainerStyle={{padding: 20, gap: 16, paddingBottom: 100}}
         data={topDebtors.data?.slice(0, 5) ?? []}

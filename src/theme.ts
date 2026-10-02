@@ -1,4 +1,4 @@
-// Design tokens estilo Apple / iOS moderno — Alfiao
+// Design tokens estilo Apple / iOS moderno — Tenderito
 // Paleta: Naranja marca, blanco/superficies, rojo alerta, neutros.
 
 export const Colors = {

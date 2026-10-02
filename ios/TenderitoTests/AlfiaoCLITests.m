@@ -7,11 +7,11 @@
 #define TIMEOUT_SECONDS 600
 #define TEXT_TO_LOOK_FOR @"Welcome to React"
 
-@interface AlfiaoCLITests : XCTestCase
+@interface TenderitoTests : XCTestCase
 
 @end
 
-@implementation AlfiaoCLITests
+@implementation TenderitoTests
 
 - (BOOL)findSubviewInView:(UIView *)view matching:(BOOL (^)(UIView *view))test
 {

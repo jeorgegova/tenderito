@@ -1,5 +1,5 @@
 -- ============================================================
--- ALFIAO · Fase 4/4 — Verificación (solo lectura, salvo bloque final)
+-- TENDERITO · Fase 4/4 — Verificación (solo lectura, salvo bloque final)
 -- Corre cada SELECT suelto para confirmar Fases 1–3.
 -- El bloque transaccional prueba el trigger de balance con ROLLBACK
 -- (no deja residuos). Reemplaza <TU_USER_ID> por tu id de

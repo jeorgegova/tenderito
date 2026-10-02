@@ -1,4 +1,4 @@
-// Interfaces TypeScript basadas en esquema Supabase Alfiao
+// Interfaces TypeScript basadas en esquema Supabase Tenderito
 
 export type SubscriptionPlan = "free" | "basic" | "pro";
 export type CreditStatus = "pending" | "partially_paid" | "paid";

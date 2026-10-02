@@ -1,4 +1,4 @@
-package com.alfiaocli
+package com.tenderito
 
 import android.app.Application
 import com.facebook.react.PackageList

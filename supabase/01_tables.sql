@@ -1,5 +1,5 @@
 -- ============================================================
--- ALFIAO · Fase 1/4 — Tablas, constraints e índices
+-- TENDERITO · Fase 1/4 — Tablas, constraints e índices
 -- Correr en: Supabase Dashboard → SQL Editor (pegado por bloques)
 -- Idempotente: usa IF NOT EXISTS donde Postgres lo permite
 -- ============================================================

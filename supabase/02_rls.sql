@@ -1,5 +1,5 @@
 -- ============================================================
--- ALFIAO · Fase 2/4 — Row Level Security (aislamiento por comerciante)
+-- TENDERITO · Fase 2/4 — Row Level Security (aislamiento por comerciante)
 -- Requiere Fase 1. La app usa anon key + sesión → todo pasa por RLS.
 -- Regla: cada comerciante solo ve filas con merchant_id = su user id.
 -- ============================================================

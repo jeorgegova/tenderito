@@ -1,5 +1,5 @@
 -- ============================================================
--- ALFIAO · Fase 3/4 — Triggers: current_balance automático
+-- TENDERITO · Fase 3/4 — Triggers: current_balance automático
 -- La app NUNCA escribe current_balance; se recalcula solo:
 --   balance = SUM(credits.amount) − SUM(payments.amount) por cliente.
 -- Recálculo (no delta) → sin deriva por redondeos ni fallos parciales.
