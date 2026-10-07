@@ -32,6 +32,9 @@ export function CustomerDetailScreen({route, navigation}: any) {
         <Card style={styles.hero}>
           <Text style={styles.name}>{customer.data?.name ?? '…'}</Text>
           <Text style={styles.phone}>{customer.data?.phone ?? ''}</Text>
+          <Text style={styles.phone}>
+            {customer.data?.document_type} {customer.data?.document_number}
+          </Text>
           <Text style={styles.balance}>
             Saldo: {formatCOP(Number(customer.data?.current_balance ?? 0))}
           </Text>

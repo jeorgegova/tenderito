@@ -1,5 +1,17 @@
 This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
+## Modelo de datos multi-tienda
+
+Tenderito usa una cuenta autenticada por comerciante y una tienda inicial por cuenta. El esquema inicial queda preparado para crecer:
+
+- `stores` y `store_memberships`: una tienda puede tener propietario, administrador y cajeros.
+- `customers`: identidad global del cliente, única por tipo y número de identificación.
+- `customer_stores`: relación muchos-a-muchos; el saldo vive aquí porque cambia por tienda.
+- `credits` y `payments`: operaciones con `store_id`, vinculadas a la relación cliente-tienda.
+- RPC `create_customer`, `create_credit` y `create_payment`: validan pertenencia y ejecutan la operación completa en Supabase.
+
+Para un proyecto nuevo, ejecutar los scripts en orden `01` a `04`. No se deben insertar `store_id`, balances ni estados desde el teléfono: las RPC y los triggers son la fuente de verdad. La app actual usa las RPC para clientes, fiados y abonos.
+
 # Getting Started
 
 >**Note**: Make sure you have completed the [React Native - Environment Setup](https://reactnative.dev/docs/environment-setup) instructions till "Creating a new application" step, before proceeding.

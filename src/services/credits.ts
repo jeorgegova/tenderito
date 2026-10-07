@@ -29,7 +29,7 @@ export async function fetchOverdueCredits(): Promise<Credit[]> {
 // Total cuentas por cobrar = suma de balances de clientes
 export async function fetchTotalReceivable(): Promise<number> {
   const { data, error } = await supabase
-    .from("customers")
+    .from("customer_stores")
     .select("current_balance");
   if (error) throw error;
   return (data ?? []).reduce(
@@ -40,23 +40,12 @@ export async function fetchTotalReceivable(): Promise<number> {
 }
 
 export async function createCredit(input: NewCreditInput): Promise<Credit> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("No autenticado");
-
-  const { data, error } = await supabase
-    .from("credits")
-    .insert({
-      customer_id: input.customer_id,
-      concept: input.concept,
-      amount: input.amount,
-      due_date: input.due_date ?? null,
-      merchant_id: user.id,
-      status: "pending",
-    })
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc("create_credit", {
+    p_customer_id: input.customer_id,
+    p_concept: input.concept,
+    p_amount: input.amount,
+    p_due_date: input.due_date ?? null,
+  });
   if (error) throw error;
   return data as Credit;
 }

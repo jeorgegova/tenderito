@@ -26,6 +26,8 @@ export function CustomersScreen({navigation}: any) {
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(false);
   const [name, setName] = useState('');
+  const [documentType, setDocumentType] = useState('CC');
+  const [documentNumber, setDocumentNumber] = useState('');
   const [phone, setPhone] = useState('');
   const profile = useStore(s => s.profile);
   const setShowUpgrade = useStore(s => s.setShowUpgradeModal);
@@ -37,21 +39,31 @@ export function CustomersScreen({navigation}: any) {
   });
 
   async function onCreate() {
-    if (!name.trim()) {
-      return Alert.alert('Falta nombre');
+    if (!name.trim() || !documentNumber.trim()) {
+      return Alert.alert('Faltan datos', 'Nombre e identificación son obligatorios');
     }
     const plan = profile?.subscription_plan ?? 'free';
-    const check = await canCreateCustomer(plan);
-    if (!check.allowed) {
+    try {
+      const check = await canCreateCustomer(plan);
+      if (!check.allowed) {
+        setModal(false);
+        setShowUpgrade(true);
+        return;
+      }
+      await createCustomer({
+        name: name.trim(),
+        document_type: documentType.trim().toUpperCase(),
+        document_number: documentNumber.trim(),
+        phone: phone.trim() || null,
+      });
+      setName('');
+      setDocumentNumber('');
+      setPhone('');
       setModal(false);
-      setShowUpgrade(true);
-      return;
+      refetch();
+    } catch (error: any) {
+      Alert.alert('No se pudo guardar', error?.message ?? 'Intenta de nuevo');
     }
-    await createCustomer({name: name.trim(), phone: phone.trim() || null});
-    setName('');
-    setPhone('');
-    setModal(false);
-    refetch();
   }
 
   return (
@@ -126,6 +138,14 @@ export function CustomersScreen({navigation}: any) {
             onChangeText={setName}
             placeholder="Nombre completo"
           />
+          <View style={{flexDirection: 'row', gap: 8}}>
+            <View style={{width: 72}}>
+              <Input label="Tipo" value={documentType} onChangeText={setDocumentType} placeholder="CC" />
+            </View>
+            <View style={{flex: 1}}>
+              <Input label="Identificación" value={documentNumber} onChangeText={setDocumentNumber} keyboardType="number-pad" placeholder="123456789" />
+            </View>
+          </View>
           <Input
             label="Teléfono"
             value={phone}

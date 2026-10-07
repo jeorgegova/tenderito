@@ -26,13 +26,17 @@ export function NewCreditScreen({route, navigation}: any) {
     if (!concept.trim() || !Number(amount)) {
       return Alert.alert('Faltan datos', 'Concepto y monto válidos');
     }
-    await createCredit({
-      customer_id,
-      concept: concept.trim(),
-      amount: Number(amount),
-      due_date: dueDate.trim() || null,
-    });
-    navigation.goBack();
+    try {
+      await createCredit({
+        customer_id,
+        concept: concept.trim(),
+        amount: Number(amount),
+        due_date: dueDate.trim() || null,
+      });
+      navigation.goBack();
+    } catch (error: any) {
+      Alert.alert('No se pudo registrar', error?.message ?? 'Intenta de nuevo');
+    }
   }
 
   return (

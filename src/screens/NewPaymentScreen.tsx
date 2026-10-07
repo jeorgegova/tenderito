@@ -27,13 +27,17 @@ export function NewPaymentScreen({route, navigation}: any) {
     if (!Number(amount)) {
       return Alert.alert('Monto inválido');
     }
-    await createPayment({
-      customer_id,
-      credit_id,
-      amount: Number(amount),
-      notes: notes.trim() || null,
-    });
-    navigation.goBack();
+    try {
+      await createPayment({
+        customer_id,
+        credit_id,
+        amount: Number(amount),
+        notes: notes.trim() || null,
+      });
+      navigation.goBack();
+    } catch (error: any) {
+      Alert.alert('No se pudo registrar', error?.message ?? 'Intenta de nuevo');
+    }
   }
 
   return (

@@ -14,8 +14,10 @@ export interface Profile {
 
 export interface Customer {
   id: string;
-  merchant_id: string;
+  merchant_id?: string;
   name: string;
+  document_type: string | null;
+  document_number: string | null;
   phone: string | null;
   notes: string | null;
   current_balance: number;
@@ -24,8 +26,9 @@ export interface Customer {
 
 export interface Credit {
   id: string;
-  merchant_id: string;
+  store_id: string;
   customer_id: string;
+  created_by: string;
   concept: string;
   amount: number;
   due_date: string | null;
@@ -37,9 +40,10 @@ export interface Credit {
 
 export interface Payment {
   id: string;
-  merchant_id: string;
+  store_id: string;
   customer_id: string;
   credit_id: string | null;
+  created_by: string;
   amount: number;
   payment_date: string;
   notes: string | null;
@@ -62,6 +66,8 @@ export interface NewPaymentInput {
 
 export interface NewCustomerInput {
   name: string;
+  document_type: string;
+  document_number: string;
   phone?: string | null;
   notes?: string | null;
 }
