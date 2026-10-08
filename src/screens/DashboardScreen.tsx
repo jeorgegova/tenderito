@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Icon } from '@rneui/base';
+import Ionicons from '@react-native-vector-icons/ionicons';
 import { Badge } from '../components/ui/Badge';
 import { Card } from '../components/ui/Card';
 import { Header } from '../components/ui/Header';
@@ -49,8 +49,7 @@ export function DashboardScreen({ navigation }: any) {
               onPress={() => setShowBalance(v => !v)}
               accessibilityLabel={showBalance ? 'Ocultar saldo' : 'Ver saldo'}
               hitSlop={8}>
-              <Icon
-                type="ionicon"
+              <Ionicons
                 name={showBalance ? 'eye' : 'eye-off'}
                 color="#fff"
                 size={22}
@@ -75,7 +74,7 @@ export function DashboardScreen({ navigation }: any) {
             <Pressable
               onPress={() => navigation.navigate('Clientes')}
               hitSlop={8}>
-              <Text style={styles.heroLink}>Ver clientes ›</Text>
+              <Text style={styles.heroLink}>Ver Clientes ›</Text>
             </Pressable>
           </View>
         </Card>
