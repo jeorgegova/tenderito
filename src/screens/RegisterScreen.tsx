@@ -6,7 +6,7 @@ import {Input} from '../components/ui/Input';
 import {supabase} from '../lib/supabase';
 import {Colors} from '../theme';
 
-export function RegisterScreen() {
+export function RegisterScreen({navigation}: any) {
   const [storeName, setStoreName] = useState('');
   const [merchantName, setMerchantName] = useState('');
   const [email, setEmail] = useState('');
@@ -18,21 +18,37 @@ export function RegisterScreen() {
       return Alert.alert('Faltan datos', 'Completa todos los campos');
     }
     setLoading(true);
-    const {data, error} = await supabase.auth.signUp({email, password});
+    const {data, error} = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          store_name: storeName,
+          merchant_name: merchantName,
+          subscription_plan: 'free',
+        },
+      },
+    });
     if (error || !data.user) {
       setLoading(false);
       return Alert.alert('Error', error?.message ?? 'No se pudo registrar');
     }
-    const {error: pError} = await supabase.from('profiles').insert({
-      id: data.user.id,
-      store_name: storeName,
-      merchant_name: merchantName,
-      subscription_plan: 'free',
-    });
     setLoading(false);
-    if (pError) {
-      return Alert.alert('Error', pError.message);
+
+    if (!data.session) {
+      return Alert.alert(
+        'Revisa tu correo',
+        'Te enviamos un correo de comprobación. Valida tu cuenta para poder iniciar sesión.',
+        [
+          {
+            text: 'Ir al inicio de sesión',
+            onPress: () => navigation.replace('Login'),
+          },
+        ],
+      );
     }
+
+    Alert.alert('Cuenta creada', 'Tu cuenta ya está lista para usar.');
   }
 
   return (

@@ -1,5 +1,11 @@
-import {Pressable, StyleSheet, Text, type ViewStyle} from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  type ViewStyle,
+} from 'react-native';
 import {Colors, Radius} from '../../theme';
+import {MonochromeIcon, type IconName} from './MonochromeIcon';
 
 interface Props {
   title: string;
@@ -7,6 +13,7 @@ interface Props {
   variant?: 'primary' | 'secondary' | 'destructive' | 'ghost';
   disabled?: boolean;
   style?: ViewStyle;
+  icon?: IconName;
 }
 
 export function Button({
@@ -15,6 +22,7 @@ export function Button({
   variant = 'primary',
   disabled,
   style,
+  icon,
 }: Props) {
   return (
     <Pressable
@@ -27,16 +35,18 @@ export function Button({
         variant === 'secondary' && styles.secondary,
         variant === 'destructive' && styles.destructive,
         variant === 'ghost' && styles.ghost,
-        pressed && {opacity: 0.85},
+        pressed && {opacity: 0.92},
         disabled && {opacity: 0.5},
         style,
       ]}>
-      <Text
-        style={[
-          styles.text,
-          variant === 'secondary' && {color: Colors.text},
-          variant === 'ghost' && {color: Colors.primary},
-        ]}>
+      {icon ? (
+        <MonochromeIcon
+          name={icon}
+          color={variant === 'primary' || variant === 'destructive' ? '#fff' : Colors.primary}
+          size={18}
+        />
+      ) : null}
+      <Text style={[styles.text, variant === 'secondary' && styles.darkText, variant === 'ghost' && styles.ghostText]}>
         {title}
       </Text>
     </Pressable>
@@ -50,6 +60,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    minHeight: 48,
   },
   primary: {backgroundColor: Colors.primary},
   secondary: {
@@ -59,5 +72,7 @@ const styles = StyleSheet.create({
   },
   destructive: {backgroundColor: Colors.destructive},
   ghost: {backgroundColor: 'transparent'},
-  text: {color: '#fff', fontSize: 16, fontWeight: '600'},
+  text: {color: '#fff', fontSize: 15, fontWeight: '700'},
+  darkText: {color: Colors.text},
+  ghostText: {color: Colors.primary},
 });

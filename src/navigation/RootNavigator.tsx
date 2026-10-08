@@ -2,6 +2,7 @@ import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {useEffect, useState} from 'react';
 import {ActivityIndicator, View} from 'react-native';
+import {MagnetTabBar} from '../components/ui/MagnetTabBar';
 import {supabase} from '../lib/supabase';
 import {Colors} from '../theme';
 import {CustomerDetailScreen} from '../screens/CustomerDetailScreen';
@@ -13,6 +14,9 @@ import {NewPaymentScreen} from '../screens/NewPaymentScreen';
 import {ProfileScreen} from '../screens/ProfileScreen';
 import {RegisterScreen} from '../screens/RegisterScreen';
 import {ReportsScreen} from '../screens/ReportsScreen';
+import {CustomerRegisterScreen} from '../screens/CustomerRegisterScreen';
+import {CustomerHomeScreen} from '../screens/CustomerHomeScreen';
+import {CustomerHistoryScreen} from '../screens/CustomerHistoryScreen';
 
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
@@ -20,10 +24,9 @@ const Tabs = createBottomTabNavigator();
 function MainTabs() {
   return (
     <Tabs.Navigator
+      tabBar={props => <MagnetTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textSecondary,
       }}>
       <Tabs.Screen name="Inicio" component={DashboardScreen} />
       <Tabs.Screen name="Clientes" component={CustomersScreen} />
@@ -36,14 +39,24 @@ function MainTabs() {
 export function RootNavigator() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(false);
+  const [userType, setUserType] = useState<'store' | 'customer'>('store');
+
+  function applySession(nextSession: any) {
+    setSession(!!nextSession);
+    setUserType(
+      nextSession?.user?.user_metadata?.user_type === 'customer'
+        ? 'customer'
+        : 'store',
+    );
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({data}) => {
-      setSession(!!data.session);
+      applySession(data.session);
       setLoading(false);
     });
     const {data: sub} = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(!!s);
+      applySession(s);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -57,37 +70,53 @@ export function RootNavigator() {
   }
 
   return (
-    <Stack.Navigator screenOptions={{headerShown: false}}>
+    <Stack.Navigator screenOptions={{headerShown: false, animation: 'fade', animationDuration: 200, contentStyle: {backgroundColor: Colors.background}, headerTintColor: Colors.primary, headerTitleStyle: {fontWeight: '700', color: Colors.text}, headerShadowVisible: false}}>
       {session ? (
-        <>
-          <Stack.Screen name="Main" component={MainTabs} />
-          <Stack.Screen
-            name="CustomerDetail"
-            component={CustomerDetailScreen}
-            options={{headerShown: true, title: 'Cliente'}}
-          />
-          <Stack.Screen
-            name="NewCredit"
-            component={NewCreditScreen}
-            options={{
-              headerShown: true,
-              title: 'Nuevo fiado',
-              presentation: 'modal',
-            }}
-          />
-          <Stack.Screen
-            name="NewPayment"
-            component={NewPaymentScreen}
-            options={{
-              headerShown: true,
-              title: 'Registrar abono',
-              presentation: 'modal',
-            }}
-          />
-        </>
+        userType === 'customer' ? (
+          <Stack.Screen name="CustomerMain" component={CustomerHomeScreen} />
+        ) : (
+          <>
+            <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen
+              name="CustomerDetail"
+              component={CustomerDetailScreen}
+              options={{headerShown: true, title: 'Cliente'}}
+            />
+            <Stack.Screen
+              name="CustomerHistory"
+              component={CustomerHistoryScreen}
+              options={{headerShown: true, title: 'Historial entre tiendas'}}
+            />
+            <Stack.Screen
+              name="NewCredit"
+              component={NewCreditScreen}
+              options={{
+                headerShown: true,
+                title: 'Nuevo fiado',
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="NewPayment"
+              component={NewPaymentScreen}
+              options={{
+                headerShown: true,
+                title: 'Registrar abono',
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
+              }}
+            />
+          </>
+        )
       ) : (
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen
+            name="CustomerRegister"
+            component={CustomerRegisterScreen}
+            options={{headerShown: true, title: 'Activar cuenta'}}
+          />
           <Stack.Screen
             name="Register"
             component={RegisterScreen}

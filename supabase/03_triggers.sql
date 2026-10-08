@@ -2,6 +2,28 @@
 -- TENDERITO · Fase 3/4 — automatización y operaciones atómicas
 -- ============================================================
 
+-- Crea el perfil aunque la confirmación de correo esté activa.
+-- Los datos se reciben desde auth.signUp({ options: { data: ... } }).
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  insert into public.profiles(id, store_name, merchant_name, subscription_plan)
+  values (
+    new.id,
+    coalesce(nullif(new.raw_user_meta_data ->> 'store_name', ''), 'Mi negocio'),
+    coalesce(nullif(new.raw_user_meta_data ->> 'merchant_name', ''), 'Administrador'),
+    coalesce(nullif(new.raw_user_meta_data ->> 'subscription_plan', ''), 'free')
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
 create or replace function public.current_store_id()
 returns uuid language sql stable security definer set search_path = public
 as $$

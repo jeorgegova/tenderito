@@ -1,11 +1,14 @@
 import {useQuery} from '@tanstack/react-query';
 import {useState} from 'react';
-import {Alert, StyleSheet, Text, View} from 'react-native';
+import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Card} from '../components/ui/Card';
 import {Button} from '../components/ui/Button';
 import {Input} from '../components/ui/Input';
 import {createCredit} from '../services/credits';
 import {fetchCustomers} from '../services/customers';
-import {Colors} from '../theme';
+import {Colors, formatCOP} from '../theme';
+import {FormatMoney, parseMoney} from '../utils/format';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 export function NewCreditScreen({route, navigation}: any) {
   const initialId = route.params?.customerId as string | undefined;
@@ -13,24 +16,33 @@ export function NewCreditScreen({route, navigation}: any) {
   const [concept, setConcept] = useState('');
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const insets = useSafeAreaInsets();
 
   const {data: customers} = useQuery({
     queryKey: ['customers-all'],
     queryFn: () => fetchCustomers(),
   });
 
+  const selectedCustomer = customers?.find(c => c.id === customer_id);
+  const matchingCustomers = (customers ?? []).filter(c =>
+    `${c.alias ?? ''} ${c.name} ${c.document_number ?? ''}`
+      .toLocaleLowerCase('es-CO')
+      .includes(customerSearch.toLocaleLowerCase('es-CO')),
+  );
+
   async function onSave() {
     if (!customer_id) {
       return Alert.alert('Elige cliente');
     }
-    if (!concept.trim() || !Number(amount)) {
+    if (!concept.trim() || !parseMoney(amount)) {
       return Alert.alert('Faltan datos', 'Concepto y monto válidos');
     }
     try {
       await createCredit({
         customer_id,
         concept: concept.trim(),
-        amount: Number(amount),
+        amount: parseMoney(amount),
         due_date: dueDate.trim() || null,
       });
       navigation.goBack();
@@ -41,61 +53,55 @@ export function NewCreditScreen({route, navigation}: any) {
 
   return (
     <View style={styles.sheet}>
-      <Text style={styles.title}>Nuevo fiado</Text>
-      <Input
-        label="ID cliente (o elige abajo)"
-        value={customer_id}
-        onChangeText={setCustomerId}
-        placeholder="uuid cliente"
-      />
-      <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 8}}>
-        {(customers ?? []).slice(0, 5).map(c => (
-          <Text
-            key={c.id}
-            onPress={() => setCustomerId(c.id)}
-            style={[styles.chip, customer_id === c.id && styles.chipActive]}>
-            {c.name}
-          </Text>
-        ))}
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <Text style={styles.subtitle}>Registra una compra que el cliente pagará después.</Text>
+        {selectedCustomer ? (
+          <Card style={styles.selected}>
+            <View style={styles.avatar}><Text style={styles.avatarText}>{(selectedCustomer.alias || selectedCustomer.name).charAt(0).toUpperCase()}</Text></View>
+            <View style={{flex: 1}}><Text style={styles.customerName}>{selectedCustomer.alias || selectedCustomer.name}</Text><Text style={styles.muted}>Debe {formatCOP(Number(selectedCustomer.current_balance))}</Text></View>
+            {!initialId ? <Text onPress={() => setCustomerId('')} style={styles.change}>Cambiar</Text> : null}
+          </Card>
+        ) : (
+          <View style={styles.picker}>
+            <Input label="Buscar cliente" leadingIcon="search" value={customerSearch} onChangeText={setCustomerSearch} placeholder="Nombre, alias o cédula" />
+            <ScrollView style={styles.options} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              {matchingCustomers.map(customer => (
+                <Pressable key={customer.id} onPress={() => {setCustomerId(customer.id); setCustomerSearch('');}} style={styles.option}>
+                  <View style={styles.optionAvatar}><Text style={styles.avatarText}>{(customer.alias || customer.name).charAt(0).toUpperCase()}</Text></View>
+                  <View style={{flex: 1}}><Text style={styles.customerName}>{customer.alias || customer.name}</Text><Text style={styles.muted}>{formatCOP(Number(customer.current_balance))} pendiente</Text></View>
+                </Pressable>
+              ))}
+              {matchingCustomers.length === 0 ? <Text style={styles.muted}>No encontramos clientes.</Text> : null}
+            </ScrollView>
+          </View>
+        )}
+        <Input label="¿Qué se llevó?" value={concept} onChangeText={setConcept} placeholder="Ej. Mercado de la semana" />
+        <Input label="Valor del fiado" value={amount ? FormatMoney(amount) : ''} onChangeText={value => setAmount(FormatMoney(value))} keyboardType="numeric" placeholder="$ 0" />
+        <Input label="Fecha para pagar (opcional)" value={dueDate} onChangeText={setDueDate} placeholder="AAAA-MM-DD" />
+      </ScrollView>
+      <View style={[styles.footer, {paddingBottom: Math.max(insets.bottom, 12) + 8}]}>
+        <Button title="Guardar fiado" icon="check" onPress={onSave} />
+        <Button title="Cancelar" variant="ghost" onPress={() => navigation.goBack()} />
       </View>
-      <Input
-        label="Concepto"
-        value={concept}
-        onChangeText={setConcept}
-        placeholder="Ej. Mercado semanal"
-      />
-      <Input
-        label="Monto (COP)"
-        value={amount}
-        onChangeText={setAmount}
-        keyboardType="numeric"
-        placeholder="50000"
-      />
-      <Input
-        label="Vence (YYYY-MM-DD, opcional)"
-        value={dueDate}
-        onChangeText={setDueDate}
-        placeholder="2026-10-15"
-      />
-      <Button title="Guardar fiado" onPress={onSave} />
-      <Button
-        title="Cancelar"
-        variant="ghost"
-        onPress={() => navigation.goBack()}
-      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  sheet: {
-    flex: 1,
-    backgroundColor: Colors.card,
-    padding: 20,
-    gap: 12,
-    paddingTop: 32,
-  },
-  title: {fontSize: 22, fontWeight: '800', color: Colors.text, textAlign: 'center'},
+  sheet: {flex: 1, backgroundColor: Colors.background},
+  content: {padding: 20, paddingTop: 28, gap: 14},
+  footer: {padding: 16, paddingBottom: 26, gap: 8, backgroundColor: Colors.card, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border},
+  subtitle: {fontSize: 13, color: Colors.textSecondary, textAlign: 'center', marginTop: -8},
+  selected: {flexDirection: 'row', alignItems: 'center', gap: 11},
+  avatar: {width: 40, height: 40, borderRadius: 15, backgroundColor: '#FFF1E6', alignItems: 'center', justifyContent: 'center'},
+  optionAvatar: {width: 36, height: 36, borderRadius: 13, backgroundColor: '#FFF1E6', alignItems: 'center', justifyContent: 'center'},
+  avatarText: {color: Colors.primary, fontWeight: '800'},
+  customerName: {fontSize: 14, fontWeight: '700', color: Colors.text},
+  muted: {fontSize: 12, color: Colors.textSecondary},
+  change: {color: Colors.primary, fontSize: 13, fontWeight: '700'},
+  picker: {gap: 8},
+  options: {maxHeight: 190, backgroundColor: Colors.card, borderRadius: 16, paddingHorizontal: 12},
+  option: {flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border},
   chip: {
     paddingVertical: 6,
     paddingHorizontal: 12,

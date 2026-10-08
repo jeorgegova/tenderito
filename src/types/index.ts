@@ -1,7 +1,7 @@
 // Interfaces TypeScript basadas en esquema Supabase Tenderito
 
-export type SubscriptionPlan = "free" | "basic" | "pro";
-export type CreditStatus = "pending" | "partially_paid" | "paid";
+export type SubscriptionPlan = 'free' | 'basic' | 'pro';
+export type CreditStatus = 'pending' | 'partially_paid' | 'paid';
 
 export interface Profile {
   id: string;
@@ -19,9 +19,21 @@ export interface Customer {
   document_type: string | null;
   document_number: string | null;
   phone: string | null;
+  email?: string | null;
   notes: string | null;
   current_balance: number;
+  alias?: string | null;
+  credit_limit?: number;
   created_at: string;
+}
+
+export interface CustomerStore {
+  customer_id: string;
+  store_id: string;
+  current_balance: number;
+  credit_limit: number;
+  active: boolean;
+  stores?: {store_name: string; phone: string | null; address: string | null};
 }
 
 export interface Credit {
@@ -35,7 +47,7 @@ export interface Credit {
   status: CreditStatus;
   created_at: string;
   // Joins opcionales
-  customers?: Pick<Customer, "id" | "name" | "phone">;
+  customers?: Pick<Customer, 'id' | 'name' | 'phone'>;
 }
 
 export interface Payment {
@@ -69,5 +81,8 @@ export interface NewCustomerInput {
   document_type: string;
   document_number: string;
   phone?: string | null;
+  email?: string | null;
+  credit_limit?: number;
+  alias?: string | null;
   notes?: string | null;
 }
