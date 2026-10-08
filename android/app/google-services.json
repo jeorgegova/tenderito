@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "584972929801",
+    "project_id": "tenderito-5c02d",
+    "storage_bucket": "tenderito-5c02d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:584972929801:android:97f8d06520d7bee45ee1d8",
+        "android_client_info": {
+          "package_name": "com.tenderito"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB16i2EvubMIjBjqXh0wN3Vxitm9Lh1rlk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

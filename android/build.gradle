@@ -1,11 +1,11 @@
 buildscript {
     ext {
         buildToolsVersion = "36.0.0"
-        minSdkVersion = 23
+        minSdkVersion = 24
         compileSdkVersion = 36
         targetSdkVersion = 36
         ndkVersion = "26.1.10909125"
-        kotlinVersion = "1.9.22"
+        kotlinVersion = "2.1.20"
     }
     repositories {
         google()
@@ -15,7 +15,27 @@ buildscript {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        classpath("com.google.gms:google-services:4.3.15")
     }
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+// Firebase v26 pide androidx.work 2.11 (exige AGP 8.6); el template usa AGP 8.2.
+// Se fija work-runtime 2.9.0 compatible sin subir AGP (rompería RN 0.74).
+subprojects {
+    configurations.all {
+        resolutionStrategy {
+            force "androidx.work:work-runtime:2.9.0"
+            // notify-kit usa NotificationManagerCompat.canUseFullScreenIntent()
+            // (existe desde core 1.13); el grafo resolvía 1.9.0.
+            force "androidx.core:core:1.13.1"
+            force "androidx.core:core-ktx:1.13.1"
+            // El compilador Kotlin llegaba en 1.9.22 (transitivo del plugin RN);
+            // alinearlo al KGP 2.1.20 o los metadata 2.1 son ilegibles.
+            force "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.20"
+            force "org.jetbrains.kotlin:kotlin-daemon-embeddable:2.1.20"
+            force "org.jetbrains.kotlin:kotlin-annotation-processing-embeddable:2.1.20"
+        }
+    }
+}
