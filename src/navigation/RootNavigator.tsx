@@ -14,6 +14,7 @@ import {NewPaymentScreen} from '../screens/NewPaymentScreen';
 import {ProfileScreen} from '../screens/ProfileScreen';
 import {RegisterScreen} from '../screens/RegisterScreen';
 import {ReportsScreen} from '../screens/ReportsScreen';
+import {StatsScreen} from '../screens/StatsScreen';
 import {CustomerRegisterScreen} from '../screens/CustomerRegisterScreen';
 import {CustomerHomeScreen} from '../screens/CustomerHomeScreen';
 import {CustomerHistoryScreen} from '../screens/CustomerHistoryScreen';
@@ -30,7 +31,7 @@ function MainTabs() {
       }}>
       <Tabs.Screen name="Inicio" component={DashboardScreen} />
       <Tabs.Screen name="Clientes" component={CustomersScreen} />
-      <Tabs.Screen name="Alertas" component={ReportsScreen} />
+      <Tabs.Screen name="Estadísticas" component={StatsScreen} />
       <Tabs.Screen name="Perfil" component={ProfileScreen} />
     </Tabs.Navigator>
   );
@@ -86,6 +87,11 @@ export function RootNavigator() {
               name="CustomerHistory"
               component={CustomerHistoryScreen}
               options={{headerShown: true, title: 'Historial entre tiendas'}}
+            />
+            <Stack.Screen
+              name="Alertas"
+              component={ReportsScreen}
+              options={{headerShown: true, title: 'Fiados vencidos'}}
             />
             <Stack.Screen
               name="NewCredit"

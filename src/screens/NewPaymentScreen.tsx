@@ -9,6 +9,7 @@ import {createPayment} from '../services/payments';
 import {Colors, formatCOP} from '../theme';
 import {FormatMoney, parseMoney} from '../utils/format';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {useMutationWithSync} from '../hooks/useMutationWithSync';
 
 export function NewPaymentScreen({route, navigation}: any) {
   const customerId = route.params?.customerId as string | undefined;
@@ -24,6 +25,13 @@ export function NewPaymentScreen({route, navigation}: any) {
     enabled: !!customer_id,
   });
 
+  const mutation = useMutationWithSync(createPayment, {
+    customerId: customer_id,
+    onSuccess: () => navigation.goBack(),
+    onError: (error: any) =>
+      Alert.alert('No se pudo registrar', error?.message ?? 'Intenta de nuevo'),
+  });
+
   async function onSave() {
     if (!customer_id) {
       return Alert.alert('Falta cliente');
@@ -31,17 +39,12 @@ export function NewPaymentScreen({route, navigation}: any) {
     if (!parseMoney(amount)) {
       return Alert.alert('Monto inválido');
     }
-    try {
-      await createPayment({
-        customer_id,
-        credit_id,
-        amount: parseMoney(amount),
-        notes: notes.trim() || null,
-      });
-      navigation.goBack();
-    } catch (error: any) {
-      Alert.alert('No se pudo registrar', error?.message ?? 'Intenta de nuevo');
-    }
+    mutation.mutate({
+      customer_id,
+      credit_id,
+      amount: parseMoney(amount),
+      notes: notes.trim() || null,
+    });
   }
 
   const openCredits = (credits ?? []).filter(c => c.status !== 'paid');
@@ -72,7 +75,7 @@ export function NewPaymentScreen({route, navigation}: any) {
         <Input label="Nota (opcional)" value={notes} onChangeText={setNotes} placeholder="Ej. Abono en efectivo" />
       </ScrollView>
       <View style={[styles.footer, {paddingBottom: Math.max(insets.bottom, 12) + 8}]}>
-        <Button title="Guardar abono" icon="check" onPress={onSave} />
+        <Button title={mutation.isPending ? 'Guardando…' : 'Guardar abono'} icon="check" onPress={onSave} disabled={mutation.isPending} />
         <Button title="Cancelar" variant="ghost" onPress={() => navigation.goBack()} />
       </View>
     </View>

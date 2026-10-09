@@ -24,7 +24,9 @@ export type IconName =
   | 'logout'
   | 'bell'
   | 'eye'
-  | 'eyeOff';
+  | 'eyeOff'
+  | 'chart'
+  | 'person';
 
 /** Iconos hechos con primitivas nativas para no requerir react-native-svg. */
 export function MonochromeIcon({
@@ -76,6 +78,20 @@ export function MonochromeIcon({
   if (name === 'store') return frame(<><View style={{width: size * 0.82, height: size * 0.25, borderTopLeftRadius: size * 0.12, borderTopRightRadius: size * 0.12, backgroundColor: color, marginBottom: size * 0.04}} /><View style={{width: size * 0.68, height: size * 0.48, borderWidth: line, borderColor: color, alignItems: 'center', justifyContent: 'flex-end'}}><View style={{width: size * 0.2, height: size * 0.28, backgroundColor: color}} /></View></>);
 
   if (name === 'filter') return frame(<View style={{gap: size * 0.15}}>{[0.85, 0.58, 0.32].map((width, i) => <View key={i} style={{width: size * width, height: line, backgroundColor: color, borderRadius: line}} />)}</View>);
+
+  if (name === 'chart') return frame(
+    <View style={{flexDirection: 'row', alignItems: 'flex-end', gap: size * 0.1, height: size * 0.78}}>
+      <View style={{width: size * 0.18, height: size * 0.38, backgroundColor: color, borderRadius: 2, opacity: 0.7}} />
+      <View style={{width: size * 0.18, height: size * 0.62, backgroundColor: color, borderRadius: 2}} />
+      <View style={{width: size * 0.18, height: size * 0.46, backgroundColor: color, borderRadius: 2, opacity: 0.85}} />
+      <View style={{width: size * 0.18, height: size * 0.78, backgroundColor: color, borderRadius: 2}} />
+    </View>
+  );
+
+  if (name === 'person') return frame(<>
+    <View style={{width: size * 0.34, height: size * 0.34, borderRadius: size, borderWidth: line, borderColor: color, marginBottom: size * 0.06}} />
+    <View style={{width: size * 0.64, height: size * 0.3, borderTopLeftRadius: size, borderTopRightRadius: size, borderWidth: line, borderBottomWidth: 0, borderColor: color}} />
+  </>);
 
   if (name === 'eye' || name === 'eyeOff') return frame(<View style={{width: size * 0.92, height: size * 0.58, borderRadius: size * 0.29, borderWidth: line, borderColor: color, alignItems: 'center', justifyContent: 'center'}}>{name === 'eye' ? <View style={{width: size * 0.26, height: size * 0.26, borderRadius: size, backgroundColor: color}} /> : <View style={{position: 'absolute', width: size * 0.95, height: line, backgroundColor: color, transform: [{rotate: '-18deg'}], borderRadius: line}} />}</View>);
 

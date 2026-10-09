@@ -10,6 +10,8 @@ import {
 } from '@react-native-firebase/messaging';
 import notifee, {AndroidImportance} from 'react-native-notify-kit';
 import {RootNavigator} from './src/navigation/RootNavigator';
+import {useDatabase} from './src/hooks/useDatabase';
+import {useSync} from './src/hooks/useSync';
 
 function useFirebaseNotifications() {
   useEffect(() => {
@@ -98,6 +100,18 @@ function useFirebaseNotifications() {
   }, []);
 }
 
+
+function AppContent() {
+  useDatabase();
+  useSync();
+
+  return (
+    <NavigationContainer>
+      <RootNavigator />
+    </NavigationContainer>
+  );
+}
+
 function App(): React.JSX.Element {
   const [client] = useState(() => new QueryClient());
   useFirebaseNotifications();
@@ -105,9 +119,7 @@ function App(): React.JSX.Element {
     <SafeAreaProvider>
       <QueryClientProvider client={client}>
         <StatusBar barStyle="dark-content" />
-        <NavigationContainer>
-          <RootNavigator />
-        </NavigationContainer>
+        <AppContent />
       </QueryClientProvider>
     </SafeAreaProvider>
   );

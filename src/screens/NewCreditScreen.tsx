@@ -9,6 +9,7 @@ import {fetchCustomers} from '../services/customers';
 import {Colors, formatCOP} from '../theme';
 import {FormatMoney, parseMoney} from '../utils/format';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {useMutationWithSync} from '../hooks/useMutationWithSync';
 
 export function NewCreditScreen({route, navigation}: any) {
   const initialId = route.params?.customerId as string | undefined;
@@ -31,6 +32,12 @@ export function NewCreditScreen({route, navigation}: any) {
       .includes(customerSearch.toLocaleLowerCase('es-CO')),
   );
 
+  const mutation = useMutationWithSync(createCredit, {
+    onSuccess: () => navigation.goBack(),
+    onError: (error: any) =>
+      Alert.alert('No se pudo registrar', error?.message ?? 'Intenta de nuevo'),
+  });
+
   async function onSave() {
     if (!customer_id) {
       return Alert.alert('Elige cliente');
@@ -38,17 +45,12 @@ export function NewCreditScreen({route, navigation}: any) {
     if (!concept.trim() || !parseMoney(amount)) {
       return Alert.alert('Faltan datos', 'Concepto y monto válidos');
     }
-    try {
-      await createCredit({
-        customer_id,
-        concept: concept.trim(),
-        amount: parseMoney(amount),
-        due_date: dueDate.trim() || null,
-      });
-      navigation.goBack();
-    } catch (error: any) {
-      Alert.alert('No se pudo registrar', error?.message ?? 'Intenta de nuevo');
-    }
+    mutation.mutate({
+      customer_id,
+      concept: concept.trim(),
+      amount: parseMoney(amount),
+      due_date: dueDate.trim() || null,
+    });
   }
 
   return (
@@ -80,7 +82,7 @@ export function NewCreditScreen({route, navigation}: any) {
         <Input label="Fecha para pagar (opcional)" value={dueDate} onChangeText={setDueDate} placeholder="AAAA-MM-DD" />
       </ScrollView>
       <View style={[styles.footer, {paddingBottom: Math.max(insets.bottom, 12) + 8}]}>
-        <Button title="Guardar fiado" icon="check" onPress={onSave} />
+        <Button title={mutation.isPending ? 'Guardando…' : 'Guardar fiado'} icon="check" onPress={onSave} disabled={mutation.isPending} />
         <Button title="Cancelar" variant="ghost" onPress={() => navigation.goBack()} />
       </View>
     </View>
