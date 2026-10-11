@@ -1,6 +1,6 @@
 import {useQuery} from '@tanstack/react-query';
 import {FlatList, StyleSheet, Text, View} from 'react-native';
-import {Badge} from '../components/ui/Badge';
+import {Badge, SyncBadge} from '../components/ui/Badge';
 import {Button} from '../components/ui/Button';
 import {Card} from '../components/ui/Card';
 import {FooterMenu} from '../components/ui/FooterMenu';
@@ -97,7 +97,12 @@ export function CustomerDetailScreen({route, navigation}: any) {
                 <Text style={styles.creditAmount}>
                   +{formatCOP(Number(item.amount))}
                 </Text>
-                <Badge status={item.status} />
+                <View style={{flexDirection: 'row', gap: 4, alignItems: 'center'}}>
+                  <SyncBadge estadoServidor={item.estadoServidor} />
+                  {item.status !== 'pending' ? (
+                    <Badge status={item.status} />
+                  ) : null}
+                </View>
               </View>
             </Card>
           ) : (

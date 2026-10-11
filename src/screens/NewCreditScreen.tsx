@@ -1,6 +1,7 @@
 import {useQuery} from '@tanstack/react-query';
 import {useState} from 'react';
 import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
 import {Button} from '../components/ui/Button';
 import {Input} from '../components/ui/Input';
@@ -26,6 +27,12 @@ export function NewCreditScreen({route, navigation}: any) {
   });
 
   const selectedCustomer = customers?.find(c => c.id === customer_id);
+  const numericAmount = parseMoney(amount);
+  const currentBalance = Number(selectedCustomer?.current_balance ?? 0);
+  const creditLimit = Number(selectedCustomer?.credit_limit ?? 0);
+  const newBalance = currentBalance + numericAmount;
+  const exceedsLimit = creditLimit > 0 && numericAmount > 0 && newBalance > creditLimit;
+
   const matchingCustomers = (customers ?? []).filter(c =>
     `${c.alias ?? ''} ${c.name} ${c.document_number ?? ''}`
       .toLocaleLowerCase('es-CO')
@@ -60,7 +67,13 @@ export function NewCreditScreen({route, navigation}: any) {
         {selectedCustomer ? (
           <Card style={styles.selected}>
             <View style={styles.avatar}><Text style={styles.avatarText}>{(selectedCustomer.alias || selectedCustomer.name).charAt(0).toUpperCase()}</Text></View>
-            <View style={{flex: 1}}><Text style={styles.customerName}>{selectedCustomer.alias || selectedCustomer.name}</Text><Text style={styles.muted}>Debe {formatCOP(Number(selectedCustomer.current_balance))}</Text></View>
+            <View style={{flex: 1}}>
+              <Text style={styles.customerName}>{selectedCustomer.alias || selectedCustomer.name}</Text>
+              <Text style={styles.muted}>
+                Debe {formatCOP(currentBalance)}
+                {creditLimit > 0 ? ` · Tope: ${formatCOP(creditLimit)}` : ''}
+              </Text>
+            </View>
             {!initialId ? <Text onPress={() => setCustomerId('')} style={styles.change}>Cambiar</Text> : null}
           </Card>
         ) : (
@@ -78,7 +91,35 @@ export function NewCreditScreen({route, navigation}: any) {
           </View>
         )}
         <Input label="¿Qué se llevó?" value={concept} onChangeText={setConcept} placeholder="Ej. Mercado de la semana" />
-        <Input label="Valor del fiado" value={amount ? FormatMoney(amount) : ''} onChangeText={value => setAmount(FormatMoney(value))} keyboardType="numeric" placeholder="$ 0" />
+        <View style={{gap: 6}}>
+          <Input
+            label="Valor del fiado"
+            value={amount ? FormatMoney(amount) : ''}
+            onChangeText={value => setAmount(FormatMoney(value))}
+            keyboardType="numeric"
+            placeholder="$ 0"
+            error={
+              exceedsLimit
+                ? `Supera el valor del tope. El nuevo saldo quedaría en ${formatCOP(newBalance)}`
+                : undefined
+            }
+          />
+          {exceedsLimit ? (
+            <View style={styles.limitAlertBox}>
+              <Ionicons name="alert-circle-outline" size={18} color={Colors.destructive} />
+              <View style={{flex: 1}}>
+                <Text style={styles.limitAlertTitle}>Supera valor del tope</Text>
+                <Text style={styles.limitAlertDesc}>
+                  El tope asignado es {formatCOP(creditLimit)} y el nuevo saldo quedaría en {formatCOP(newBalance)}.
+                </Text>
+              </View>
+            </View>
+          ) : creditLimit > 0 && numericAmount > 0 ? (
+            <Text style={styles.limitOkText}>
+              El nuevo saldo quedaría en {formatCOP(newBalance)} (Tope: {formatCOP(creditLimit)})
+            </Text>
+          ) : null}
+        </View>
         <Input label="Fecha para pagar (opcional)" value={dueDate} onChangeText={setDueDate} placeholder="AAAA-MM-DD" />
       </ScrollView>
       <View style={[styles.footer, {paddingBottom: Math.max(insets.bottom, 12) + 8}]}>
@@ -114,4 +155,32 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   chipActive: {backgroundColor: Colors.primary, color: '#fff'},
+  limitAlertBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 2,
+  },
+  limitAlertTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.destructive,
+  },
+  limitAlertDesc: {
+    fontSize: 12,
+    color: '#991B1B',
+    marginTop: 2,
+  },
+  limitOkText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+    marginTop: 2,
+  },
 });

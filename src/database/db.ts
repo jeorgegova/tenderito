@@ -63,6 +63,22 @@ export async function executeQuery(
 }
 
 /**
+ * Limpia las tablas locales de datos de negocio al cerrar sesión
+ * para asegurar el aislamiento estricto entre tiendas en el mismo dispositivo.
+ */
+export async function clearLocalDatabase() {
+  try {
+    const db = await getDbConnection();
+    await executeQuery(db, 'DELETE FROM payments;');
+    await executeQuery(db, 'DELETE FROM credits;');
+    await executeQuery(db, 'DELETE FROM customers;');
+    await executeQuery(db, 'DELETE FROM parametrizacion;');
+  } catch (e: any) {
+    console.warn('[DB] Error limpiando base de datos local:', e?.message);
+  }
+}
+
+/**
  * Cierra la base de datos si está abierta.
  */
 export function closeDatabase() {

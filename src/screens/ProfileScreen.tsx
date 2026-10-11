@@ -8,6 +8,7 @@ import {MonochromeIcon} from '../components/ui/MonochromeIcon';
 import {supabase} from '../lib/supabase';
 import {useStore} from '../store/useStore';
 import {Colors} from '../theme';
+import {clearLocalDatabase} from '../database/db';
 
 async function fetchProfile() {
   const {
@@ -49,6 +50,7 @@ export function ProfileScreen() {
   }, [data, setProfile]);
 
   async function logout() {
+    await clearLocalDatabase();
     await supabase.auth.signOut();
     setProfile(null);
   }

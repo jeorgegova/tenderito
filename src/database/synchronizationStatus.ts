@@ -1,13 +1,16 @@
 /**
  * Estados de sincronización para soporte offline-first.
- * Basado en el patrón de dx_performance.
+ * Manejo de estados de sincronización: 'pendiente' y 'sincronizado'.
  */
 export const ESTADO_SINCRONIZACION = Object.freeze({
-  PENDIENTE_CREACION: 'pendiente_creacion',
-  PENDIENTE_ACTUALIZACION: 'pendiente_actualizacion',
+  PENDIENTE: 'pendiente',
   SINCRONIZADO: 'sincronizado',
   ERROR: 'error',
+  // Retrocompatibilidad con código existente
+  PENDIENTE_CREACION: 'pendiente',
+  PENDIENTE_ACTUALIZACION: 'pendiente',
 } as const);
 
-export type EstadoSincronizacion =
-  (typeof ESTADO_SINCRONIZACION)[keyof typeof ESTADO_SINCRONIZACION];
+export type EstadoServidor = 'pendiente' | 'sincronizado' | 'error';
+export type EstadoSincronizacion = EstadoServidor;
+

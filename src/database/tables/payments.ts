@@ -13,6 +13,7 @@ export async function createPaymentsTable(db: any) {
       amount REAL NOT NULL,
       notes TEXT,
       payment_date TEXT,
+      estadoServidor TEXT NOT NULL DEFAULT 'sincronizado',
       sync_status TEXT NOT NULL DEFAULT 'sincronizado',
       payload TEXT,
       created_at TEXT,
@@ -21,6 +22,9 @@ export async function createPaymentsTable(db: any) {
     );
   `);
 
+  await db.executeAsync(
+    'CREATE INDEX IF NOT EXISTS idx_payments_estado_servidor ON payments(estadoServidor);',
+  );
   await db.executeAsync(
     'CREATE INDEX IF NOT EXISTS idx_payments_sync_status ON payments(sync_status);',
   );

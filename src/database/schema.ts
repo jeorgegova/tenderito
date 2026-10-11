@@ -3,7 +3,7 @@ import {createCreditsTable} from './tables/credits';
 import {createPaymentsTable} from './tables/payments';
 import {createMetadataTable} from './tables/metadata';
 
-export const DATABASE_VERSION = '1.0';
+export const DATABASE_VERSION = '1.1';
 
 /**
  * Crea las tablas base de la base de datos local si no existen.

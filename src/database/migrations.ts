@@ -17,6 +17,30 @@ const MIGRATIONS: Migration[] = [
       await createBaseTables(db);
     },
   },
+  {
+    version: '1.1',
+    description: 'Soporte offline-first: columna estadoServidor e índices',
+    up: async (db: any) => {
+      try {
+        await db.executeAsync("ALTER TABLE customers ADD COLUMN estadoServidor TEXT DEFAULT 'sincronizado';");
+      } catch (_e) {}
+      try {
+        await db.executeAsync("ALTER TABLE credits ADD COLUMN estadoServidor TEXT DEFAULT 'sincronizado';");
+      } catch (_e) {}
+      try {
+        await db.executeAsync("ALTER TABLE payments ADD COLUMN estadoServidor TEXT DEFAULT 'sincronizado';");
+      } catch (_e) {}
+      try {
+        await db.executeAsync("CREATE INDEX IF NOT EXISTS idx_customers_estado_servidor ON customers(estadoServidor);");
+      } catch (_e) {}
+      try {
+        await db.executeAsync("CREATE INDEX IF NOT EXISTS idx_credits_estado_servidor ON credits(estadoServidor);");
+      } catch (_e) {}
+      try {
+        await db.executeAsync("CREATE INDEX IF NOT EXISTS idx_payments_estado_servidor ON payments(estadoServidor);");
+      } catch (_e) {}
+    },
+  },
 ];
 
 /**

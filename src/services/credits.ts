@@ -3,10 +3,41 @@ import type {Credit, NewCreditInput} from '../types';
 import {getDbConnection, getData, executeQuery} from '../database/db';
 import {ESTADO_SINCRONIZACION} from '../database/synchronizationStatus';
 import {generateLocalId} from '../utils/id';
+import {scheduleSync} from './sync';
 
+/**
+ * Consulta créditos de un cliente con prioridad Offline-First (SQLite local).
+ */
 export async function fetchCreditsByCustomer(
   customerId: string,
 ): Promise<Credit[]> {
+  try {
+    const db = await getDbConnection();
+    const rows = await getData(
+      db,
+      `SELECT * FROM credits
+       WHERE customer_id = ? OR customer_id IN (SELECT local_id FROM customers WHERE server_id = ?)
+       ORDER BY created_at DESC;`,
+      [customerId, customerId],
+    );
+
+    if (rows && rows.length > 0) {
+      return rows.map((r: any) => ({
+        id: r.server_id || r.local_id,
+        customer_id: r.customer_id,
+        store_id: r.store_id || '',
+        concept: r.concept,
+        amount: Number(r.amount),
+        due_date: r.due_date,
+        status: r.status,
+        estadoServidor: (r.estadoServidor || 'sincronizado') as any,
+        created_by: r.created_by || '',
+        created_at: r.created_at,
+      }));
+    }
+  } catch (_e) {}
+
+  // Fallback opcional a Supabase si SQLite aún no tiene datos y hay red
   try {
     const {data, error} = await supabase
       .from('credits')
@@ -18,35 +49,47 @@ export async function fetchCreditsByCustomer(
     }
   } catch (_netErr) {}
 
-  // Fallback offline: buscar en SQLite
+  return [];
+}
+
+/**
+ * Créditos vencidos (due_date < hoy y no pagados) consultados prioritariamente desde SQLite local.
+ */
+export async function fetchOverdueCredits(): Promise<Credit[]> {
+  const today = new Date().toISOString().slice(0, 10);
   try {
     const db = await getDbConnection();
     const rows = await getData(
       db,
-      `SELECT * FROM credits
-       WHERE customer_id = ? OR customer_id IN (SELECT local_id FROM customers WHERE server_id = ?)
-       ORDER BY created_at DESC;`,
-      [customerId, customerId],
+      `SELECT c.*, cust.name as customer_name, cust.phone as customer_phone
+       FROM credits c
+       LEFT JOIN customers cust ON (c.customer_id = cust.local_id OR c.customer_id = cust.server_id)
+       WHERE c.status != 'paid' AND c.due_date IS NOT NULL AND c.due_date < ?
+       ORDER BY c.due_date ASC;`,
+      [today],
     );
-    return rows.map((r: any) => ({
-      id: r.server_id || r.local_id,
-      customer_id: r.customer_id,
-      store_id: r.store_id || '',
-      concept: r.concept,
-      amount: Number(r.amount),
-      due_date: r.due_date,
-      status: r.status,
-      created_by: r.created_by || '',
-      created_at: r.created_at,
-    }));
-  } catch (_e) {
-    return [];
-  }
-}
 
-// Créditos vencidos (due_date < hoy y no pagados) para alertas
-export async function fetchOverdueCredits(): Promise<Credit[]> {
-  const today = new Date().toISOString().slice(0, 10);
+    if (rows && rows.length > 0) {
+      return rows.map((r: any) => ({
+        id: r.server_id || r.local_id,
+        customer_id: r.customer_id,
+        store_id: r.store_id || '',
+        concept: r.concept,
+        amount: Number(r.amount),
+        due_date: r.due_date,
+        status: r.status,
+        estadoServidor: (r.estadoServidor || 'sincronizado') as any,
+        created_by: r.created_by || '',
+        created_at: r.created_at,
+        customers: {
+          id: r.customer_id,
+          name: r.customer_name || 'Cliente',
+          phone: r.customer_phone || '',
+        },
+      })) as Credit[];
+    }
+  } catch (_e) {}
+
   try {
     const {data, error} = await supabase
       .from('credits')
@@ -59,41 +102,24 @@ export async function fetchOverdueCredits(): Promise<Credit[]> {
     }
   } catch (_netErr) {}
 
-  // Fallback offline: buscar en SQLite
+  return [];
+}
+
+/**
+ * Total cuentas por cobrar = suma de balances de clientes en SQLite local.
+ */
+export async function fetchTotalReceivable(): Promise<number> {
   try {
     const db = await getDbConnection();
     const rows = await getData(
       db,
-      `SELECT c.*, cust.name as customer_name, cust.phone as customer_phone
-       FROM credits c
-       LEFT JOIN customers cust ON (c.customer_id = cust.local_id OR c.customer_id = cust.server_id)
-       WHERE c.status != 'paid' AND c.due_date IS NOT NULL AND c.due_date < ?
-       ORDER BY c.due_date ASC;`,
-      [today],
+      'SELECT SUM(current_balance) as total FROM customers;',
     );
-    return rows.map((r: any) => ({
-      id: r.server_id || r.local_id,
-      customer_id: r.customer_id,
-      store_id: r.store_id || '',
-      concept: r.concept,
-      amount: Number(r.amount),
-      due_date: r.due_date,
-      status: r.status,
-      created_by: r.created_by || '',
-      created_at: r.created_at,
-      customers: {
-        id: r.customer_id,
-        name: r.customer_name || 'Cliente',
-        phone: r.customer_phone || '',
-      },
-    })) as Credit[];
-  } catch (_e) {
-    return [];
-  }
-}
+    if (rows.length > 0 && rows[0]?.total !== null && rows[0]?.total !== undefined) {
+      return Number(rows[0].total || 0);
+    }
+  } catch (_e) {}
 
-// Total cuentas por cobrar = suma de balances de clientes
-export async function fetchTotalReceivable(): Promise<number> {
   try {
     const {data, error} = await supabase
       .from('customer_stores')
@@ -107,38 +133,29 @@ export async function fetchTotalReceivable(): Promise<number> {
     }
   } catch (_netErr) {}
 
-  // Fallback offline: suma en SQLite local
-  try {
-    const db = await getDbConnection();
-    const rows = await getData(
-      db,
-      'SELECT SUM(current_balance) as total FROM customers;',
-    );
-    return Number(rows[0]?.total || 0);
-  } catch (_e) {
-    return 0;
-  }
+  return 0;
 }
 
 /**
  * Crea un crédito / fiado:
- * 1. Lo guarda primero en SQLite local con estado 'pendiente_creacion'.
+ * 1. Lo registra primero en la base de datos local SQLite con estadoServidor = 'pendiente'.
  * 2. Actualiza el saldo deudor del cliente localmente de inmediato.
- * 3. Si hay red, intenta sincronizar con Supabase y actualiza a 'sincronizado'.
- * 4. Si no hay red, retorna el crédito localmente de inmediato.
+ * 3. Ejecuta inmediatamente el método sincronizar para intentar subirlo a Supabase
+ *    y descargar novedades si hay red.
+ * 4. Retorna el crédito de inmediato para una experiencia de usuario rápida y offline.
  */
 export async function createCredit(input: NewCreditInput): Promise<Credit> {
   const localId = generateLocalId();
   const now = new Date().toISOString();
   const db = await getDbConnection();
 
-  // 1. Guardar en SQLite local
+  // 1. Guardar primero en SQLite local con estado pendiente
   await executeQuery(
     db,
     `INSERT INTO credits (
        local_id, server_id, customer_id, store_id, concept,
-       amount, due_date, status, sync_status, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       amount, due_date, status, estadoServidor, sync_status, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       localId,
       null,
@@ -148,13 +165,14 @@ export async function createCredit(input: NewCreditInput): Promise<Credit> {
       input.amount,
       input.due_date || null,
       'pending',
-      ESTADO_SINCRONIZACION.PENDIENTE_CREACION,
+      ESTADO_SINCRONIZACION.PENDIENTE,
+      ESTADO_SINCRONIZACION.PENDIENTE,
       now,
       now,
     ],
   );
 
-  // Actualizar saldo deudor local del cliente
+  // Actualizar saldo deudor local del cliente de inmediato
   await executeQuery(
     db,
     `UPDATE customers
@@ -172,55 +190,28 @@ export async function createCredit(input: NewCreditInput): Promise<Credit> {
     amount: input.amount,
     due_date: input.due_date || null,
     status: 'pending',
+    estadoServidor: ESTADO_SINCRONIZACION.PENDIENTE,
     created_at: now,
   };
 
-  // 2. Intentar enviar a Supabase si hay red
-  try {
-    let targetCustomerId = input.customer_id;
-    const custRows = await getData(
-      db,
-      'SELECT server_id FROM customers WHERE local_id = ? LIMIT 1;',
-      [input.customer_id],
-    );
-    if (custRows.length > 0 && custRows[0].server_id) {
-      targetCustomerId = custRows[0].server_id;
-    }
-
-    const {data, error} = await supabase.rpc('create_credit', {
-      p_customer_id: targetCustomerId,
-      p_concept: input.concept,
-      p_amount: input.amount,
-      p_due_date: input.due_date ?? null,
-    });
-
-    if (!error && data) {
-      const serverId = data?.id || data;
-      await executeQuery(
-        db,
-        `UPDATE credits
-         SET server_id = ?, sync_status = ?, last_synced_at = ?
-         WHERE local_id = ?;`,
-        [serverId, ESTADO_SINCRONIZACION.SINCRONIZADO, new Date().toISOString(), localId],
-      );
-      return {...localCredit, id: serverId};
-    }
-  } catch (_e) {
-    // Sin red: queda en SQLite con 'pendiente_creacion' para sincronización posterior
-  }
+  // 2. Disparar sincronización agrupada con debounce (optimiza cuota Supabase)
+  scheduleSync();
 
   return localCredit;
 }
 
+/**
+ * Marca crédito como pagado en local y sincroniza con debounce.
+ */
 export async function markCreditPaid(id: string): Promise<void> {
-  try {
-    await supabase.from('credits').update({status: 'paid'}).eq('id', id);
-  } catch (_e) {}
-
   const db = await getDbConnection();
   await executeQuery(
     db,
-    'UPDATE credits SET status = ? WHERE local_id = ? OR server_id = ?;',
-    ['paid', id, id],
+    `UPDATE credits
+     SET status = ?, estadoServidor = ?, updated_at = ?
+     WHERE local_id = ? OR server_id = ?;`,
+    ['paid', ESTADO_SINCRONIZACION.PENDIENTE, new Date().toISOString(), id, id],
   );
+
+  scheduleSync();
 }

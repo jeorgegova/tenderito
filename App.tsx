@@ -113,7 +113,20 @@ function AppContent() {
 }
 
 function App(): React.JSX.Element {
-  const [client] = useState(() => new QueryClient());
+  const [client] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 1000 * 60 * 5,
+            gcTime: 1000 * 60 * 30,
+            refetchOnWindowFocus: false,
+            refetchOnReconnect: false,
+            retry: 1,
+          },
+        },
+      }),
+  );
   useFirebaseNotifications();
   return (
     <SafeAreaProvider>

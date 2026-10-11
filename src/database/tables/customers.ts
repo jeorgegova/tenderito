@@ -16,6 +16,7 @@ export async function createCustomersTable(db: any) {
       alias TEXT,
       current_balance REAL DEFAULT 0,
       credit_limit REAL DEFAULT 0,
+      estadoServidor TEXT NOT NULL DEFAULT 'sincronizado',
       sync_status TEXT NOT NULL DEFAULT 'sincronizado',
       payload TEXT,
       created_at TEXT,
@@ -25,6 +26,9 @@ export async function createCustomersTable(db: any) {
     );
   `);
 
+  await db.executeAsync(
+    'CREATE INDEX IF NOT EXISTS idx_customers_estado_servidor ON customers(estadoServidor);',
+  );
   await db.executeAsync(
     'CREATE INDEX IF NOT EXISTS idx_customers_sync_status ON customers(sync_status);',
   );

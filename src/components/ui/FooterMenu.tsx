@@ -12,7 +12,7 @@ const PAD_H = 10;
 const ITEMS = [
   {name: 'Inicio', icon: 'home'},
   {name: 'Clientes', icon: 'clients'},
-  {name: 'Alertas', icon: 'alerts'},
+  {name: 'Estadísticas', icon: 'chart'},
   {name: 'Perfil', icon: 'profile'},
 ] as const;
 

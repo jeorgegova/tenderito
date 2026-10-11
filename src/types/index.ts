@@ -2,6 +2,7 @@
 
 export type SubscriptionPlan = 'free' | 'basic' | 'pro';
 export type CreditStatus = 'pending' | 'partially_paid' | 'paid';
+export type EstadoServidor = 'pendiente' | 'sincronizado';
 
 export interface Profile {
   id: string;
@@ -25,6 +26,7 @@ export interface Customer {
   alias?: string | null;
   credit_limit?: number;
   created_at: string;
+  estadoServidor?: EstadoServidor;
 }
 
 export interface CustomerStore {
@@ -46,6 +48,7 @@ export interface Credit {
   due_date: string | null;
   status: CreditStatus;
   created_at: string;
+  estadoServidor?: EstadoServidor;
   // Joins opcionales
   customers?: Pick<Customer, 'id' | 'name' | 'phone'>;
 }
@@ -60,6 +63,7 @@ export interface Payment {
   payment_date: string;
   notes: string | null;
   created_at: string;
+  estadoServidor?: EstadoServidor;
 }
 
 export interface NewCreditInput {

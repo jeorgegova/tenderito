@@ -13,6 +13,7 @@ export async function createCreditsTable(db: any) {
       amount REAL NOT NULL,
       due_date TEXT,
       status TEXT DEFAULT 'pending',
+      estadoServidor TEXT NOT NULL DEFAULT 'sincronizado',
       sync_status TEXT NOT NULL DEFAULT 'sincronizado',
       payload TEXT,
       created_at TEXT,
@@ -21,6 +22,9 @@ export async function createCreditsTable(db: any) {
     );
   `);
 
+  await db.executeAsync(
+    'CREATE INDEX IF NOT EXISTS idx_credits_estado_servidor ON credits(estadoServidor);',
+  );
   await db.executeAsync(
     'CREATE INDEX IF NOT EXISTS idx_credits_sync_status ON credits(sync_status);',
   );

@@ -2,7 +2,6 @@ import {useQuery} from '@tanstack/react-query';
 import {useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
-import {Badge} from '../components/ui/Badge';
 import {Card} from '../components/ui/Card';
 import {Header} from '../components/ui/Header';
 import {
@@ -184,7 +183,6 @@ export function DashboardScreen({navigation}: any) {
                   <Text style={styles.balance}>
                     {formatCOP(Number(customer.current_balance))}
                   </Text>
-                  <Badge status="pending" />
                 </View>
               </Card>
             </Pressable>

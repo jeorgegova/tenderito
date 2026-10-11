@@ -13,7 +13,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Badge } from '../components/ui/Badge';
+import { Badge, SyncBadge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Header } from '../components/ui/Header';
@@ -282,9 +282,12 @@ export function CustomersScreen({ navigation }: any) {
                   ]}>
                   {formatCOP(Number(item.current_balance))}
                 </Text>
-                <Badge
-                  status={Number(item.current_balance) > 0 ? 'pending' : 'paid'}
-                />
+                <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+                  <SyncBadge estadoServidor={item.estadoServidor} />
+                  {Number(item.current_balance) === 0 ? (
+                    <Badge status="paid" />
+                  ) : null}
+                </View>
               </View>
             </Card>
           </Pressable>

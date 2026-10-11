@@ -9,6 +9,7 @@
  * se refresque de forma inmediata, sin necesidad de llamar refetch() manualmente.
  */
 import {useMutation, useQueryClient, type UseMutationOptions} from '@tanstack/react-query';
+import {scheduleSync} from '../services/sync';
 
 /** Conjunto de query keys que se invalidan después de cualquier mutación de negocio */
 const SYNC_QUERY_KEYS = [
@@ -79,6 +80,11 @@ export function useMutationWithSync<
 
       // 3. Callback adicional del caller
       await options?.onSuccess?.(data, variables, context);
+
+      // 4. Sincronización agrupada (debounce) para no saturar Supabase con mutaciones consecutivas
+      scheduleSync(2500, () => {
+        queryClient.invalidateQueries();
+      });
     },
   });
 }

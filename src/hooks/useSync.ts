@@ -9,15 +9,17 @@ export function useSync() {
   const [lastSyncDate, setLastSyncDate] = useState<Date | null>(null);
   const queryClient = useQueryClient();
 
-  const runSync = useCallback(async () => {
+  const runSync = useCallback(async (options?: { force?: boolean }) => {
     if (isSyncing) return;
     try {
       setIsSyncing(true);
-      await syncAll();
+      const {pushed, pulled} = await syncAll(options);
       setLastSyncDate(new Date());
 
-      // Invalida la caché de React Query para refrescar pantallas
-      await queryClient.invalidateQueries();
+      // Solo invalidar si hubo subida o descarga de datos real
+      if (pushed || pulled) {
+        await queryClient.invalidateQueries();
+      }
     } catch (e) {
       console.warn('Error durante sincronización:', e);
     } finally {
@@ -26,6 +28,9 @@ export function useSync() {
   }, [isSyncing, queryClient]);
 
   useEffect(() => {
+    // Sincronización inicial al montar la app
+    runSync();
+
     // Escucha cambios de conectividad de red
     const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
       const online = Boolean(state.isConnected && state.isInternetReachable !== false);
