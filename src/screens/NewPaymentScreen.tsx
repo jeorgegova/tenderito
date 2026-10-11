@@ -29,7 +29,7 @@ export function NewPaymentScreen({route, navigation}: any) {
   const currentBalance = Number(selectedCustomer?.current_balance ?? 0);
   const numericAmount = parseMoney(amount);
 
-  // Cálculos de saldo resultante y validaciones
+  // Cálculos sencillos y directos
   const remainingBalance = Math.max(0, currentBalance - numericAmount);
   const exceedsBalance = currentBalance > 0 && numericAmount > currentBalance;
   const isTotalPayment = currentBalance > 0 && numericAmount === currentBalance;
@@ -44,10 +44,11 @@ export function NewPaymentScreen({route, navigation}: any) {
     customerId: customer_id,
     onSuccess: () => navigation.goBack(),
     onError: (error: any) =>
-      Alert.alert('No se pudo registrar', error?.message ?? 'Intenta de nuevo'),
+      Alert.alert('No se pudo guardar', error?.message ?? 'Intenta de nuevo'),
   });
 
-  const handleToggleTotalPayment = () => {
+  // Tocar para pagar toda la deuda de una sola vez
+  const handlePayAll = () => {
     if (currentBalance <= 0) return;
     if (isTotalPayment) {
       setAmount('');
@@ -58,15 +59,15 @@ export function NewPaymentScreen({route, navigation}: any) {
 
   async function onSave() {
     if (!customer_id) {
-      return Alert.alert('Falta cliente', 'Por favor selecciona un cliente.');
+      return Alert.alert('Selecciona un cliente');
     }
     if (!numericAmount || numericAmount <= 0) {
-      return Alert.alert('Monto inválido', 'Ingresa un valor recibido válido.');
+      return Alert.alert('Ingresa el valor', 'Escribe cuánto te entregó o abonó el cliente.');
     }
     if (exceedsBalance) {
       return Alert.alert(
-        'Supera el saldo pendiente',
-        `El valor recibido (${formatCOP(numericAmount)}) supera la deuda total del cliente (${formatCOP(currentBalance)}). Por favor ajusta el valor.`,
+        'Supera lo que debe',
+        `El cliente solo debe ${formatCOP(currentBalance)}. No puedes ingresar un valor mayor.`,
       );
     }
     mutation.mutate({
@@ -84,53 +85,11 @@ export function NewPaymentScreen({route, navigation}: any) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.subtitle}>
-          Registra un abono para reducir o cancelar la deuda del cliente.
-        </Text>
-
         {selectedCustomer ? (
-          <View style={{gap: 12}}>
-            {/* Tarjeta destacada de saldo y selector de pago total */}
-            <Card style={styles.balanceCard}>
-              <View style={styles.balanceHeader}>
-                <View style={{flex: 1}}>
-                  <Text style={styles.balanceLabel}>Saldo pendiente total</Text>
-                  <Text style={styles.balanceValue}>{formatCOP(currentBalance)}</Text>
-                </View>
-                {currentBalance > 0 ? (
-                  <Pressable
-                    onPress={handleToggleTotalPayment}
-                    style={[
-                      styles.totalButton,
-                      isTotalPayment && styles.totalButtonActive,
-                    ]}
-                  >
-                    <Ionicons
-                      name={isTotalPayment ? 'checkmark-circle' : 'cash-outline'}
-                      size={18}
-                      color={isTotalPayment ? '#FFFFFF' : Colors.primary}
-                    />
-                    <Text
-                      style={[
-                        styles.totalButtonText,
-                        isTotalPayment && styles.totalButtonTextActive,
-                      ]}
-                    >
-                      {isTotalPayment ? 'Total aplicado' : 'Pago total'}
-                    </Text>
-                  </Pressable>
-                ) : (
-                  <View style={styles.zeroDebtBadge}>
-                    <Ionicons name="checkmark-circle-outline" size={16} color="#15803D" />
-                    <Text style={styles.zeroDebtText}>Al día</Text>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.divider} />
-
-              {/* Datos del cliente */}
-              <View style={styles.customerRow}>
+          <View style={{gap: 16}}>
+            {/* Tarjeta principal del cliente y su deuda */}
+            <Card style={styles.mainCard}>
+              <View style={styles.customerHeader}>
                 <View style={styles.avatar}>
                   <Text style={styles.avatarText}>
                     {(selectedCustomer.alias || selectedCustomer.name)
@@ -142,26 +101,119 @@ export function NewPaymentScreen({route, navigation}: any) {
                   <Text style={styles.customerName}>
                     {selectedCustomer.alias || selectedCustomer.name}
                   </Text>
-                  {selectedCustomer.document_number ? (
-                    <Text style={styles.muted}>C.C. {selectedCustomer.document_number}</Text>
-                  ) : null}
+                  <Text style={styles.muted}>
+                    {selectedCustomer.document_number
+                      ? `C.C. ${selectedCustomer.document_number}`
+                      : 'Cliente'}
+                  </Text>
                 </View>
                 {!initialId ? (
-                  <Text onPress={() => setCustomerId('')} style={styles.change}>
-                    Cambiar
-                  </Text>
+                  <Pressable onPress={() => setCustomerId('')} hitSlop={12}>
+                    <Text style={styles.change}>Cambiar</Text>
+                  </Pressable>
                 ) : null}
               </View>
+
+              {/* Lo que debe en grande */}
+              <View style={styles.balanceBox}>
+                <Text style={styles.balanceTitle}>Debe en total</Text>
+                <Text style={styles.balanceNumber}>{formatCOP(currentBalance)}</Text>
+              </View>
+
+              {/* Botón rápido y grande para pagar todo */}
+              {currentBalance > 0 ? (
+                <Pressable
+                  onPress={handlePayAll}
+                  style={[
+                    styles.payAllButton,
+                    isTotalPayment && styles.payAllButtonActive,
+                  ]}
+                >
+                  <Ionicons
+                    name={isTotalPayment ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={22}
+                    color={isTotalPayment ? '#FFFFFF' : Colors.primary}
+                  />
+                  <Text
+                    style={[
+                      styles.payAllText,
+                      isTotalPayment && styles.payAllTextActive,
+                    ]}
+                  >
+                    Pagar toda la deuda ({formatCOP(currentBalance)})
+                  </Text>
+                </Pressable>
+              ) : (
+                <View style={styles.zeroBox}>
+                  <Ionicons name="checkmark-circle" size={18} color="#15803D" />
+                  <Text style={styles.zeroText}>Este cliente está al día (debe $ 0)</Text>
+                </View>
+              )}
             </Card>
+
+            {/* Entrada del abono */}
+            <View style={styles.inputSection}>
+              <Input
+                label="¿Cuánto te entregó o abonó?"
+                value={amount ? FormatMoney(amount) : ''}
+                onChangeText={value => setAmount(FormatMoney(value))}
+                keyboardType="numeric"
+                placeholder="$ 0"
+                error={
+                  exceedsBalance
+                    ? `Supera lo que debe. El cliente solo debe ${formatCOP(currentBalance)}`
+                    : undefined
+                }
+              />
+
+              {/* Mensajes de resultado sencillos */}
+              {exceedsBalance ? (
+                <View style={styles.alertBox}>
+                  <Ionicons name="alert-circle-outline" size={18} color={Colors.destructive} />
+                  <Text style={styles.alertText}>
+                    Supera lo que debe. El cliente debe {formatCOP(currentBalance)}, no puedes registrar un abono de {formatCOP(numericAmount)}.
+                  </Text>
+                </View>
+              ) : numericAmount > 0 ? (
+                isTotalPayment ? (
+                  <View style={styles.peaceBox}>
+                    <Ionicons name="checkmark-circle" size={18} color="#15803D" />
+                    <Text style={styles.peaceText}>
+                      ¡Queda a paz y salvo! La deuda quedará en $ 0.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.remainingBox}>
+                    <Ionicons
+                      name="information-circle-outline"
+                      size={18}
+                      color={Colors.textSecondary}
+                    />
+                    <Text style={styles.remainingText}>
+                      Ahora quedará debiendo:{' '}
+                      <Text style={styles.remainingBold}>{formatCOP(remainingBalance)}</Text>
+                    </Text>
+                  </View>
+                )
+              ) : null}
+
+              <Input
+                label="Nota (opcional)"
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Ej. En efectivo, Nequi..."
+              />
+            </View>
           </View>
         ) : (
+          /* Buscador de clientes si entra sin cliente seleccionado */
           <View style={styles.picker}>
+            <Text style={styles.pickerTitle}>¿A qué cliente le vas a cobrar?</Text>
             <Input
-              label="Buscar cliente"
               leadingIcon="search"
               value={customerSearch}
               onChangeText={setCustomerSearch}
-              placeholder="Nombre, alias o cédula"
+              placeholder="Escribe el nombre o alias..."
             />
             <ScrollView
               style={styles.options}
@@ -177,7 +229,7 @@ export function NewPaymentScreen({route, navigation}: any) {
                   }}
                   style={styles.option}
                 >
-                  <View style={styles.optionAvatar}>
+                  <View style={styles.avatar}>
                     <Text style={styles.avatarText}>
                       {(customer.alias || customer.name).charAt(0).toUpperCase()}
                     </Text>
@@ -185,73 +237,26 @@ export function NewPaymentScreen({route, navigation}: any) {
                   <View style={{flex: 1}}>
                     <Text style={styles.customerName}>{customer.alias || customer.name}</Text>
                     <Text style={styles.muted}>
-                      {formatCOP(Number(customer.current_balance))} pendiente
+                      Debe: {formatCOP(Number(customer.current_balance))}
                     </Text>
                   </View>
                 </Pressable>
               ))}
               {matchingCustomers.length === 0 ? (
-                <Text style={styles.muted}>No encontramos clientes.</Text>
+                <Text style={styles.mutedEmpty}>No encontramos clientes con ese nombre.</Text>
               ) : null}
             </ScrollView>
           </View>
         )}
-
-        {/* Input de Valor recibido con validación en tiempo real */}
-        <View style={{gap: 6}}>
-          <Input
-            label="Valor recibido"
-            value={amount ? FormatMoney(amount) : ''}
-            onChangeText={value => setAmount(FormatMoney(value))}
-            keyboardType="numeric"
-            placeholder="$ 0"
-            error={
-              exceedsBalance
-                ? `Supera el saldo pendiente. La deuda total es ${formatCOP(currentBalance)}`
-                : undefined
-            }
-          />
-
-          {exceedsBalance ? (
-            <View style={styles.limitAlertBox}>
-              <Ionicons name="alert-circle-outline" size={18} color={Colors.destructive} />
-              <View style={{flex: 1}}>
-                <Text style={styles.limitAlertTitle}>Supera el saldo pendiente</Text>
-                <Text style={styles.limitAlertDesc}>
-                  El abono ingresado supera la deuda total ({formatCOP(currentBalance)}). El excedente sería de {formatCOP(numericAmount - currentBalance)}.
-                </Text>
-              </View>
-            </View>
-          ) : numericAmount > 0 ? (
-            isTotalPayment ? (
-              <View style={styles.successBox}>
-                <Ionicons name="checkmark-circle-outline" size={16} color="#15803D" />
-                <Text style={styles.successText}>
-                  Con este abono la deuda quedará completamente saldada en $ 0.
-                </Text>
-              </View>
-            ) : (
-              <Text style={styles.limitOkText}>
-                El nuevo saldo pendiente quedaría en {formatCOP(remainingBalance)}
-              </Text>
-            )
-          ) : null}
-        </View>
-
-        <Input
-          label="Nota (opcional)"
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="Ej. Abono en efectivo, transferencia..."
-        />
       </ScrollView>
 
+      {/* Botón inferior claro y grande */}
       <View style={[styles.footer, {paddingBottom: Math.max(insets.bottom, 12) + 8}]}>
         <Button
           title={mutation.isPending ? 'Guardando…' : 'Guardar abono'}
           icon="check"
           onPress={onSave}
-          disabled={mutation.isPending || exceedsBalance}
+          disabled={mutation.isPending || exceedsBalance || !numericAmount}
         />
         <Button title="Cancelar" variant="ghost" onPress={() => navigation.goBack()} />
       </View>
@@ -261,7 +266,7 @@ export function NewPaymentScreen({route, navigation}: any) {
 
 const styles = StyleSheet.create({
   sheet: {flex: 1, backgroundColor: Colors.background},
-  content: {padding: 20, paddingTop: 28, gap: 14},
+  content: {padding: 20, paddingTop: 20, gap: 16},
   footer: {
     padding: 16,
     paddingBottom: 26,
@@ -270,85 +275,20 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.border,
   },
-  subtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: -8,
-  },
-  balanceCard: {
+  mainCard: {
     padding: 16,
+    gap: 14,
+    borderRadius: 18,
+  },
+  customerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
-  },
-  balanceHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  balanceLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  balanceValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.destructive,
-    marginTop: 2,
-  },
-  totalButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: '#FFF1E6',
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-  },
-  totalButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  totalButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  totalButtonTextActive: {
-    color: '#FFFFFF',
-  },
-  zeroDebtBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: '#DCFCE7',
-  },
-  zeroDebtText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#15803D',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  customerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
   },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
     backgroundColor: '#FFF1E6',
     alignItems: 'center',
     justifyContent: 'center',
@@ -356,46 +296,88 @@ const styles = StyleSheet.create({
   avatarText: {
     color: Colors.primary,
     fontWeight: '800',
-    fontSize: 15,
+    fontSize: 18,
   },
   customerName: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     color: Colors.text,
   },
   muted: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textSecondary,
+    marginTop: 2,
   },
   change: {
     color: Colors.primary,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
   },
-  picker: {gap: 8},
-  options: {
-    maxHeight: 190,
-    backgroundColor: Colors.card,
-    borderRadius: 16,
-    paddingHorizontal: 12,
+  balanceBox: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
   },
-  option: {
+  balanceTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#991B1B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  balanceNumber: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: Colors.destructive,
+    marginTop: 4,
+  },
+  payAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
-  },
-  optionAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 13,
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderRadius: 14,
     backgroundColor: '#FFF1E6',
+    borderWidth: 1.5,
+    borderColor: '#FED7AA',
+  },
+  payAllButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  payAllText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  payAllTextActive: {
+    color: '#FFFFFF',
+  },
+  zeroBox: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
-  limitAlertBox: {
+  zeroText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  inputSection: {
+    gap: 12,
+  },
+  alertBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -405,39 +387,74 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    marginTop: 2,
   },
-  limitAlertTitle: {
+  alertText: {
+    flex: 1,
     fontSize: 13,
-    fontWeight: '700',
-    color: Colors.destructive,
-  },
-  limitAlertDesc: {
-    fontSize: 12,
     color: '#991B1B',
-    marginTop: 2,
+    fontWeight: '600',
+    lineHeight: 18,
   },
-  limitOkText: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  successBox: {
+  peaceBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     backgroundColor: '#F0FDF4',
     borderWidth: 1,
     borderColor: '#BBF7D0',
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginTop: 2,
+    paddingVertical: 10,
   },
-  successText: {
-    fontSize: 12,
+  peaceText: {
+    flex: 1,
+    fontSize: 13,
     color: '#15803D',
+    fontWeight: '700',
+  },
+  remainingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.cardAlt,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  remainingText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
     fontWeight: '600',
+  },
+  remainingBold: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  picker: {gap: 10},
+  pickerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  options: {
+    maxHeight: 220,
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+  },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  mutedEmpty: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 16,
   },
 });
