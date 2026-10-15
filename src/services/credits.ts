@@ -61,7 +61,7 @@ export async function fetchOverdueCredits(): Promise<Credit[]> {
     const db = await getDbConnection();
     const rows = await getData(
       db,
-      `SELECT c.*, cust.name as customer_name, cust.phone as customer_phone
+      `SELECT c.*, cust.name as customer_name, cust.alias as customer_alias, cust.phone as customer_phone
        FROM credits c
        LEFT JOIN customers cust ON (c.customer_id = cust.local_id OR c.customer_id = cust.server_id)
        WHERE c.status != 'paid' AND c.due_date IS NOT NULL AND c.due_date < ?
@@ -84,6 +84,7 @@ export async function fetchOverdueCredits(): Promise<Credit[]> {
         customers: {
           id: r.customer_id,
           name: r.customer_name || 'Cliente',
+          alias: r.customer_alias || null,
           phone: r.customer_phone || '',
         },
       })) as Credit[];
@@ -93,7 +94,7 @@ export async function fetchOverdueCredits(): Promise<Credit[]> {
   try {
     const {data, error} = await supabase
       .from('credits')
-      .select('*, customers(id, name, phone)')
+      .select('*, customers(id, name, alias, phone)')
       .neq('status', 'paid')
       .lt('due_date', today)
       .order('due_date', {ascending: true});

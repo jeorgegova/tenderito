@@ -1,11 +1,12 @@
-import {useState} from 'react';
+import React, {useState} from 'react';
 import {
   Alert,
+  Image,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  Pressable,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -39,7 +40,10 @@ export function LoginScreen({navigation}: any) {
     });
     setLoading(false);
     if (error) {
-      return Alert.alert('No pudimos entrar', 'Verifica tu correo y contraseña.');
+      return Alert.alert(
+        'No pudimos entrar',
+        'Verifica tu correo y contraseña.',
+      );
     }
   }
 
@@ -52,26 +56,17 @@ export function LoginScreen({navigation}: any) {
       ]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}>
-
       {/* ── Hero de la marca ── */}
-      <View style={styles.hero}>
-        {/* Ícono del logo: toldo de tienda */}
-        <View style={styles.logoWrap}>
-          <View style={styles.logoIcon}>
-            {/* Toldo con rayas */}
-            <View style={styles.awning}>
-              {[0, 1, 2, 3].map(i => (
-                <View key={i} style={[styles.stripe, i % 2 === 0 && styles.stripeDark]} />
-              ))}
-            </View>
-            {/* Frente de la tienda */}
-            <View style={styles.storeFront}>
-              <View style={styles.storeWindow} />
-              <View style={styles.storeDoor} />
-            </View>
-          </View>
-        </View>
-        <Text style={styles.appName}>tenderito</Text>
+      <View style={styles.heroCard}>
+        <View style={styles.heroBgCircle1} />
+        <View style={styles.heroBgCircle2} />
+
+        <Image
+          source={require('../assets/LogoSinFondo.png')}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
+        <Text style={styles.appName}>Tenderito</Text>
         <Text style={styles.tagline}>
           Los fiados de tu tienda,{'\n'}siempre bajo control
         </Text>
@@ -131,7 +126,13 @@ export function LoginScreen({navigation}: any) {
           placeholder="••••••••"
         />
         <Button
-          title={loading ? 'Entrando…' : role === 'store' ? 'Entrar a mi tienda' : 'Ver mis fiados'}
+          title={
+            loading
+              ? 'Entrando…'
+              : role === 'store'
+              ? 'Entrar a mi tienda'
+              : 'Ver mis fiados'
+          }
           onPress={onLogin}
           disabled={loading}
         />
@@ -144,21 +145,35 @@ export function LoginScreen({navigation}: any) {
         <View style={styles.divider} />
       </View>
       <Button
-        title={role === 'store' ? 'Crear mi tienda gratis' : 'Activar mi cuenta de cliente'}
+        title={
+          role === 'store'
+            ? 'Crear mi tienda gratis'
+            : 'Activar mi cuenta de cliente'
+        }
         variant="secondary"
         onPress={() =>
-          navigation.navigate(role === 'store' ? 'Register' : 'CustomerRegister')
+          navigation.navigate(
+            role === 'store' ? 'Register' : 'CustomerRegister',
+          )
         }
       />
 
       {/* ── Confianza ── */}
       <View style={styles.trust}>
         <View style={styles.trustItem}>
-          <Ionicons name="shield-checkmark-outline" size={13} color={Colors.textMuted} />
+          <Ionicons
+            name="shield-checkmark-outline"
+            size={13}
+            color={Colors.textMuted}
+          />
           <Text style={styles.trustText}>Tus datos siempre seguros</Text>
         </View>
         <View style={styles.trustItem}>
-          <Ionicons name="cloud-offline-outline" size={13} color={Colors.textMuted} />
+          <Ionicons
+            name="cloud-offline-outline"
+            size={13}
+            color={Colors.textMuted}
+          />
           <Text style={styles.trustText}>Funciona sin internet</Text>
         </View>
       </View>
@@ -174,74 +189,59 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   // Hero
-  hero: {alignItems: 'center', paddingVertical: 8, gap: 8},
-  logoWrap: {marginBottom: 4},
-  logoIcon: {
-    width: 76,
-    height: 76,
-    borderRadius: 26,
+  heroCard: {
     backgroundColor: Colors.primary,
-    overflow: 'hidden',
+    borderRadius: 28,
+    paddingVertical: 24,
+    paddingHorizontal: 20,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    // Sombra naranja profunda para presencia
+    justifyContent: 'center',
+    overflow: 'hidden',
     shadowColor: Colors.primary,
-    shadowOffset: {width: 0, height: 6},
-    shadowOpacity: 0.4,
-    shadowRadius: 14,
+    shadowOffset: {width: 0, height: 8},
+    shadowOpacity: 0.38,
+    shadowRadius: 16,
     elevation: 10,
+    gap: 6,
   },
-  awning: {
-    flexDirection: 'row',
-    width: '100%',
-    height: 32,
+  heroBgCircle1: {
     position: 'absolute',
-    top: 0,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    top: -60,
+    right: -40,
   },
-  stripe: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.55)',
+  heroBgCircle2: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    bottom: -30,
+    left: -20,
   },
-  stripeDark: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  storeFront: {
-    width: 56,
-    height: 38,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-around',
-    paddingHorizontal: 8,
-    paddingBottom: 0,
-  },
-  storeWindow: {
-    width: 16,
-    height: 18,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    borderRadius: 3,
-  },
-  storeDoor: {
-    width: 14,
-    height: 24,
-    backgroundColor: 'rgba(255,255,255,0.35)',
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
+  logoImage: {
+    width: 130,
+    height: 104,
   },
   appName: {
     fontSize: 34,
     fontWeight: '900',
-    color: Colors.text,
-    letterSpacing: -1,
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    textShadowColor: 'rgba(0, 0, 0, 0.15)',
+    textShadowOffset: {width: 0, height: 2},
+    textShadowRadius: 4,
   },
   tagline: {
-    fontSize: 15,
-    color: Colors.textSecondary,
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.92)',
     textAlign: 'center',
-    lineHeight: 22,
-    fontWeight: '500',
+    lineHeight: 20,
+    fontWeight: '600',
+    marginTop: 2,
   },
   // Roles
   roleRow: {

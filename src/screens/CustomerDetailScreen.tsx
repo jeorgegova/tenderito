@@ -1,124 +1,489 @@
 import {useQuery} from '@tanstack/react-query';
-import {FlatList, StyleSheet, Text, View} from 'react-native';
-import {Badge, SyncBadge} from '../components/ui/Badge';
+import React, {useMemo, useState} from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import Ionicons from '@react-native-vector-icons/ionicons';
+import {SyncBadge} from '../components/ui/Badge';
 import {Button} from '../components/ui/Button';
 import {Card} from '../components/ui/Card';
 import {FooterMenu} from '../components/ui/FooterMenu';
-import {MonochromeIcon} from '../components/ui/MonochromeIcon';
+import {showAlert} from '../utils/alert';
 import {fetchCreditsByCustomer} from '../services/credits';
 import {fetchCustomerById} from '../services/customers';
 import {fetchPaymentsByCustomer} from '../services/payments';
-import {Colors, formatCOP} from '../theme';
+import {useStore} from '../store/useStore';
+import {Colors, Radius, formatCOP} from '../theme';
 
 export function CustomerDetailScreen({route, navigation}: any) {
   const {id} = route.params as {id: string};
+  const profile = useStore(s => s.profile);
+  const [filterType, setFilterType] = useState<'all' | 'credit' | 'payment'>(
+    'all',
+  );
+
   const customer = useQuery({
     queryKey: ['customer', id],
     queryFn: () => fetchCustomerById(id),
     enabled: !!id,
   });
+
   const credits = useQuery({
     queryKey: ['credits', id],
     queryFn: () => fetchCreditsByCustomer(id),
     enabled: !!id,
   });
+
   const payments = useQuery({
     queryKey: ['payments', id],
     queryFn: () => fetchPaymentsByCustomer(id),
     enabled: !!id,
   });
-  const movements = [
-    ...(credits.data ?? []).map(c => ({kind: 'credit' as const, date: c.created_at, ...c})),
-    ...(payments.data ?? []).map(p => ({kind: 'payment' as const, date: p.payment_date, ...p})),
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Movimientos combinados y ordenados por fecha más reciente
+  const allMovements = useMemo(() => {
+    const cr = (credits.data ?? []).map(c => ({
+      id: c.id,
+      kind: 'credit' as const,
+      title: c.concept || 'Compra fiada',
+      amount: Number(c.amount || 0),
+      date: c.created_at,
+      dueDate: c.due_date,
+      estadoServidor: c.estadoServidor,
+      notes: null,
+    }));
+
+    const py = (payments.data ?? []).map(p => ({
+      id: p.id,
+      kind: 'payment' as const,
+      title: p.notes ? `Abono: ${p.notes}` : 'Abono recibido',
+      amount: Number(p.amount || 0),
+      date: p.payment_date,
+      dueDate: null,
+      estadoServidor: p.estadoServidor,
+      notes: p.notes,
+    }));
+
+    return [...cr, ...py].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+  }, [credits.data, payments.data]);
+
+  // Totales acumulados
+  const totals = useMemo(() => {
+    let creditsSum = 0;
+    let paymentsSum = 0;
+    allMovements.forEach(m => {
+      if (m.kind === 'credit') {
+        creditsSum += m.amount;
+      }
+      if (m.kind === 'payment') {
+        paymentsSum += m.amount;
+      }
+    });
+    return {creditsSum, paymentsSum};
+  }, [allMovements]);
+
+  // Movimientos según filtro
+  const filteredMovements = useMemo(() => {
+    if (filterType === 'all') {
+      return allMovements;
+    }
+    return allMovements.filter(m => m.kind === filterType);
+  }, [allMovements, filterType]);
+
+  const creditCount = allMovements.filter(m => m.kind === 'credit').length;
+  const paymentCount = allMovements.filter(m => m.kind === 'payment').length;
+
+  const currentBalance = Number(customer.data?.current_balance ?? 0);
+  const creditLimit = Number(customer.data?.credit_limit ?? 0);
+  const isPaid = currentBalance === 0;
+
+  const handleCallCustomer = (phone?: string | null) => {
+    if (!phone) {
+      return;
+    }
+    const cleanPhone = phone.replace(/[^0-9+]/g, '');
+    Linking.openURL(`tel:${cleanPhone}`).catch(() => {
+      showAlert('No se pudo abrir el teléfono', `Número: ${phone}`);
+    });
+  };
+
+  const formatDateDisplay = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('es-CO', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch (_e) {
+      return dateStr;
+    }
+  };
+
+  const isOverdue = (dueDateStr?: string | null) => {
+    if (!dueDateStr) {
+      return false;
+    }
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      return dueDateStr < today;
+    } catch (_e) {
+      return false;
+    }
+  };
 
   return (
     <View style={styles.wrap}>
-      <View style={{padding: 20, gap: 12}}>
-        <Card style={styles.hero}>
-          <View style={styles.customerHeading}>
-            <View style={styles.avatar}><Text style={styles.avatarText}>{(customer.data?.alias || customer.data?.name || '?').charAt(0).toUpperCase()}</Text></View>
-            <View style={{flex: 1}}>
-              <Text style={styles.name}>{customer.data?.alias || customer.data?.name || '…'}</Text>
-              {customer.data?.alias ? <Text style={styles.phone}>{customer.data.name}</Text> : null}
-            </View>
-          </View>
-          <Text style={styles.phone}>{customer.data?.phone ?? 'Sin teléfono'}</Text>
-          <Text style={styles.phone}>
-            {customer.data?.document_type} {customer.data?.document_number}
-          </Text>
-          <View style={styles.metrics}>
-            <View style={styles.metric}><Text style={styles.metricLabel}>Saldo pendiente</Text><Text style={styles.balance}>{formatCOP(Number(customer.data?.current_balance ?? 0))}</Text></View>
-            <View style={styles.metricDivider} />
-            <View style={styles.metric}><Text style={styles.metricLabel}>Tope de crédito</Text><Text style={styles.limit}>{formatCOP(Number(customer.data?.credit_limit ?? 0))}</Text></View>
-          </View>
-        </Card>
-        <View style={{flexDirection: 'row', gap: 12}}>
-          <View style={{flex: 1}}>
-            <Button
-              title="Nuevo fiado"
-              icon="credit"
-              onPress={() => navigation.navigate('NewCredit', {customerId: id})}
-            />
-          </View>
-          <View style={{flex: 1}}>
-            <Button
-              title="Abonar"
-              icon="incoming"
-              variant="secondary"
-              onPress={() =>
-                navigation.navigate('NewPayment', {customerId: id})
-              }
-            />
-          </View>
-        </View>
-      </View>
       <FlatList
-        contentContainerStyle={{
-          paddingHorizontal: 20,
-          paddingBottom: 40,
-          gap: 8,
+        contentContainerStyle={styles.content}
+        data={filteredMovements}
+        keyExtractor={item => `${item.kind}-${item.id}`}
+        refreshing={
+          customer.isLoading || credits.isLoading || payments.isLoading
+        }
+        onRefresh={() => {
+          customer.refetch();
+          credits.refetch();
+          payments.refetch();
         }}
-        data={movements}
-        keyExtractor={(i: any) => i.kind + i.id}
-        ListHeaderComponent={<Text style={styles.section}>Actividad reciente</Text>}
-        ListEmptyComponent={!credits.isLoading && !payments.isLoading ? <Card style={styles.empty}><MonochromeIcon name="receipt" color={Colors.textSecondary} size={20} /><Text style={styles.phone}>Aún no hay fiados ni abonos registrados.</Text></Card> : null}
-        renderItem={({item}: any) =>
-          item.kind === 'credit' ? (
-            <Card style={styles.row}>
-              <View style={{flex: 1}}>
-                <Text style={styles.concept}>{item.concept}</Text>
-                <Text style={styles.date}>
-                  {new Date(item.date).toLocaleDateString('es-CO')}
-                  {item.due_date ? ` · vence ${item.due_date}` : ''}
-                </Text>
-              </View>
-              <View style={{alignItems: 'flex-end', gap: 4}}>
-                <Text style={styles.creditAmount}>
-                  +{formatCOP(Number(item.amount))}
-                </Text>
-                <View style={{flexDirection: 'row', gap: 4, alignItems: 'center'}}>
-                  <SyncBadge estadoServidor={item.estadoServidor} />
-                  {item.status !== 'pending' ? (
-                    <Badge status={item.status} />
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <>
+            {/* ── Ficha del Cliente ── */}
+            <Card style={styles.customerCard}>
+              <View style={styles.customerRow}>
+                <View
+                  style={[styles.avatar, isPaid ? styles.avatarPaid : null]}>
+                  <Text
+                    style={[
+                      styles.avatarText,
+                      isPaid ? styles.avatarTextPaid : null,
+                    ]}>
+                    {(customer.data?.alias || customer.data?.name || '?')
+                      .charAt(0)
+                      .toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.flexOne}>
+                  <Text style={styles.customerName}>
+                    {customer.data?.alias ||
+                      customer.data?.name ||
+                      'Cargando...'}
+                  </Text>
+                  {customer.data?.alias ? (
+                    <Text style={styles.customerRealName}>
+                      Nombre real: {customer.data.name}
+                    </Text>
                   ) : null}
+                  <Text style={styles.customerMeta}>
+                    {customer.data?.document_type || 'CC'}{' '}
+                    {customer.data?.document_number || 'Sin cédula'}
+                  </Text>
                 </View>
               </View>
-            </Card>
-          ) : (
-            <Card style={styles.row}>
-              <View style={{flex: 1}}>
-                <Text style={styles.concept}>
-                  Abono {item.notes ? `· ${item.notes}` : ''}
+
+              {/* Botón rápido para llamar al cliente */}
+              {customer.data?.phone ? (
+                <TouchableOpacity
+                  style={styles.callBtn}
+                  onPress={() => handleCallCustomer(customer.data?.phone)}>
+                  <Ionicons name="call" size={16} color="#FFFFFF" />
+                  <Text style={styles.callBtnText}>
+                    Llamar al cliente ({customer.data.phone})
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {/* Historial en otras tiendas (si aplica plan de pago) */}
+              {(profile?.subscription_plan ?? 'free') !== 'free' ? (
+                <TouchableOpacity
+                  style={styles.historyBtn}
+                  onPress={() => navigation.navigate('CustomerHistory', {id})}>
+                  <Ionicons
+                    name="storefront-outline"
+                    size={16}
+                    color={Colors.primary}
+                  />
+                  <Text style={styles.historyBtnText}>
+                    Ver historial de este cliente en otras tiendas
+                  </Text>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    color={Colors.primary}
+                  />
+                </TouchableOpacity>
+              ) : null}
+
+              {/* Caja de Deuda / Saldo en Grande y Claro */}
+              <View
+                style={[
+                  styles.balanceBox,
+                  isPaid ? styles.balanceBoxPaid : null,
+                ]}>
+                <Text
+                  style={[
+                    styles.balanceBoxLabel,
+                    isPaid ? styles.balanceBoxLabelPaid : null,
+                  ]}>
+                  {isPaid
+                    ? '¡ESTE CLIENTE ESTÁ AL DÍA!'
+                    : 'ESTE CLIENTE TE DEBE:'}
                 </Text>
-                <Text style={styles.date}>
-                  {new Date(item.date).toLocaleDateString('es-CO')}
+                <Text
+                  style={[
+                    styles.balanceBoxAmount,
+                    isPaid ? styles.balanceBoxAmountPaid : null,
+                  ]}>
+                  {formatCOP(currentBalance)}
+                </Text>
+                <Text style={styles.balanceBoxHelp}>
+                  {isPaid
+                    ? 'No tiene ninguna deuda pendiente contigo en este momento.'
+                    : 'Es el valor total que tiene pendiente por pagar en tu tienda.'}
+                  {creditLimit > 0
+                    ? ` (Tope máximo de crédito permitido: ${formatCOP(
+                        creditLimit,
+                      )})`
+                    : ''}
                 </Text>
               </View>
-              <Text style={styles.paymentAmount}>
-                -{formatCOP(Number(item.amount))}
-              </Text>
             </Card>
+
+            {/* ── Botones de Acción Principales (Grandes y Cómodos) ── */}
+            <View style={styles.actionsRow}>
+              <View style={styles.flexOne}>
+                <Button
+                  title="+ Nuevo fiado"
+                  icon="credit"
+                  onPress={() =>
+                    navigation.navigate('NewCredit', {customerId: id})
+                  }
+                />
+              </View>
+              <View style={styles.flexOne}>
+                <Button
+                  title="− Abonar plata"
+                  variant="secondary"
+                  icon="incoming"
+                  onPress={() =>
+                    navigation.navigate('NewPayment', {customerId: id})
+                  }
+                />
+              </View>
+            </View>
+
+            {/* ── Encabezado de la Libreta de Cuentas ── */}
+            <View style={styles.sectionHeading}>
+              <Text style={styles.sectionTitle}>
+                Libreta de fiados y abonos
+              </Text>
+              <Text style={styles.sectionSubtitle}>
+                Aquí ves cada compra fiada y cada abono recibido:
+              </Text>
+            </View>
+
+            {/* ── Filtros Rápidos y Comprensibles ── */}
+            <View style={styles.filterBar}>
+              <Pressable
+                onPress={() => setFilterType('all')}
+                style={[
+                  styles.filterChip,
+                  filterType === 'all' && styles.filterChipActive,
+                ]}>
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    filterType === 'all' && styles.filterChipTextActive,
+                  ]}>
+                  Todo ({allMovements.length})
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setFilterType('credit')}
+                style={[
+                  styles.filterChip,
+                  filterType === 'credit' && styles.filterChipActive,
+                ]}>
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    filterType === 'credit' && styles.filterChipTextActive,
+                  ]}>
+                  Solo compras ({creditCount})
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setFilterType('payment')}
+                style={[
+                  styles.filterChip,
+                  filterType === 'payment' && styles.filterChipActive,
+                ]}>
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    filterType === 'payment' && styles.filterChipTextActive,
+                  ]}>
+                  Solo abonos ({paymentCount})
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* ── Cabecera de la Tabla Libreta ── */}
+            <View style={styles.tableHeaderRow}>
+              <Text style={[styles.tableColHeader, styles.colDate]}>FECHA</Text>
+              <Text style={[styles.tableColHeader, styles.colConcept]}>
+                QUÉ SE LLEVÓ / ABONO
+              </Text>
+              <Text style={[styles.tableColHeader, styles.colAmount]}>
+                VALOR
+              </Text>
+            </View>
+          </>
+        }
+        ListEmptyComponent={
+          !credits.isLoading && !payments.isLoading ? (
+            <View style={styles.tableEmpty}>
+              <Ionicons
+                name="receipt-outline"
+                size={36}
+                color={Colors.textMuted}
+              />
+              <Text style={styles.tableEmptyTitle}>Sin movimientos</Text>
+              <Text style={styles.tableEmptyText}>
+                {filterType === 'all'
+                  ? 'Este cliente aún no tiene compras fiadas ni abonos registrados.'
+                  : 'No hay registros en este filtro seleccionado.'}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.tableEmpty}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+              <Text style={styles.tableEmptyText}>Cargando libreta...</Text>
+            </View>
+          )
+        }
+        renderItem={({item, index}) => {
+          const isCredit = item.kind === 'credit';
+          const overdue = isCredit && isOverdue(item.dueDate);
+
+          return (
+            <View
+              style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlt]}>
+              {/* Columna Fecha */}
+              <View style={styles.colDate}>
+                <Text style={styles.rowDateText}>
+                  {formatDateDisplay(item.date)}
+                </Text>
+              </View>
+
+              {/* Columna Detalle */}
+              <View style={styles.colConcept}>
+                <Text style={styles.rowConceptTitle} numberOfLines={2}>
+                  {item.title}
+                </Text>
+
+                <View style={styles.rowBadgeWrap}>
+                  <View
+                    style={[
+                      styles.kindBadge,
+                      isCredit
+                        ? styles.kindBadgeCredit
+                        : styles.kindBadgePayment,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.kindBadgeText,
+                        isCredit
+                          ? styles.kindBadgeTextCredit
+                          : styles.kindBadgeTextPayment,
+                      ]}>
+                      {isCredit ? 'Compra fiada (+)' : 'Abono recibido (-)'}
+                    </Text>
+                  </View>
+                  <SyncBadge estadoServidor={item.estadoServidor} />
+                </View>
+
+                {item.dueDate ? (
+                  <View style={styles.dueRow}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={12}
+                      color={
+                        overdue ? Colors.destructive : Colors.textSecondary
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.rowDueDate,
+                        overdue && styles.rowDueDateOverdue,
+                      ]}>
+                      {overdue
+                        ? `Vencido el: ${formatDateDisplay(item.dueDate)}`
+                        : `Vence el: ${formatDateDisplay(item.dueDate)}`}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {/* Columna Monto */}
+              <View style={styles.colAmount}>
+                <Text
+                  style={[
+                    styles.rowAmountText,
+                    isCredit ? styles.rowAmountCredit : styles.rowAmountPayment,
+                  ]}>
+                  {isCredit ? '+' : '−'}
+                  {formatCOP(item.amount)}
+                </Text>
+              </View>
+            </View>
+          );
+        }}
+        ListFooterComponent={
+          allMovements.length > 0 ? (
+            <View style={styles.tableSummary}>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Total fiado acumulado:</Text>
+                <Text style={styles.summaryCreditValue}>
+                  +{formatCOP(totals.creditsSum)}
+                </Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>
+                  Total que te ha abonado:
+                </Text>
+                <Text style={styles.summaryPaymentValue}>
+                  −{formatCOP(totals.paymentsSum)}
+                </Text>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryNetLabel}>
+                  Saldo pendiente actual:
+                </Text>
+                <Text
+                  style={[
+                    styles.summaryNetValue,
+                    isPaid
+                      ? styles.summaryNetValuePaid
+                      : styles.summaryNetValueOwing,
+                  ]}>
+                  {formatCOP(currentBalance)}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.footerSpacer} />
           )
         }
       />
@@ -128,29 +493,378 @@ export function CustomerDetailScreen({route, navigation}: any) {
 }
 
 const styles = StyleSheet.create({
-  wrap: {flex: 1, backgroundColor: Colors.background},
-  hero: {backgroundColor: Colors.card},
-  name: {fontSize: 22, fontWeight: '800', color: Colors.text},
-  customerHeading: {flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8},
-  avatar: {width: 48, height: 48, borderRadius: 18, backgroundColor: '#FFF1E6', alignItems: 'center', justifyContent: 'center'},
-  avatarText: {fontSize: 20, fontWeight: '800', color: Colors.primary},
-  phone: {color: Colors.textSecondary},
-  metrics: {flexDirection: 'row', marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: Colors.border},
-  metric: {flex: 1, gap: 5},
-  metricDivider: {width: 1, backgroundColor: Colors.border, marginHorizontal: 14},
-  metricLabel: {fontSize: 11, color: Colors.textSecondary},
-  limit: {fontSize: 15, color: Colors.text, fontWeight: '800'},
-  balance: {
+  wrap: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  flexOne: {
+    flex: 1,
+  },
+  content: {
+    padding: 16,
+    gap: 12,
+    paddingBottom: 40,
+  },
+
+  // Ficha del Cliente
+  customerCard: {
+    padding: 18,
+    gap: 12,
+    borderRadius: Radius.xl,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  customerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: '#FFF1E6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarPaid: {
+    backgroundColor: '#DCFCE7',
+  },
+  avatarText: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  avatarTextPaid: {
+    color: Colors.success,
+  },
+  customerName: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  customerRealName: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  customerMeta: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  callBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#16A34A',
+    paddingVertical: 10,
+    borderRadius: Radius.md,
+  },
+  callBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  historyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: Radius.md,
+  },
+  historyBtnText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+
+  // Caja de saldo
+  balanceBox: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
+    borderColor: '#FECACA',
+    borderRadius: Radius.lg,
+    padding: 16,
+    alignItems: 'center',
+  },
+  balanceBoxPaid: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+  },
+  balanceBoxLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.destructive,
+    letterSpacing: 0.8,
+  },
+  balanceBoxLabelPaid: {
+    color: '#15803D',
+  },
+  balanceBoxAmount: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: Colors.destructive,
+    marginVertical: 4,
+  },
+  balanceBoxAmountPaid: {
+    color: '#15803D',
+  },
+  balanceBoxHelp: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+
+  // Botones de acción principales
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 2,
+  },
+
+  // Título de la sección
+  sectionHeading: {
     marginTop: 8,
+    gap: 2,
+  },
+  sectionTitle: {
     fontSize: 18,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+
+  // Barra de filtros
+  filterBar: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 2,
+  },
+  filterChip: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.card,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // Tabla Libreta de Cuentas
+  tableHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF7ED',
+    borderTopLeftRadius: Radius.lg,
+    borderTopRightRadius: Radius.lg,
+    borderWidth: 1.5,
+    borderBottomWidth: 1.5,
+    borderColor: Colors.border,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  tableColHeader: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textSecondary,
+    letterSpacing: 0.6,
+  },
+  colDate: {
+    width: 82,
+  },
+  colConcept: {
+    flex: 1,
+    paddingHorizontal: 6,
+  },
+  colAmount: {
+    width: 95,
+    alignItems: 'flex-end',
+  },
+
+  // Filas de la tabla
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.card,
+    borderLeftWidth: 1.5,
+    borderRightWidth: 1.5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+  },
+  tableRowAlt: {
+    backgroundColor: '#FFFCF9',
+  },
+  rowDateText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  rowConceptTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  rowBadgeWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 3,
+  },
+  kindBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  kindBadgeCredit: {
+    backgroundColor: '#FEE2E2',
+  },
+  kindBadgePayment: {
+    backgroundColor: '#DCFCE7',
+  },
+  kindBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  kindBadgeTextCredit: {
+    color: Colors.destructive,
+  },
+  kindBadgeTextPayment: {
+    color: '#15803D',
+  },
+  dueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+  },
+  rowDueDate: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  rowDueDateOverdue: {
+    color: Colors.destructive,
+    fontWeight: '700',
+  },
+  rowAmountText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  rowAmountCredit: {
+    color: Colors.destructive,
+  },
+  rowAmountPayment: {
+    color: '#15803D',
+  },
+
+  // Estado vacío de la tabla
+  tableEmpty: {
+    backgroundColor: Colors.card,
+    borderLeftWidth: 1.5,
+    borderRightWidth: 1.5,
+    borderBottomWidth: 1.5,
+    borderColor: Colors.border,
+    borderBottomLeftRadius: Radius.lg,
+    borderBottomRightRadius: Radius.lg,
+    padding: 28,
+    alignItems: 'center',
+    gap: 6,
+  },
+  tableEmptyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  tableEmptyText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+
+  // Resumen inferior de la libreta
+  tableSummary: {
+    backgroundColor: '#FAF5EF',
+    borderLeftWidth: 1.5,
+    borderRightWidth: 1.5,
+    borderBottomWidth: 1.5,
+    borderColor: Colors.border,
+    borderBottomLeftRadius: Radius.lg,
+    borderBottomRightRadius: Radius.lg,
+    padding: 14,
+    gap: 6,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  summaryCreditValue: {
+    fontSize: 13,
     fontWeight: '800',
     color: Colors.destructive,
   },
-  section: {fontSize: 19, fontWeight: '800', color: Colors.text, marginVertical: 8},
-  empty: {alignItems: 'center', gap: 8, paddingVertical: 24},
-  row: {flexDirection: 'row', alignItems: 'center'},
-  concept: {fontWeight: '600', color: Colors.text},
-  date: {fontSize: 12, color: Colors.textSecondary},
-  creditAmount: {fontWeight: '800', color: Colors.destructive},
-  paymentAmount: {fontWeight: '800', color: '#15803D'},
+  summaryPaymentValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#15803D',
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 4,
+  },
+  summaryNetLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  summaryNetValue: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  summaryNetValueOwing: {
+    color: Colors.destructive,
+  },
+  summaryNetValuePaid: {
+    color: '#15803D',
+  },
+  footerSpacer: {
+    height: 16,
+  },
 });

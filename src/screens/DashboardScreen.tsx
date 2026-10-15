@@ -1,13 +1,10 @@
-import {useQuery} from '@tanstack/react-query';
-import {useState} from 'react';
+import React, {useState} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {useQuery} from '@tanstack/react-query';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
 import {Header} from '../components/ui/Header';
-import {
-  fetchOverdueCredits,
-  fetchTotalReceivable,
-} from '../services/credits';
+import {fetchOverdueCredits, fetchTotalReceivable} from '../services/credits';
 import {fetchCustomers} from '../services/customers';
 import {Colors, formatCOP} from '../theme';
 import {AnimatedMoney} from '../components/ui/AnimatedMoney';
@@ -37,7 +34,6 @@ export function DashboardScreen({navigation}: any) {
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
-
         {/* ── Tarjeta hero — monto total ── */}
         <View style={styles.heroCard}>
           {/* Fondo decorativo */}
@@ -45,11 +41,13 @@ export function DashboardScreen({navigation}: any) {
           <View style={styles.heroBgCircle2} />
 
           <View style={styles.heroTop}>
-            <View style={styles.heroTitle}>
-              <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-                <Ionicons name="wallet-outline" size={15} color="rgba(255,255,255,0.85)" />
-                <Text style={styles.heroCaption}>PLATA QUE TE DEBEN</Text>
-              </View>
+            <View style={styles.heroHeaderTitle}>
+              <Ionicons
+                name="wallet-outline"
+                size={15}
+                color="rgba(255,255,255,0.85)"
+              />
+              <Text style={styles.heroCaption}>PLATA QUE TE DEBEN</Text>
             </View>
             <Pressable
               onPress={() => setShowBalance(v => !v)}
@@ -78,7 +76,7 @@ export function DashboardScreen({navigation}: any) {
             <View style={styles.heroStat}>
               <Text style={styles.heroStatNum}>{debtors.length}</Text>
               <Text style={styles.heroStatLabel}>
-                {debtors.length === 1 ? 'te debe' : 'te deben'}
+                {debtors.length === 1 ? 'cliente te debe' : 'clientes te deben'}
               </Text>
             </View>
             <Pressable
@@ -90,15 +88,20 @@ export function DashboardScreen({navigation}: any) {
           </View>
         </View>
 
-
         {/* ── Sección: Atrasados ── */}
         <View style={styles.sectionRow}>
           <View>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-              <Ionicons name="alert-circle-outline" size={18} color={Colors.destructive} />
+            <View style={styles.sectionHeaderTitle}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={18}
+                color={Colors.destructive}
+              />
               <Text style={styles.sectionTitle}>Atrasados</Text>
             </View>
-            <Text style={styles.sectionHint}>Pasaron su fecha de pago</Text>
+            <Text style={styles.sectionHint}>
+              Pasaron su fecha de pago acordada
+            </Text>
           </View>
           <Pressable onPress={() => navigation.navigate('Alertas')} hitSlop={8}>
             <Text style={styles.sectionLink}>Ver todo</Text>
@@ -106,54 +109,94 @@ export function DashboardScreen({navigation}: any) {
         </View>
 
         {overdue.isLoading ? (
-          <Card><Text style={styles.muted}>Cargando…</Text></Card>
+          <Card>
+            <Text style={styles.muted}>Cargando…</Text>
+          </Card>
         ) : (overdue.data ?? []).length === 0 ? (
           <Card style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
-              <Ionicons name="checkmark-circle-outline" size={26} color="#15803D" />
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={26}
+                color="#15803D"
+              />
             </View>
-            <View style={{flex: 1}}>
+            <View style={styles.flex1}>
               <Text style={styles.emptyTitle}>¡Todo al día!</Text>
-              <Text style={styles.muted}>Nadie está atrasado.</Text>
+              <Text style={styles.muted}>
+                Nadie está atrasado en sus pagos.
+              </Text>
             </View>
           </Card>
         ) : (
-          (overdue.data ?? []).slice(0, 3).map(item => (
-            <Pressable
-              key={item.id}
-              onPress={() =>
-                navigation.navigate('CustomerDetail', {id: item.customer_id})
-              }>
-              <Card style={styles.alertRow}>
-                <View style={styles.alertIcon}>
-                  <Ionicons name="warning-outline" size={20} color={Colors.destructive} />
-                </View>
-                <View style={{flex: 1}}>
-                  <Text style={styles.customerName}>
-                    {item.customers?.name ?? 'Cliente'}
-                  </Text>
-                  <Text style={styles.muted} numberOfLines={1}>
-                    {item.concept} · venció el {item.due_date}
-                  </Text>
-                </View>
-                <Text style={styles.alertAmount}>
-                  {formatCOP(Number(item.amount))}
-                </Text>
-              </Card>
-            </Pressable>
-          ))
+          (overdue.data ?? []).slice(0, 3).map(item => {
+            const cust = item.customers;
+            const displayName = cust?.alias || cust?.name || 'Cliente';
+            const realName = cust?.alias ? cust?.name : null;
+
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() =>
+                  navigation.navigate('CustomerDetail', {id: item.customer_id})
+                }>
+                <Card style={styles.alertRow}>
+                  <View style={styles.alertIcon}>
+                    <Ionicons
+                      name="warning-outline"
+                      size={20}
+                      color={Colors.destructive}
+                    />
+                  </View>
+                  <View style={styles.flex1}>
+                    <Text style={styles.customerName} numberOfLines={1}>
+                      {displayName}
+                    </Text>
+                    {realName ? (
+                      <Text style={styles.customerRealName} numberOfLines={1}>
+                        {realName}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.muted} numberOfLines={1}>
+                      {item.concept} · venció el {item.due_date}
+                    </Text>
+                    {cust?.phone ? (
+                      <Text style={styles.muted}>📞 {cust.phone}</Text>
+                    ) : null}
+                    <Text style={styles.touchHint}>
+                      Toca para ver su libreta →
+                    </Text>
+                  </View>
+                  <View style={styles.alertAmountWrap}>
+                    <Text style={styles.alertAmountLabel}>Debe</Text>
+                    <Text style={styles.alertAmount}>
+                      {formatCOP(Number(item.amount))}
+                    </Text>
+                  </View>
+                </Card>
+              </Pressable>
+            );
+          })
         )}
 
         {/* ── Sección: Mayores deudas ── */}
         <View style={styles.sectionRow}>
           <View>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-              <Ionicons name="trending-up-outline" size={18} color={Colors.primary} />
+            <View style={styles.sectionHeaderTitle}>
+              <Ionicons
+                name="trending-up-outline"
+                size={18}
+                color={Colors.primary}
+              />
               <Text style={styles.sectionTitle}>Deben más</Text>
             </View>
-            <Text style={styles.sectionHint}>Los montos más altos</Text>
+            <Text style={styles.sectionHint}>
+              Clientes con los montos pendientes más altos
+            </Text>
           </View>
-          <Pressable onPress={() => navigation.navigate('Clientes')} hitSlop={8}>
+          <Pressable
+            onPress={() => navigation.navigate('Clientes')}
+            hitSlop={8}>
             <Text style={styles.sectionLink}>Ver todos</Text>
           </Pressable>
         </View>
@@ -173,17 +216,31 @@ export function DashboardScreen({navigation}: any) {
                     {(customer.alias || customer.name).charAt(0).toUpperCase()}
                   </Text>
                 </View>
-                <View style={{flex: 1}}>
+                <View style={styles.flex1}>
                   <Text style={styles.customerName} numberOfLines={1}>
                     {customer.alias || customer.name}
                   </Text>
-                  <Text style={styles.muted}>{customer.phone || 'Sin teléfono'}</Text>
+                  {customer.alias ? (
+                    <Text style={styles.customerRealName} numberOfLines={1}>
+                      {customer.name}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.muted}>
+                    {customer.phone ? `📞 ${customer.phone}` : 'Sin teléfono'}
+                  </Text>
+                  <Text style={styles.touchHint}>Toca para ver libreta →</Text>
                 </View>
                 <View style={styles.balanceWrap}>
+                  <Text style={styles.balanceLabel}>Te debe</Text>
                   <Text style={styles.balance}>
                     {formatCOP(Number(customer.current_balance))}
                   </Text>
                 </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={Colors.textMuted}
+                />
               </Card>
             </Pressable>
           ))}
@@ -191,26 +248,31 @@ export function DashboardScreen({navigation}: any) {
         {!customers.isLoading && debtors.length === 0 ? (
           <Card style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
-              <Ionicons name="checkmark-done-outline" size={24} color={Colors.primary} />
+              <Ionicons
+                name="checkmark-done-outline"
+                size={24}
+                color={Colors.primary}
+              />
             </View>
-            <View style={{flex: 1}}>
+            <View style={styles.flex1}>
               <Text style={styles.emptyTitle}>Sin deudas activas</Text>
               <Text style={styles.muted}>
-                Aquí verás quién te debe más cuando fíes.
+                Aquí verás quién te debe más cuando registres un fiado.
               </Text>
             </View>
           </Card>
         ) : null}
 
-        <View style={{height: 24}} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* ── FAB — nuevo fiado ── */}
+      {/* ── Botón flotante amigable: + Nuevo fiado ── */}
       <Pressable
         onPress={() => navigation.navigate('NewCredit')}
         accessibilityLabel="Nuevo fiado"
-        style={({pressed}) => [styles.fab, pressed && {opacity: 0.88, transform: [{scale: 0.95}]}]}>
-        <Text style={styles.fabPlus}>+</Text>
+        style={({pressed}) => [styles.fab, pressed && styles.fabPressed]}>
+        <Ionicons name="add-circle" size={22} color="#fff" />
+        <Text style={styles.fabText}>Nuevo fiado</Text>
       </Pressable>
     </View>
   );
@@ -219,6 +281,7 @@ export function DashboardScreen({navigation}: any) {
 const styles = StyleSheet.create({
   wrap: {flex: 1, backgroundColor: Colors.background},
   content: {paddingHorizontal: 20, paddingTop: 16, paddingBottom: 96, gap: 12},
+  flex1: {flex: 1},
 
   // ── Hero ──
   heroCard: {
@@ -226,7 +289,6 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 22,
     overflow: 'hidden',
-    // Sombra naranja profunda
     shadowColor: Colors.primary,
     shadowOffset: {width: 0, height: 8},
     shadowOpacity: 0.38,
@@ -251,9 +313,22 @@ const styles = StyleSheet.create({
     bottom: -30,
     left: 20,
   },
-  heroTop: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
-  heroTitle: {},
-  heroCaption: {color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '800', letterSpacing: 0.5},
+  heroTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  heroHeaderTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  heroCaption: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   heroValue: {
     color: '#fff',
     fontSize: 38,
@@ -282,7 +357,6 @@ const styles = StyleSheet.create({
   },
   heroBtnText: {color: '#fff', fontSize: 13, fontWeight: '700'},
 
-
   // ── Sección headers ──
   sectionRow: {
     flexDirection: 'row',
@@ -290,6 +364,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 6,
     marginBottom: -2,
+  },
+  sectionHeaderTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   sectionTitle: {fontSize: 18, fontWeight: '800', color: Colors.text},
   sectionHint: {fontSize: 12, color: Colors.textSecondary, marginTop: 1},
@@ -305,8 +384,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  customerName: {fontSize: 14, color: Colors.text, fontWeight: '700'},
-  alertAmount: {fontSize: 13, color: Colors.destructive, fontWeight: '800'},
+  customerName: {fontSize: 15, color: Colors.text, fontWeight: '700'},
+  customerRealName: {fontSize: 12, color: Colors.textSecondary},
+  alertAmountWrap: {alignItems: 'flex-end'},
+  alertAmountLabel: {
+    fontSize: 11,
+    color: Colors.destructive,
+    fontWeight: '600',
+  },
+  alertAmount: {fontSize: 14, color: Colors.destructive, fontWeight: '800'},
 
   // ── Cards de deudores ──
   debtorRow: {flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13},
@@ -319,8 +405,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: {color: Colors.primary, fontSize: 18, fontWeight: '800'},
-  balanceWrap: {alignItems: 'flex-end', gap: 4},
-  balance: {fontSize: 14, color: Colors.destructive, fontWeight: '800'},
+  balanceWrap: {alignItems: 'flex-end', gap: 2},
+  balanceLabel: {fontSize: 11, color: Colors.textSecondary, fontWeight: '600'},
+  balance: {fontSize: 15, color: Colors.destructive, fontWeight: '800'},
+  touchHint: {
+    fontSize: 11,
+    color: Colors.primary,
+    fontWeight: '700',
+    marginTop: 3,
+  },
 
   // ── Empty ──
   emptyCard: {flexDirection: 'row', alignItems: 'center', gap: 12},
@@ -332,7 +425,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyEmoji: {fontSize: 22},
   emptyTitle: {fontSize: 14, color: Colors.text, fontWeight: '700'},
   muted: {fontSize: 12, color: Colors.textSecondary},
 
@@ -341,17 +433,29 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 20,
     bottom: 24,
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    backgroundColor: Colors.primary,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.primary,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    borderRadius: 999,
     shadowColor: Colors.primary,
     shadowOffset: {width: 0, height: 6},
     shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 8,
   },
-  fabPlus: {color: '#fff', fontSize: 34, fontWeight: '300', lineHeight: 36},
+  fabPressed: {
+    opacity: 0.88,
+    transform: [{scale: 0.96}],
+  },
+  fabText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  bottomSpacer: {
+    height: 24,
+  },
 });

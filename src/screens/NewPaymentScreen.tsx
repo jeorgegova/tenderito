@@ -1,6 +1,13 @@
 import {useQuery} from '@tanstack/react-query';
 import {useState} from 'react';
-import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
 import {Button} from '../components/ui/Button';
@@ -49,7 +56,9 @@ export function NewPaymentScreen({route, navigation}: any) {
 
   // Tocar para pagar toda la deuda de una sola vez
   const handlePayAll = () => {
-    if (currentBalance <= 0) return;
+    if (currentBalance <= 0) {
+      return;
+    }
     if (isTotalPayment) {
       setAmount('');
     } else {
@@ -62,12 +71,17 @@ export function NewPaymentScreen({route, navigation}: any) {
       return Alert.alert('Selecciona un cliente');
     }
     if (!numericAmount || numericAmount <= 0) {
-      return Alert.alert('Ingresa el valor', 'Escribe cuánto te entregó o abonó el cliente.');
+      return Alert.alert(
+        'Ingresa el valor',
+        'Escribe cuánto te entregó o abonó el cliente.',
+      );
     }
     if (exceedsBalance) {
       return Alert.alert(
         'Supera lo que debe',
-        `El cliente solo debe ${formatCOP(currentBalance)}. No puedes ingresar un valor mayor.`,
+        `El cliente solo debe ${formatCOP(
+          currentBalance,
+        )}. No puedes ingresar un valor mayor.`,
       );
     }
     mutation.mutate({
@@ -83,8 +97,7 @@ export function NewPaymentScreen({route, navigation}: any) {
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
+        showsVerticalScrollIndicator={false}>
         {selectedCustomer ? (
           <View style={{gap: 16}}>
             {/* Tarjeta principal del cliente y su deuda */}
@@ -99,8 +112,15 @@ export function NewPaymentScreen({route, navigation}: any) {
                 </View>
                 <View style={{flex: 1}}>
                   <Text style={styles.customerName}>
-                    {selectedCustomer.alias || selectedCustomer.name}
+                    {selectedCustomer.alias && selectedCustomer.alias.trim()
+                      ? selectedCustomer.alias
+                      : selectedCustomer.name}
                   </Text>
+                  {selectedCustomer.alias && selectedCustomer.alias.trim() ? (
+                    <Text style={styles.customerRealName}>
+                      {selectedCustomer.name}
+                    </Text>
+                  ) : null}
                   <Text style={styles.muted}>
                     {selectedCustomer.document_number
                       ? `C.C. ${selectedCustomer.document_number}`
@@ -117,7 +137,9 @@ export function NewPaymentScreen({route, navigation}: any) {
               {/* Lo que debe en grande */}
               <View style={styles.balanceBox}>
                 <Text style={styles.balanceTitle}>Debe en total</Text>
-                <Text style={styles.balanceNumber}>{formatCOP(currentBalance)}</Text>
+                <Text style={styles.balanceNumber}>
+                  {formatCOP(currentBalance)}
+                </Text>
               </View>
 
               {/* Botón rápido y grande para pagar todo */}
@@ -127,10 +149,11 @@ export function NewPaymentScreen({route, navigation}: any) {
                   style={[
                     styles.payAllButton,
                     isTotalPayment && styles.payAllButtonActive,
-                  ]}
-                >
+                  ]}>
                   <Ionicons
-                    name={isTotalPayment ? 'checkmark-circle' : 'ellipse-outline'}
+                    name={
+                      isTotalPayment ? 'checkmark-circle' : 'ellipse-outline'
+                    }
                     size={22}
                     color={isTotalPayment ? '#FFFFFF' : Colors.primary}
                   />
@@ -138,15 +161,16 @@ export function NewPaymentScreen({route, navigation}: any) {
                     style={[
                       styles.payAllText,
                       isTotalPayment && styles.payAllTextActive,
-                    ]}
-                  >
+                    ]}>
                     Pagar toda la deuda ({formatCOP(currentBalance)})
                   </Text>
                 </Pressable>
               ) : (
                 <View style={styles.zeroBox}>
                   <Ionicons name="checkmark-circle" size={18} color="#15803D" />
-                  <Text style={styles.zeroText}>Este cliente está al día (debe $ 0)</Text>
+                  <Text style={styles.zeroText}>
+                    Este cliente está al día (debe $ 0)
+                  </Text>
                 </View>
               )}
             </Card>
@@ -161,7 +185,9 @@ export function NewPaymentScreen({route, navigation}: any) {
                 placeholder="$ 0"
                 error={
                   exceedsBalance
-                    ? `Supera lo que debe. El cliente solo debe ${formatCOP(currentBalance)}`
+                    ? `Supera lo que debe. El cliente solo debe ${formatCOP(
+                        currentBalance,
+                      )}`
                     : undefined
                 }
               />
@@ -169,15 +195,25 @@ export function NewPaymentScreen({route, navigation}: any) {
               {/* Mensajes de resultado sencillos */}
               {exceedsBalance ? (
                 <View style={styles.alertBox}>
-                  <Ionicons name="alert-circle-outline" size={18} color={Colors.destructive} />
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={18}
+                    color={Colors.destructive}
+                  />
                   <Text style={styles.alertText}>
-                    Supera lo que debe. El cliente debe {formatCOP(currentBalance)}, no puedes registrar un abono de {formatCOP(numericAmount)}.
+                    Supera lo que debe. El cliente debe{' '}
+                    {formatCOP(currentBalance)}, no puedes registrar un abono de{' '}
+                    {formatCOP(numericAmount)}.
                   </Text>
                 </View>
               ) : numericAmount > 0 ? (
                 isTotalPayment ? (
                   <View style={styles.peaceBox}>
-                    <Ionicons name="checkmark-circle" size={18} color="#15803D" />
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={18}
+                      color="#15803D"
+                    />
                     <Text style={styles.peaceText}>
                       ¡Queda a paz y salvo! La deuda quedará en $ 0.
                     </Text>
@@ -191,7 +227,9 @@ export function NewPaymentScreen({route, navigation}: any) {
                     />
                     <Text style={styles.remainingText}>
                       Ahora quedará debiendo:{' '}
-                      <Text style={styles.remainingBold}>{formatCOP(remainingBalance)}</Text>
+                      <Text style={styles.remainingBold}>
+                        {formatCOP(remainingBalance)}
+                      </Text>
                     </Text>
                   </View>
                 )
@@ -208,7 +246,9 @@ export function NewPaymentScreen({route, navigation}: any) {
         ) : (
           /* Buscador de clientes si entra sin cliente seleccionado */
           <View style={styles.picker}>
-            <Text style={styles.pickerTitle}>¿A qué cliente le vas a cobrar?</Text>
+            <Text style={styles.pickerTitle}>
+              ¿A qué cliente le vas a cobrar?
+            </Text>
             <Input
               leadingIcon="search"
               value={customerSearch}
@@ -218,32 +258,47 @@ export function NewPaymentScreen({route, navigation}: any) {
             <ScrollView
               style={styles.options}
               nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-            >
-              {matchingCustomers.map(customer => (
-                <Pressable
-                  key={customer.id}
-                  onPress={() => {
-                    setCustomerId(customer.id);
-                    setCustomerSearch('');
-                  }}
-                  style={styles.option}
-                >
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {(customer.alias || customer.name).charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={{flex: 1}}>
-                    <Text style={styles.customerName}>{customer.alias || customer.name}</Text>
-                    <Text style={styles.muted}>
-                      Debe: {formatCOP(Number(customer.current_balance))}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
+              keyboardShouldPersistTaps="handled">
+              {matchingCustomers.map(customer => {
+                const hasAlias = Boolean(
+                  customer.alias && customer.alias.trim(),
+                );
+                return (
+                  <Pressable
+                    key={customer.id}
+                    onPress={() => {
+                      setCustomerId(customer.id);
+                      setCustomerSearch('');
+                    }}
+                    style={styles.option}>
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarText}>
+                        {(customer.alias || customer.name)
+                          .charAt(0)
+                          .toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{flex: 1}}>
+                      <Text style={styles.customerName}>
+                        {hasAlias ? customer.alias : customer.name}
+                      </Text>
+                      {hasAlias ? (
+                        <Text style={styles.customerRealName}>
+                          {customer.name}
+                        </Text>
+                      ) : null}
+                      <Text style={styles.muted}>
+                        {customer.phone ? `📞 ${customer.phone} · ` : ''}
+                        Debe: {formatCOP(Number(customer.current_balance))}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
               {matchingCustomers.length === 0 ? (
-                <Text style={styles.mutedEmpty}>No encontramos clientes con ese nombre.</Text>
+                <Text style={styles.mutedEmpty}>
+                  No encontramos clientes con ese nombre.
+                </Text>
               ) : null}
             </ScrollView>
           </View>
@@ -251,14 +306,22 @@ export function NewPaymentScreen({route, navigation}: any) {
       </ScrollView>
 
       {/* Botón inferior claro y grande */}
-      <View style={[styles.footer, {paddingBottom: Math.max(insets.bottom, 12) + 8}]}>
+      <View
+        style={[
+          styles.footer,
+          {paddingBottom: Math.max(insets.bottom, 12) + 8},
+        ]}>
         <Button
           title={mutation.isPending ? 'Guardando…' : 'Guardar abono'}
           icon="check"
           onPress={onSave}
           disabled={mutation.isPending || exceedsBalance || !numericAmount}
         />
-        <Button title="Cancelar" variant="ghost" onPress={() => navigation.goBack()} />
+        <Button
+          title="Cancelar"
+          variant="ghost"
+          onPress={() => navigation.goBack()}
+        />
       </View>
     </View>
   );
@@ -302,6 +365,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: Colors.text,
+  },
+  customerRealName: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 1,
   },
   muted: {
     fontSize: 13,

@@ -1,7 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {useQuery} from '@tanstack/react-query';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {
-  Alert,
   Animated,
   FlatList,
   KeyboardAvoidingView,
@@ -13,14 +12,13 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Badge, SyncBadge } from '../components/ui/Badge';
-import { Button } from '../components/ui/Button';
-import { Card } from '../components/ui/Card';
-import { Header } from '../components/ui/Header';
-import { Input } from '../components/ui/Input';
-import { showAlert } from '../components/ui/AlertModal';
+import {Button} from '../components/ui/Button';
+import {Card} from '../components/ui/Card';
+import {Header} from '../components/ui/Header';
+import {Input} from '../components/ui/Input';
+import {showAlert} from '../components/ui/AlertModal';
 import Ionicons from '@react-native-vector-icons/ionicons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
   canCreateCustomer,
   createCustomer,
@@ -28,22 +26,24 @@ import {
   fetchCustomers,
   linkCustomerToStore,
 } from '../services/customers';
-import { useStore } from '../store/useStore';
-import { Colors, Radius, formatCOP } from '../theme';
-import { FormatMoney, parseMoney } from '../utils/format';
+import {useStore} from '../store/useStore';
+import {Colors, Radius, formatCOP} from '../theme';
+import {FormatMoney, parseMoney} from '../utils/format';
 
 const DOCUMENT_TYPES = [
-  { value: 'CC', label: 'CC · Cédula de ciudadanía' },
-  { value: 'CE', label: 'CE · Cédula de extranjería' },
-  { value: 'NIT', label: 'NIT · Número tributario' },
-  { value: 'PAS', label: 'PAS · Pasaporte' },
-  { value: 'PEP', label: 'PEP · Permiso especial' },
-  { value: 'PPT', label: 'PPT · Permiso protección temporal' },
+  {value: 'CC', label: 'CC · Cédula de ciudadanía'},
+  {value: 'CE', label: 'CE · Cédula de extranjería'},
+  {value: 'NIT', label: 'NIT · Número tributario'},
+  {value: 'PAS', label: 'PAS · Pasaporte'},
+  {value: 'PEP', label: 'PEP · Permiso especial'},
+  {value: 'PPT', label: 'PPT · Permiso protección temporal'},
 ];
 
-export function CustomersScreen({ navigation }: any) {
+export function CustomersScreen({navigation}: any) {
   const [search, setSearch] = useState('');
-  const [balanceFilter, setBalanceFilter] = useState<'all' | 'owing' | 'clear'>('all');
+  const [balanceFilter, setBalanceFilter] = useState<'all' | 'owing' | 'clear'>(
+    'all',
+  );
   const [modal, setModal] = useState(false);
   const [name, setName] = useState('');
   const [documentType, setDocumentType] = useState('CC');
@@ -122,14 +122,18 @@ export function CustomersScreen({ navigation }: any) {
     }
   }, [verified, fadeAnim, slideAnim]);
 
-  const { data, refetch, isLoading } = useQuery({
+  const {data, refetch, isLoading} = useQuery({
     queryKey: ['customers'],
     queryFn: () => fetchCustomers(),
   });
 
   const isAlreadyLinked = useMemo(() => {
-    if (!foundCustomer) return false;
-    if (foundCustomer.isLinkedToMyStore) return true;
+    if (!foundCustomer) {
+      return false;
+    }
+    if (foundCustomer.isLinkedToMyStore) {
+      return true;
+    }
     const docClean = (documentNumber || '').trim();
     return (data ?? []).some(
       c =>
@@ -164,7 +168,9 @@ export function CustomersScreen({ navigation }: any) {
         if (alreadyLinked) {
           showAlert({
             title: 'Cliente ya vinculado',
-            message: `"${customer.alias || customer.name}" ya se encuentra registrado y vinculado a tu tienda.`,
+            message: `"${
+              customer.alias || customer.name
+            }" ya se encuentra registrado y vinculado a tu tienda.`,
             type: 'warning',
             buttons: [
               {
@@ -172,10 +178,10 @@ export function CustomersScreen({ navigation }: any) {
                 onPress: () => {
                   setModal(false);
                   resetForm();
-                  navigation.navigate('CustomerDetail', { id: customer.id });
+                  navigation.navigate('CustomerDetail', {id: customer.id});
                 },
               },
-              { text: 'Entendido', style: 'cancel' },
+              {text: 'Entendido', style: 'cancel'},
             ],
           });
         } else {
@@ -197,13 +203,18 @@ export function CustomersScreen({ navigation }: any) {
   const visibleCustomers = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('es-CO');
     return (data ?? []).filter(customer => {
-      const matchesSearch = !query ||
+      const matchesSearch =
+        !query ||
         customer.name.toLocaleLowerCase('es-CO').includes(query) ||
         (customer.alias ?? '').toLocaleLowerCase('es-CO').includes(query) ||
         (customer.document_number ?? '').includes(query) ||
         (customer.phone ?? '').includes(query);
       const hasBalance = Number(customer.current_balance) > 0;
-      return matchesSearch && (balanceFilter === 'all' || (balanceFilter === 'owing' ? hasBalance : !hasBalance));
+      return (
+        matchesSearch &&
+        (balanceFilter === 'all' ||
+          (balanceFilter === 'owing' ? hasBalance : !hasBalance))
+      );
     });
   }, [data, search, balanceFilter]);
 
@@ -218,20 +229,17 @@ export function CustomersScreen({ navigation }: any) {
             onPress: () => {
               setModal(false);
               resetForm();
-              navigation.navigate('CustomerDetail', { id: foundCustomer?.id });
+              navigation.navigate('CustomerDetail', {id: foundCustomer?.id});
             },
           },
-          { text: 'Cerrar', style: 'cancel' },
+          {text: 'Cerrar', style: 'cancel'},
         ],
       );
     }
 
     if (foundCustomer) {
       if (!documentNumber.trim()) {
-        return showAlert(
-          'Faltan datos',
-          'Identificación es obligatoria',
-        );
+        return showAlert('Faltan datos', 'Identificación es obligatoria');
       }
     } else if (!name.trim() || !documentNumber.trim() || !phone.trim()) {
       return showAlert(
@@ -271,14 +279,14 @@ export function CustomersScreen({ navigation }: any) {
       refetch();
     } catch (error: any) {
       showAlert('No se pudo guardar', error?.message ?? 'Intenta de nuevo');
-      console.log("Error al guardar cliente", error)
+      console.log('Error al guardar cliente', error);
     }
   }
 
   return (
     <View style={styles.wrap}>
       <Header title="Clientes" subtitle="Busca y gestiona tus fiados" />
-      <View style={{ paddingHorizontal: 20 }}>
+      <View style={{paddingHorizontal: 20}}>
         <Input
           placeholder="Nombre, alias, cédula o teléfono"
           value={search}
@@ -288,70 +296,132 @@ export function CustomersScreen({ navigation }: any) {
         />
       </View>
       <View style={styles.filterRow}>
-        {([
-          {key: 'all', label: `Todos · ${data?.length ?? 0}`},
-          {key: 'owing', label: `Con saldo · ${(data ?? []).filter(c => Number(c.current_balance) > 0).length}`},
-          {key: 'clear', label: 'Al día'},
-        ] as const).map(filter => (
+        {(
+          [
+            {key: 'all', label: `Todos · ${data?.length ?? 0}`},
+            {
+              key: 'owing',
+              label: `Con deuda · ${
+                (data ?? []).filter(c => Number(c.current_balance) > 0).length
+              }`,
+            },
+            {
+              key: 'clear',
+              label: `Al día · ${
+                (data ?? []).filter(c => Number(c.current_balance) === 0).length
+              }`,
+            },
+          ] as const
+        ).map(filter => (
           <Pressable
             key={filter.key}
             onPress={() => setBalanceFilter(filter.key)}
-            style={[styles.filterChip, balanceFilter === filter.key && styles.filterChipActive]}>
-            <Text style={[styles.filterText, balanceFilter === filter.key && styles.filterTextActive]}>{filter.label}</Text>
+            style={[
+              styles.filterChip,
+              balanceFilter === filter.key && styles.filterChipActive,
+            ]}>
+            <Text
+              style={[
+                styles.filterText,
+                balanceFilter === filter.key && styles.filterTextActive,
+              ]}>
+              {filter.label}
+            </Text>
           </Pressable>
         ))}
       </View>
       <FlatList
-        contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: 96 }}
+        contentContainerStyle={{padding: 20, gap: 12, paddingBottom: 96}}
         data={visibleCustomers}
         keyExtractor={i => i.id}
         refreshing={isLoading}
         onRefresh={refetch}
         ListEmptyComponent={
           !isLoading ? (
-            <Card>
-              <Text style={{ color: Colors.textSecondary }}>
-                {search || balanceFilter !== 'all' ? 'No hay clientes que coincidan con estos filtros.' : 'Sin clientes. Crea el primero.'}
+            <Card style={styles.emptyContainer}>
+              <Ionicons
+                name={search ? 'search-outline' : 'people-outline'}
+                size={38}
+                color={Colors.textMuted}
+              />
+              <Text style={styles.emptyTitle}>
+                {search ? 'Sin coincidencias' : 'Sin clientes registrados'}
+              </Text>
+              <Text style={styles.emptySub}>
+                {search
+                  ? 'No encontramos clientes con esa búsqueda. Revisa el nombre o escribe la cédula.'
+                  : 'Toca el botón "+ Nuevo cliente" abajo para registrar tu primer cliente.'}
               </Text>
             </Card>
           ) : null
         }
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() =>
-              navigation.navigate('CustomerDetail', { id: item.id })
-            }>
-            <Card style={styles.row}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {(item.alias || item.name).charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name} numberOfLines={1}>{item.alias || item.name}</Text>
-                {item.alias ? <Text style={styles.sub} numberOfLines={1}>{item.name}</Text> : null}
-                <Text style={styles.sub}>{item.phone ?? 'Sin teléfono'}</Text>
-              </View>
-              <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                <Text
-                  style={[
-                    styles.balance,
-                    Number(item.current_balance) > 0 && {
-                      color: Colors.destructive,
-                    },
-                  ]}>
-                  {formatCOP(Number(item.current_balance))}
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
-                  <SyncBadge estadoServidor={item.estadoServidor} />
-                  {Number(item.current_balance) === 0 ? (
-                    <Badge status="paid" />
-                  ) : null}
+        renderItem={({item}) => {
+          const balance = Number(item.current_balance || 0);
+          const isOwing = balance > 0;
+          return (
+            <Pressable
+              onPress={() =>
+                navigation.navigate('CustomerDetail', {id: item.id})
+              }>
+              <Card style={styles.customerCardItem}>
+                <View style={styles.customerCardMainRow}>
+                  <View style={[styles.avatar, !isOwing && styles.avatarPaid]}>
+                    <Text
+                      style={[
+                        styles.avatarText,
+                        !isOwing && styles.avatarTextPaid,
+                      ]}>
+                      {(item.alias || item.name).charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.flexOne}>
+                    <Text style={styles.name} numberOfLines={1}>
+                      {item.alias || item.name}
+                    </Text>
+                    {item.alias ? (
+                      <Text style={styles.sub} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.sub}>
+                      {item.phone ? `📞 ${item.phone}` : 'Sin teléfono'}
+                    </Text>
+                  </View>
+                  <View style={styles.customerCardBalanceCol}>
+                    <Text
+                      style={[
+                        styles.balanceLabel,
+                        isOwing
+                          ? styles.balanceLabelOwing
+                          : styles.balanceLabelPaid,
+                      ]}>
+                      {isOwing ? 'Te debe' : 'Al día'}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.balance,
+                        isOwing ? styles.balanceOwing : styles.balancePaid,
+                      ]}>
+                      {formatCOP(balance)}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            </Card>
-          </Pressable>
-        )}
+
+                {/* Pastilla indicativa clara para tocar */}
+                <View style={styles.cardFooterHint}>
+                  <Text style={styles.cardFooterText}>
+                    Toca para ver su libreta de cuentas
+                  </Text>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={15}
+                    color={Colors.primary}
+                  />
+                </View>
+              </Card>
+            </Pressable>
+          );
+        }}
       />
       <Pressable
         onPress={() => {
@@ -379,7 +449,7 @@ export function CustomersScreen({ navigation }: any) {
             <View style={{width: 64}} />
           </View>
           <KeyboardAvoidingView
-            style={{ flex: 1 }}
+            style={{flex: 1}}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
             <View style={{flex: 1}}>
@@ -388,8 +458,8 @@ export function CustomersScreen({ navigation }: any) {
                 contentContainerStyle={styles.sheetContent}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View style={{ width: 110 }}>
+                <View style={{flexDirection: 'row', gap: 8}}>
+                  <View style={{width: 110}}>
                     <Text style={styles.label}>Tipo</Text>
                     <Pressable
                       onPress={() => setShowTypePicker(true)}
@@ -398,7 +468,7 @@ export function CustomersScreen({ navigation }: any) {
                       <Text style={styles.pickerChevron}>▾</Text>
                     </Pressable>
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={{flex: 1}}>
                     <Input
                       label="Identificación"
                       value={documentNumber}
@@ -424,7 +494,7 @@ export function CustomersScreen({ navigation }: any) {
                   <Animated.View
                     style={{
                       opacity: fadeAnim,
-                      transform: [{ translateY: slideAnim }],
+                      transform: [{translateY: slideAnim}],
                       gap: 12,
                     }}>
                     {foundCustomer ? (
@@ -438,12 +508,13 @@ export function CustomersScreen({ navigation }: any) {
                                 color="#15803D"
                               />
                             </View>
-                            <View style={{ flex: 1 }}>
+                            <View style={{flex: 1}}>
                               <Text style={styles.alreadyLinkedTitle}>
                                 Cliente ya vinculado a tu tienda
                               </Text>
                               <Text style={styles.alreadyLinkedDesc}>
-                                Este cliente ya forma parte de tu libreta de fiados activa.
+                                Este cliente ya forma parte de tu libreta de
+                                fiados activa.
                               </Text>
                             </View>
                           </View>
@@ -458,7 +529,9 @@ export function CustomersScreen({ navigation }: any) {
                               </Text>
                             ) : null}
                             <Text style={styles.alreadyLinkedSub}>
-                              {foundCustomer.document_type || 'CC'} {foundCustomer.document_number} · {foundCustomer.phone || 'Sin teléfono'}
+                              {foundCustomer.document_type || 'CC'}{' '}
+                              {foundCustomer.document_number} ·{' '}
+                              {foundCustomer.phone || 'Sin teléfono'}
                             </Text>
                             <View style={styles.alreadyLinkedBalanceRow}>
                               <Text style={styles.alreadyLinkedBalanceLabel}>
@@ -471,19 +544,22 @@ export function CustomersScreen({ navigation }: any) {
                                     ? styles.alreadyLinkedBalanceOwing
                                     : styles.alreadyLinkedBalanceClear,
                                 ]}>
-                                {formatCOP(Number(foundCustomer.current_balance || 0))}
+                                {formatCOP(
+                                  Number(foundCustomer.current_balance || 0),
+                                )}
                               </Text>
                             </View>
                             {Number(foundCustomer.credit_limit || 0) > 0 ? (
                               <Text style={styles.alreadyLinkedSub}>
-                                Tope de crédito: {formatCOP(Number(foundCustomer.credit_limit))}
+                                Tope de crédito:{' '}
+                                {formatCOP(Number(foundCustomer.credit_limit))}
                               </Text>
                             ) : null}
                           </View>
                         </View>
                       ) : (
                         <>
-                          <Card style={{ gap: 4 }}>
+                          <Card style={{gap: 4}}>
                             <Text style={styles.name}>
                               {foundCustomer.name}
                             </Text>
@@ -519,7 +595,9 @@ export function CustomersScreen({ navigation }: any) {
                           </Card>
                           <Input
                             label="Tope de crédito"
-                            value={creditLimit ? FormatMoney(creditLimit) : '$ 0'}
+                            value={
+                              creditLimit ? FormatMoney(creditLimit) : '$ 0'
+                            }
                             onChangeText={handleCreditLimitChange}
                             keyboardType="numeric"
                             placeholder="$ 0"
@@ -634,7 +712,7 @@ export function CustomersScreen({ navigation }: any) {
             style={styles.overlay}
             onPress={() => setShowTypePicker(false)}>
             <Pressable onPress={e => e.stopPropagation?.()}>
-              <Card style={{ gap: 4, minWidth: 280 }}>
+              <Card style={{gap: 4, minWidth: 280}}>
                 <Text style={styles.sheetTitle}>Tipo documento</Text>
                 {DOCUMENT_TYPES.map(item => (
                   <Pressable
@@ -642,14 +720,13 @@ export function CustomersScreen({ navigation }: any) {
                     onPress={() => handleTypeSelect(item.value)}
                     style={[
                       styles.typeOption,
-                      item.value === documentType &&
-                      styles.typeOptionSelected,
+                      item.value === documentType && styles.typeOptionSelected,
                     ]}>
                     <Text
                       style={[
                         styles.typeOptionText,
                         item.value === documentType &&
-                        styles.typeOptionTextSelected,
+                          styles.typeOptionTextSelected,
                       ]}>
                       {item.label}
                     </Text>
@@ -671,9 +748,9 @@ export function CustomersScreen({ navigation }: any) {
         animationType="fade"
         onRequestClose={() => setShowUpgrade(false)}>
         <View style={styles.overlay}>
-          <Card style={{ gap: 8 }}>
+          <Card style={{gap: 8}}>
             <Text style={styles.sheetTitle}>Límite del plan Free</Text>
-            <Text style={{ color: Colors.textSecondary }}>
+            <Text style={{color: Colors.textSecondary}}>
               Llegaste a 10 clientes. Sube a Basic (100 clientes) o Pro
               (ilimitado) para seguir creciendo.
             </Text>
@@ -697,13 +774,96 @@ export function CustomersScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: Colors.background },
-  filterRow: {flexDirection: 'row', gap: 8, paddingHorizontal: 20, paddingTop: 12},
-  filterChip: {paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border},
+  wrap: {flex: 1, backgroundColor: Colors.background},
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
   filterChipActive: {backgroundColor: '#FFF1E6', borderColor: '#FFD5B3'},
   filterText: {fontSize: 12, color: Colors.textSecondary, fontWeight: '600'},
   filterTextActive: {color: Colors.primary, fontWeight: '800'},
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  flexOne: {flex: 1},
+  customerCardItem: {
+    padding: 14,
+    gap: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  customerCardMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  avatarPaid: {
+    backgroundColor: '#DCFCE7',
+  },
+  avatarTextPaid: {
+    color: '#15803D',
+  },
+  customerCardBalanceCol: {
+    alignItems: 'flex-end',
+  },
+  balanceLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  balanceLabelOwing: {
+    color: Colors.destructive,
+  },
+  balanceLabelPaid: {
+    color: '#15803D',
+  },
+  balanceOwing: {
+    color: Colors.destructive,
+  },
+  balancePaid: {
+    color: '#15803D',
+  },
+  cardFooterHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFF7ED',
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+  },
+  cardFooterText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  emptySub: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  row: {flexDirection: 'row', alignItems: 'center', gap: 12},
   avatar: {
     width: 44,
     height: 44,
@@ -712,10 +872,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { color: Colors.primary, fontWeight: '800', fontSize: 18 },
-  name: { fontWeight: '700', color: Colors.text },
-  sub: { color: Colors.textSecondary, fontSize: 12 },
-  balance: { fontWeight: '800', color: Colors.text },
+  avatarText: {color: Colors.primary, fontWeight: '800', fontSize: 18},
+  name: {fontWeight: '700', color: Colors.text},
+  sub: {color: Colors.textSecondary, fontSize: 12},
+  balance: {fontWeight: '800', color: Colors.text},
   sheet: {
     flex: 1,
     backgroundColor: Colors.card,
@@ -760,7 +920,7 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
     backgroundColor: Colors.card,
   },
-  label: { fontSize: 14, fontWeight: '600', color: Colors.text, marginBottom: 6 },
+  label: {fontSize: 14, fontWeight: '600', color: Colors.text, marginBottom: 6},
   hint: {
     color: Colors.textSecondary,
     fontSize: 13,
@@ -778,8 +938,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  pickerValue: { fontSize: 16, fontWeight: '700', color: Colors.text },
-  pickerChevron: { fontSize: 16, color: Colors.textSecondary },
+  pickerValue: {fontSize: 16, fontWeight: '700', color: Colors.text},
+  pickerChevron: {fontSize: 16, color: Colors.textSecondary},
   typeOption: {
     paddingVertical: 12,
     paddingHorizontal: 12,
@@ -788,8 +948,8 @@ const styles = StyleSheet.create({
   typeOptionSelected: {
     backgroundColor: '#FFEAD6',
   },
-  typeOptionText: { fontSize: 15, color: Colors.text },
-  typeOptionTextSelected: { fontWeight: '700', color: Colors.text },
+  typeOptionText: {fontSize: 15, color: Colors.text},
+  typeOptionTextSelected: {fontWeight: '700', color: Colors.text},
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',

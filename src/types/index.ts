@@ -51,7 +51,7 @@ export interface Credit {
   created_at: string;
   estadoServidor?: EstadoServidor;
   // Joins opcionales
-  customers?: Pick<Customer, 'id' | 'name' | 'phone'>;
+  customers?: Pick<Customer, 'id' | 'name' | 'phone' | 'alias'>;
 }
 
 export interface Payment {

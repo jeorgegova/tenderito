@@ -1,6 +1,13 @@
 import {useQuery} from '@tanstack/react-query';
 import {useState} from 'react';
-import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
 import {Button} from '../components/ui/Button';
@@ -32,7 +39,8 @@ export function NewCreditScreen({route, navigation}: any) {
   const currentBalance = Number(selectedCustomer?.current_balance ?? 0);
   const creditLimit = Number(selectedCustomer?.credit_limit ?? 0);
   const newBalance = currentBalance + numericAmount;
-  const exceedsLimit = creditLimit > 0 && numericAmount > 0 && newBalance > creditLimit;
+  const exceedsLimit =
+    creditLimit > 0 && numericAmount > 0 && newBalance > creditLimit;
 
   const matchingCustomers = (customers ?? []).filter(c =>
     `${c.alias ?? ''} ${c.name} ${c.document_number ?? ''}`
@@ -63,35 +71,107 @@ export function NewCreditScreen({route, navigation}: any) {
 
   return (
     <View style={styles.sheet}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <Text style={styles.subtitle}>Registra una compra que el cliente pagará después.</Text>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}>
+        <Text style={styles.subtitle}>
+          Registra una compra que el cliente pagará después.
+        </Text>
         {selectedCustomer ? (
           <Card style={styles.selected}>
-            <View style={styles.avatar}><Text style={styles.avatarText}>{(selectedCustomer.alias || selectedCustomer.name).charAt(0).toUpperCase()}</Text></View>
-            <View style={{flex: 1}}>
-              <Text style={styles.customerName}>{selectedCustomer.alias || selectedCustomer.name}</Text>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {(selectedCustomer.alias || selectedCustomer.name)
+                  .charAt(0)
+                  .toUpperCase()}
+              </Text>
+            </View>
+            <View style={styles.flex1}>
+              <Text style={styles.customerName} numberOfLines={1}>
+                {selectedCustomer.alias && selectedCustomer.alias.trim()
+                  ? selectedCustomer.alias
+                  : selectedCustomer.name}
+              </Text>
+              {selectedCustomer.alias && selectedCustomer.alias.trim() ? (
+                <Text style={styles.customerRealName} numberOfLines={1}>
+                  {selectedCustomer.name}
+                </Text>
+              ) : null}
               <Text style={styles.muted}>
                 Debe {formatCOP(currentBalance)}
                 {creditLimit > 0 ? ` · Tope: ${formatCOP(creditLimit)}` : ''}
               </Text>
             </View>
-            {!initialId ? <Text onPress={() => setCustomerId('')} style={styles.change}>Cambiar</Text> : null}
+            {!initialId ? (
+              <Text onPress={() => setCustomerId('')} style={styles.change}>
+                Cambiar
+              </Text>
+            ) : null}
           </Card>
         ) : (
           <View style={styles.picker}>
-            <Input label="Buscar cliente" leadingIcon="search" value={customerSearch} onChangeText={setCustomerSearch} placeholder="Nombre, alias o cédula" />
-            <ScrollView style={styles.options} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-              {matchingCustomers.map(customer => (
-                <Pressable key={customer.id} onPress={() => {setCustomerId(customer.id); setCustomerSearch('');}} style={styles.option}>
-                  <View style={styles.optionAvatar}><Text style={styles.avatarText}>{(customer.alias || customer.name).charAt(0).toUpperCase()}</Text></View>
-                  <View style={{flex: 1}}><Text style={styles.customerName}>{customer.alias || customer.name}</Text><Text style={styles.muted}>{formatCOP(Number(customer.current_balance))} pendiente</Text></View>
-                </Pressable>
-              ))}
-              {matchingCustomers.length === 0 ? <Text style={styles.muted}>No encontramos clientes.</Text> : null}
+            <Input
+              label="Buscar cliente"
+              leadingIcon="search"
+              value={customerSearch}
+              onChangeText={setCustomerSearch}
+              placeholder="Nombre, alias o cédula"
+            />
+            <ScrollView
+              style={styles.options}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled">
+              {matchingCustomers.map(customer => {
+                const hasAlias = Boolean(
+                  customer.alias && customer.alias.trim(),
+                );
+                return (
+                  <Pressable
+                    key={customer.id}
+                    onPress={() => {
+                      setCustomerId(customer.id);
+                      setCustomerSearch('');
+                    }}
+                    style={styles.option}>
+                    <View style={styles.optionAvatar}>
+                      <Text style={styles.avatarText}>
+                        {(customer.alias || customer.name)
+                          .charAt(0)
+                          .toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.flex1}>
+                      <Text style={styles.customerName} numberOfLines={1}>
+                        {hasAlias ? customer.alias : customer.name}
+                      </Text>
+                      {hasAlias ? (
+                        <Text style={styles.customerRealName} numberOfLines={1}>
+                          {customer.name}
+                        </Text>
+                      ) : null}
+                      <Text style={styles.muted}>
+                        {customer.phone ? `📞 ${customer.phone} · ` : ''}
+                        {formatCOP(Number(customer.current_balance))} pendiente
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+              {matchingCustomers.length === 0 ? (
+                <Text style={styles.emptyOptionsText}>
+                  No encontramos clientes con esa búsqueda.
+                </Text>
+              ) : null}
             </ScrollView>
           </View>
         )}
-        <Input label="¿Qué se llevó?" value={concept} onChangeText={setConcept} placeholder="Ej. Mercado de la semana" />
+        <Input
+          label="¿Qué se llevó?"
+          value={concept}
+          onChangeText={setConcept}
+          placeholder="Ej. Mercado de la semana"
+        />
         <View style={{gap: 6}}>
           <Input
             label="Valor del fiado"
@@ -101,23 +181,33 @@ export function NewCreditScreen({route, navigation}: any) {
             placeholder="$ 0"
             error={
               exceedsLimit
-                ? `Supera el valor del tope. El nuevo saldo quedaría en ${formatCOP(newBalance)}`
+                ? `Supera el valor del tope. El nuevo saldo quedaría en ${formatCOP(
+                    newBalance,
+                  )}`
                 : undefined
             }
           />
           {exceedsLimit ? (
             <View style={styles.limitAlertBox}>
-              <Ionicons name="alert-circle-outline" size={18} color={Colors.destructive} />
+              <Ionicons
+                name="alert-circle-outline"
+                size={18}
+                color={Colors.destructive}
+              />
               <View style={{flex: 1}}>
-                <Text style={styles.limitAlertTitle}>Supera valor del tope</Text>
+                <Text style={styles.limitAlertTitle}>
+                  Supera valor del tope
+                </Text>
                 <Text style={styles.limitAlertDesc}>
-                  El tope asignado es {formatCOP(creditLimit)} y el nuevo saldo quedaría en {formatCOP(newBalance)}.
+                  El tope asignado es {formatCOP(creditLimit)} y el nuevo saldo
+                  quedaría en {formatCOP(newBalance)}.
                 </Text>
               </View>
             </View>
           ) : creditLimit > 0 && numericAmount > 0 ? (
             <Text style={styles.limitOkText}>
-              El nuevo saldo quedaría en {formatCOP(newBalance)} (Tope: {formatCOP(creditLimit)})
+              El nuevo saldo quedaría en {formatCOP(newBalance)} (Tope:{' '}
+              {formatCOP(creditLimit)})
             </Text>
           ) : null}
         </View>
@@ -130,9 +220,22 @@ export function NewCreditScreen({route, navigation}: any) {
           helperText="Define el día en que acuerdas con el cliente que cancelará la cuenta."
         />
       </ScrollView>
-      <View style={[styles.footer, {paddingBottom: Math.max(insets.bottom, 12) + 8}]}>
-        <Button title={mutation.isPending ? 'Guardando…' : 'Guardar fiado'} icon="check" onPress={onSave} disabled={mutation.isPending} />
-        <Button title="Cancelar" variant="ghost" onPress={() => navigation.goBack()} />
+      <View
+        style={[
+          styles.footer,
+          {paddingBottom: Math.max(insets.bottom, 12) + 8},
+        ]}>
+        <Button
+          title={mutation.isPending ? 'Guardando…' : 'Guardar fiado'}
+          icon="check"
+          onPress={onSave}
+          disabled={mutation.isPending}
+        />
+        <Button
+          title="Cancelar"
+          variant="ghost"
+          onPress={() => navigation.goBack()}
+        />
       </View>
     </View>
   );
@@ -141,18 +244,64 @@ export function NewCreditScreen({route, navigation}: any) {
 const styles = StyleSheet.create({
   sheet: {flex: 1, backgroundColor: Colors.background},
   content: {padding: 20, paddingTop: 28, gap: 14},
-  footer: {padding: 16, paddingBottom: 26, gap: 8, backgroundColor: Colors.card, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border},
-  subtitle: {fontSize: 13, color: Colors.textSecondary, textAlign: 'center', marginTop: -8},
+  footer: {
+    padding: 16,
+    paddingBottom: 26,
+    gap: 8,
+    backgroundColor: Colors.card,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: -8,
+  },
   selected: {flexDirection: 'row', alignItems: 'center', gap: 11},
-  avatar: {width: 40, height: 40, borderRadius: 15, backgroundColor: '#FFF1E6', alignItems: 'center', justifyContent: 'center'},
-  optionAvatar: {width: 36, height: 36, borderRadius: 13, backgroundColor: '#FFF1E6', alignItems: 'center', justifyContent: 'center'},
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 15,
+    backgroundColor: '#FFF1E6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 13,
+    backgroundColor: '#FFF1E6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flex1: {flex: 1},
   avatarText: {color: Colors.primary, fontWeight: '800'},
   customerName: {fontSize: 14, fontWeight: '700', color: Colors.text},
+  customerRealName: {fontSize: 12, color: Colors.textSecondary},
   muted: {fontSize: 12, color: Colors.textSecondary},
   change: {color: Colors.primary, fontSize: 13, fontWeight: '700'},
   picker: {gap: 8},
-  options: {maxHeight: 190, backgroundColor: Colors.card, borderRadius: 16, paddingHorizontal: 12},
-  option: {flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border},
+  options: {
+    maxHeight: 240,
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+  },
+  emptyOptionsText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    paddingVertical: 14,
+    textAlign: 'center',
+  },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
   chip: {
     paddingVertical: 6,
     paddingHorizontal: 12,
