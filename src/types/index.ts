@@ -27,6 +27,7 @@ export interface Customer {
   credit_limit?: number;
   created_at: string;
   estadoServidor?: EstadoServidor;
+  isLinkedToMyStore?: boolean;
 }
 
 export interface CustomerStore {

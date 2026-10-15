@@ -12,6 +12,7 @@ import notifee, {AndroidImportance} from 'react-native-notify-kit';
 import {RootNavigator} from './src/navigation/RootNavigator';
 import {useDatabase} from './src/hooks/useDatabase';
 import {useSync} from './src/hooks/useSync';
+import {AlertModal} from './src/components/ui/AlertModal';
 
 function useFirebaseNotifications() {
   useEffect(() => {
@@ -106,9 +107,12 @@ function AppContent() {
   useSync();
 
   return (
-    <NavigationContainer>
-      <RootNavigator />
-    </NavigationContainer>
+    <>
+      <NavigationContainer>
+        <RootNavigator />
+      </NavigationContainer>
+      <AlertModal />
+    </>
   );
 }
 

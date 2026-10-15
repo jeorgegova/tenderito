@@ -230,6 +230,7 @@ export async function findCustomerByDocument(
         current_balance: Number(r.current_balance || 0),
         estadoServidor: (r.estadoServidor || 'sincronizado') as any,
         created_at: r.created_at,
+        isLinkedToMyStore: true,
       } as Customer;
     }
   } catch (_e) {}
@@ -240,7 +241,35 @@ export async function findCustomerByDocument(
       p_document_number: documentNumber,
     });
     if (!error && data && data.length > 0) {
-      return (data?.[0] as Customer | undefined) ?? null;
+      const found = data[0] as any;
+      let isLinked = false;
+      let extraData: any = {};
+      try {
+        const {data: storeLink} = await supabase
+          .from('customer_stores')
+          .select('alias, credit_limit, current_balance')
+          .eq('customer_id', found.id)
+          .maybeSingle();
+        if (storeLink) {
+          isLinked = true;
+          extraData = storeLink;
+        }
+      } catch (_linkErr) {}
+
+      return {
+        id: found.id,
+        name: found.name,
+        document_type: found.document_type,
+        document_number: found.document_number,
+        phone: found.phone,
+        email: found.email,
+        notes: found.notes,
+        alias: extraData.alias || null,
+        credit_limit: Number(extraData.credit_limit || 0),
+        current_balance: Number(extraData.current_balance || 0),
+        created_at: found.created_at,
+        isLinkedToMyStore: isLinked,
+      } as Customer;
     }
   } catch (_e) {}
 

@@ -4,6 +4,7 @@ import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
 import {Button} from '../components/ui/Button';
+import {DatePicker} from '../components/ui/DatePicker';
 import {Input} from '../components/ui/Input';
 import {createCredit} from '../services/credits';
 import {fetchCustomers} from '../services/customers';
@@ -120,7 +121,14 @@ export function NewCreditScreen({route, navigation}: any) {
             </Text>
           ) : null}
         </View>
-        <Input label="Fecha para pagar (opcional)" value={dueDate} onChangeText={setDueDate} placeholder="AAAA-MM-DD" />
+        <DatePicker
+          label="Fecha para pagar (opcional)"
+          value={dueDate}
+          onChange={date => setDueDate(date ?? '')}
+          placeholder="Toca para elegir fecha límite"
+          minDate={new Date().toISOString().slice(0, 10)}
+          helperText="Define el día en que acuerdas con el cliente que cancelará la cuenta."
+        />
       </ScrollView>
       <View style={[styles.footer, {paddingBottom: Math.max(insets.bottom, 12) + 8}]}>
         <Button title={mutation.isPending ? 'Guardando…' : 'Guardar fiado'} icon="check" onPress={onSave} disabled={mutation.isPending} />

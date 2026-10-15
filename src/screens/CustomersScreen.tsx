@@ -18,6 +18,8 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Header } from '../components/ui/Header';
 import { Input } from '../components/ui/Input';
+import { showAlert } from '../components/ui/AlertModal';
+import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   canCreateCustomer,
@@ -27,7 +29,7 @@ import {
   linkCustomerToStore,
 } from '../services/customers';
 import { useStore } from '../store/useStore';
-import { Colors, formatCOP } from '../theme';
+import { Colors, Radius, formatCOP } from '../theme';
 import { FormatMoney, parseMoney } from '../utils/format';
 
 const DOCUMENT_TYPES = [
@@ -120,9 +122,25 @@ export function CustomersScreen({ navigation }: any) {
     }
   }, [verified, fadeAnim, slideAnim]);
 
+  const { data, refetch, isLoading } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => fetchCustomers(),
+  });
+
+  const isAlreadyLinked = useMemo(() => {
+    if (!foundCustomer) return false;
+    if (foundCustomer.isLinkedToMyStore) return true;
+    const docClean = (documentNumber || '').trim();
+    return (data ?? []).some(
+      c =>
+        (c.document_number && c.document_number.trim() === docClean) ||
+        c.id === foundCustomer.id,
+    );
+  }, [foundCustomer, documentNumber, data]);
+
   async function onCheckDocument() {
     if (!documentNumber.trim()) {
-      return Alert.alert('Faltan datos', 'Ingresa la cédula del cliente');
+      return showAlert('Faltan datos', 'Ingresa la cédula del cliente');
     }
     setCheckingDocument(true);
     try {
@@ -133,25 +151,49 @@ export function CustomersScreen({ navigation }: any) {
         setName(customer.name);
         setPhone(customer.phone ?? '');
         setEmail(customer.email ?? '');
-        Alert.alert(
-          'Cliente encontrado',
-          'Revisa sus datos y define el tope de crédito.',
-        );
+
+        const alreadyLinked =
+          customer.isLinkedToMyStore ||
+          (data ?? []).some(
+            c =>
+              (c.document_number &&
+                c.document_number.trim() === documentNumber.trim()) ||
+              c.id === customer.id,
+          );
+
+        if (alreadyLinked) {
+          showAlert({
+            title: 'Cliente ya vinculado',
+            message: `"${customer.alias || customer.name}" ya se encuentra registrado y vinculado a tu tienda.`,
+            type: 'warning',
+            buttons: [
+              {
+                text: 'Ver detalles',
+                onPress: () => {
+                  setModal(false);
+                  resetForm();
+                  navigation.navigate('CustomerDetail', { id: customer.id });
+                },
+              },
+              { text: 'Entendido', style: 'cancel' },
+            ],
+          });
+        } else {
+          showAlert(
+            'Cliente encontrado',
+            'El cliente está registrado en Tenderito. Revisa sus datos y define el tope de crédito para vincularlo a tu tienda.',
+          );
+        }
       } else {
         setName('');
-        Alert.alert('Cliente nuevo', 'Completa los datos para registrarlo.');
+        showAlert('Cliente nuevo', 'Completa los datos para registrarlo.');
       }
     } catch (error: any) {
-      Alert.alert('No se pudo verificar', error?.message ?? 'Intenta de nuevo');
+      showAlert('No se pudo verificar', error?.message ?? 'Intenta de nuevo');
     } finally {
       setCheckingDocument(false);
     }
   }
-
-  const { data, refetch, isLoading } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => fetchCustomers(),
-  });
   const visibleCustomers = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('es-CO');
     return (data ?? []).filter(customer => {
@@ -166,15 +208,33 @@ export function CustomersScreen({ navigation }: any) {
   }, [data, search, balanceFilter]);
 
   async function onCreate() {
+    if (isAlreadyLinked) {
+      return showAlert(
+        'Cliente ya vinculado',
+        'Este cliente ya forma parte de tu tienda.',
+        [
+          {
+            text: 'Ver detalles',
+            onPress: () => {
+              setModal(false);
+              resetForm();
+              navigation.navigate('CustomerDetail', { id: foundCustomer?.id });
+            },
+          },
+          { text: 'Cerrar', style: 'cancel' },
+        ],
+      );
+    }
+
     if (foundCustomer) {
       if (!documentNumber.trim()) {
-        return Alert.alert(
+        return showAlert(
           'Faltan datos',
           'Identificación es obligatoria',
         );
       }
     } else if (!name.trim() || !documentNumber.trim() || !phone.trim()) {
-      return Alert.alert(
+      return showAlert(
         'Faltan datos',
         'Nombre, identificación y teléfono son obligatorios',
       );
@@ -210,7 +270,7 @@ export function CustomersScreen({ navigation }: any) {
       setModal(false);
       refetch();
     } catch (error: any) {
-      Alert.alert('No se pudo guardar', error?.message ?? 'Intenta de nuevo');
+      showAlert('No se pudo guardar', error?.message ?? 'Intenta de nuevo');
       console.log("Error al guardar cliente", error)
     }
   }
@@ -368,55 +428,110 @@ export function CustomersScreen({ navigation }: any) {
                       gap: 12,
                     }}>
                     {foundCustomer ? (
-                      <>
-                        <Card style={{ gap: 4 }}>
-                          <Text style={styles.name}>
-                            {foundCustomer.name}
-                          </Text>
-                          <Text style={styles.sub}>
-                            {foundCustomer.phone ?? 'Sin teléfono'}
-                          </Text>
-                          {foundCustomer.email ? (
-                            <Text style={styles.sub}>
-                              {foundCustomer.email}
+                      isAlreadyLinked ? (
+                        <View style={styles.alreadyLinkedCard}>
+                          <View style={styles.alreadyLinkedHeader}>
+                            <View style={styles.alreadyLinkedIconWrap}>
+                              <Ionicons
+                                name="checkmark-circle"
+                                size={22}
+                                color="#15803D"
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.alreadyLinkedTitle}>
+                                Cliente ya vinculado a tu tienda
+                              </Text>
+                              <Text style={styles.alreadyLinkedDesc}>
+                                Este cliente ya forma parte de tu libreta de fiados activa.
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={styles.alreadyLinkedDivider} />
+                          <View style={styles.alreadyLinkedInfo}>
+                            <Text style={styles.alreadyLinkedName}>
+                              {foundCustomer.alias || foundCustomer.name}
                             </Text>
-                          ) : null}
-                          <Text style={styles.sub}>
-                            Cliente registrado en Tenderito
-                          </Text>
-                          {(profile?.subscription_plan ?? 'free') !==
-                          'free' ? (
-                            <Button
-                              title="Ver historial"
-                              variant="ghost"
-                              onPress={() => {
-                                setModal(false);
-                                navigation.navigate('CustomerHistory', {
-                                  id: foundCustomer.id,
-                                });
-                              }}
-                            />
-                          ) : (
-                            <Text style={styles.sub}>
-                              El historial entre tiendas está disponible en
-                              planes pagos.
+                            {foundCustomer.alias ? (
+                              <Text style={styles.alreadyLinkedSub}>
+                                Nombre: {foundCustomer.name}
+                              </Text>
+                            ) : null}
+                            <Text style={styles.alreadyLinkedSub}>
+                              {foundCustomer.document_type || 'CC'} {foundCustomer.document_number} · {foundCustomer.phone || 'Sin teléfono'}
                             </Text>
-                          )}
-                        </Card>
-                        <Input
-                          label="Tope de crédito"
-                          value={creditLimit ? FormatMoney(creditLimit) : '$ 0'}
-                          onChangeText={handleCreditLimitChange}
-                          keyboardType="numeric"
-                          placeholder="$ 0"
-                        />
-                        <Input
-                          label="Alias para mi tienda (opcional)"
-                          value={alias}
-                          onChangeText={setAlias}
-                          placeholder="Ej. Juan de la esquina"
-                        />
-                      </>
+                            <View style={styles.alreadyLinkedBalanceRow}>
+                              <Text style={styles.alreadyLinkedBalanceLabel}>
+                                Saldo pendiente:
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.alreadyLinkedBalanceValue,
+                                  Number(foundCustomer.current_balance) > 0
+                                    ? styles.alreadyLinkedBalanceOwing
+                                    : styles.alreadyLinkedBalanceClear,
+                                ]}>
+                                {formatCOP(Number(foundCustomer.current_balance || 0))}
+                              </Text>
+                            </View>
+                            {Number(foundCustomer.credit_limit || 0) > 0 ? (
+                              <Text style={styles.alreadyLinkedSub}>
+                                Tope de crédito: {formatCOP(Number(foundCustomer.credit_limit))}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </View>
+                      ) : (
+                        <>
+                          <Card style={{ gap: 4 }}>
+                            <Text style={styles.name}>
+                              {foundCustomer.name}
+                            </Text>
+                            <Text style={styles.sub}>
+                              {foundCustomer.phone ?? 'Sin teléfono'}
+                            </Text>
+                            {foundCustomer.email ? (
+                              <Text style={styles.sub}>
+                                {foundCustomer.email}
+                              </Text>
+                            ) : null}
+                            <Text style={styles.sub}>
+                              Cliente registrado en Tenderito
+                            </Text>
+                            {(profile?.subscription_plan ?? 'free') !==
+                            'free' ? (
+                              <Button
+                                title="Ver historial"
+                                variant="ghost"
+                                onPress={() => {
+                                  setModal(false);
+                                  navigation.navigate('CustomerHistory', {
+                                    id: foundCustomer.id,
+                                  });
+                                }}
+                              />
+                            ) : (
+                              <Text style={styles.sub}>
+                                El historial entre tiendas está disponible en
+                                planes pagos.
+                              </Text>
+                            )}
+                          </Card>
+                          <Input
+                            label="Tope de crédito"
+                            value={creditLimit ? FormatMoney(creditLimit) : '$ 0'}
+                            onChangeText={handleCreditLimitChange}
+                            keyboardType="numeric"
+                            placeholder="$ 0"
+                          />
+                          <Input
+                            label="Alias para mi tienda (opcional)"
+                            value={alias}
+                            onChangeText={setAlias}
+                            placeholder="Ej. Juan de la esquina"
+                          />
+                        </>
+                      )
                     ) : (
                       <>
                         <Input
@@ -464,19 +579,47 @@ export function CustomersScreen({ navigation }: any) {
                   {paddingBottom: insets.bottom + 12},
                 ]}>
                 {verified ? (
-                  <Button
-                    title={
-                      foundCustomer
-                        ? 'Vincular cliente a mi tienda'
-                        : 'Guardar y vincular'
-                    }
-                    onPress={onCreate}
-                  />
+                  isAlreadyLinked ? (
+                    <View style={styles.alreadyLinkedFooter}>
+                      <View style={styles.alreadyLinkedPill}>
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={18}
+                          color="#15803D"
+                        />
+                        <Text style={styles.alreadyLinkedPillText}>
+                          Cliente ya vinculado
+                        </Text>
+                      </View>
+                      <Button
+                        title="Ver detalles del cliente"
+                        onPress={() => {
+                          setModal(false);
+                          resetForm();
+                          navigation.navigate('CustomerDetail', {
+                            id: foundCustomer?.id,
+                          });
+                        }}
+                      />
+                    </View>
+                  ) : (
+                    <Button
+                      title={
+                        foundCustomer
+                          ? 'Vincular cliente a mi tienda'
+                          : 'Guardar y vincular'
+                      }
+                      onPress={onCreate}
+                    />
+                  )
                 ) : null}
                 <Button
-                  title="Volver atrás"
+                  title={isAlreadyLinked ? 'Cerrar' : 'Volver atrás'}
                   variant="ghost"
-                  onPress={() => setModal(false)}
+                  onPress={() => {
+                    setModal(false);
+                    resetForm();
+                  }}
                 />
               </View>
             </View>
@@ -672,4 +815,98 @@ const styles = StyleSheet.create({
   },
   fabPlus: {color: '#fff', fontSize: 20, fontWeight: '800'},
   fabText: {color: '#fff', fontSize: 16, fontWeight: '700'},
+
+  // Estilos para cliente ya vinculado
+  alreadyLinkedCard: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1.5,
+    borderColor: '#BBF7D0',
+    borderRadius: Radius.lg,
+    padding: 16,
+    gap: 4,
+  },
+  alreadyLinkedHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  alreadyLinkedIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  alreadyLinkedTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#166534',
+  },
+  alreadyLinkedDesc: {
+    fontSize: 12,
+    color: '#15803D',
+    marginTop: 2,
+    lineHeight: 17,
+  },
+  alreadyLinkedDivider: {
+    height: 1,
+    backgroundColor: '#DCFCE7',
+    marginVertical: 10,
+  },
+  alreadyLinkedInfo: {
+    gap: 3,
+  },
+  alreadyLinkedName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  alreadyLinkedSub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  alreadyLinkedBalanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  alreadyLinkedBalanceLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  alreadyLinkedBalanceValue: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  alreadyLinkedBalanceOwing: {
+    color: Colors.destructive,
+  },
+  alreadyLinkedBalanceClear: {
+    color: '#15803D',
+  },
+  alreadyLinkedFooter: {
+    gap: 10,
+    width: '100%',
+  },
+  alreadyLinkedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1.5,
+    borderColor: '#BBF7D0',
+    borderRadius: Radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  alreadyLinkedPillText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#15803D',
+  },
 });
