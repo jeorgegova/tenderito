@@ -10,6 +10,7 @@ import {
 } from '@react-native-firebase/messaging';
 import notifee, {AndroidImportance} from 'react-native-notify-kit';
 import {RootNavigator} from './src/navigation/RootNavigator';
+import {navigationRef} from './src/navigation/navigationRef';
 import {useDatabase} from './src/hooks/useDatabase';
 import {useSync} from './src/hooks/useSync';
 import {AlertModal} from './src/components/ui/AlertModal';
@@ -108,7 +109,7 @@ function AppContent() {
 
   return (
     <>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <RootNavigator />
       </NavigationContainer>
       <AlertModal />

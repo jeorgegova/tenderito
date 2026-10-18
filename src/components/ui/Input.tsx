@@ -47,10 +47,10 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 14,
     // Sombra sutil para elevar los campos
-    shadowColor: '#7C5230',
+    shadowColor: '#0F172A',
     shadowOffset: {width: 0, height: 1},
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowOpacity: 0.02,
+    shadowRadius: 3,
     elevation: 1,
   },
   invalid: {borderColor: Colors.destructive, borderWidth: 1.5},

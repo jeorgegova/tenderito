@@ -157,7 +157,7 @@ export function AlertModal() {
     | 'close-circle'
     | 'alert-circle' = 'information-circle';
   let iconColor: string = Colors.primary;
-  let iconBg: string = '#FFF1E6';
+  let iconBg: string = Colors.primaryLight;
 
   if (type === 'success') {
     iconName = 'checkmark-circle';

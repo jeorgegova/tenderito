@@ -16,9 +16,9 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
 import {Button} from '../components/ui/Button';
 import {showAlert} from '../utils/alert';
+import {confirmLogout, CUSTOMER_LOGOUT_MESSAGE} from '../lib/session';
 import {fetchCustomerPortal} from '../services/customerPortal';
 import {Colors, Radius, formatCOP} from '../theme';
-import {supabase} from '../lib/supabase';
 
 export function CustomerHomeScreen() {
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
@@ -123,25 +123,7 @@ export function CustomerHomeScreen() {
 
   // Función para cerrar sesión con confirmación
   const handleLogout = useCallback(() => {
-    showAlert({
-      title: '¿Cerrar sesión?',
-      message:
-        'Tendrás que ingresar nuevamente con tu número de documento y contraseña.',
-      type: 'warning',
-      buttons: [
-        {
-          text: 'Salir',
-          style: 'destructive',
-          onPress: async () => {
-            const {error} = await supabase.auth.signOut();
-            if (error) {
-              showAlert('No se pudo cerrar sesión', error.message);
-            }
-          },
-        },
-        {text: 'Quedarme aquí', style: 'cancel'},
-      ],
-    });
+    confirmLogout({message: CUSTOMER_LOGOUT_MESSAGE});
   }, []);
 
   const handleCallStore = (phone?: string | null) => {
@@ -835,7 +817,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: '#FFF1E6',
+    backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -967,7 +949,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: '#FFF1E6',
+    backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1112,7 +1094,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   tableRowAlt: {
-    backgroundColor: '#FFFCF9',
+    backgroundColor: Colors.cardAlt,
   },
   tableRowLast: {
     borderBottomWidth: 0,
@@ -1188,7 +1170,7 @@ const styles = StyleSheet.create({
 
   // Resumen inferior de la tabla
   tableSummary: {
-    backgroundColor: '#FAF5EF',
+    backgroundColor: Colors.cardAlt,
     borderTopWidth: 1.5,
     borderTopColor: Colors.border,
     padding: 14,

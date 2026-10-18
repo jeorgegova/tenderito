@@ -196,7 +196,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
                 <TouchableOpacity
                   style={styles.callBtn}
                   onPress={() => handleCallCustomer(customer.data?.phone)}>
-                  <Ionicons name="call" size={16} color="#FFFFFF" />
+                  <Ionicons name="call" size={15} color="#15803D" />
                   <Text style={styles.callBtnText}>
                     Llamar al cliente ({customer.data.phone})
                   </Text>
@@ -210,16 +210,16 @@ export function CustomerDetailScreen({route, navigation}: any) {
                   onPress={() => navigation.navigate('CustomerHistory', {id})}>
                   <Ionicons
                     name="storefront-outline"
-                    size={16}
-                    color={Colors.primary}
+                    size={15}
+                    color={Colors.textSecondary}
                   />
                   <Text style={styles.historyBtnText}>
-                    Ver historial de este cliente en otras tiendas
+                    Historial en otras tiendas
                   </Text>
                   <Ionicons
                     name="chevron-forward"
                     size={14}
-                    color={Colors.primary}
+                    color={Colors.textMuted}
                   />
                 </TouchableOpacity>
               ) : null}
@@ -501,9 +501,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
-    gap: 12,
-    paddingBottom: 40,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    gap: 10,
+    paddingBottom: 48,
   },
 
   // Ficha del Cliente
@@ -511,8 +512,8 @@ const styles = StyleSheet.create({
     padding: 18,
     gap: 12,
     borderRadius: Radius.xl,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   customerRow: {
     flexDirection: 'row',
@@ -520,10 +521,10 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   avatar: {
-    width: 52,
-    height: 52,
+    width: 50,
+    height: 50,
     borderRadius: 18,
-    backgroundColor: '#FFF1E6',
+    backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -559,22 +560,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#16A34A',
-    paddingVertical: 10,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
     borderRadius: Radius.md,
   },
   callBtnText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#15803D',
   },
   historyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#FFF7ED',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#FFEDD5',
+    borderColor: '#E2E8F0',
     paddingVertical: 9,
     paddingHorizontal: 12,
     borderRadius: Radius.md,
@@ -582,14 +586,14 @@ const styles = StyleSheet.create({
   historyBtnText: {
     flex: 1,
     fontSize: 12,
-    fontWeight: '700',
-    color: Colors.primary,
+    fontWeight: '600',
+    color: Colors.textSecondary,
   },
 
   // Caja de saldo
   balanceBox: {
     backgroundColor: '#FEF2F2',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: '#FECACA',
     borderRadius: Radius.lg,
     padding: 16,
@@ -624,25 +628,27 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Botones de acción principales
+  // Botones de acción principales (con margen claro y amplio)
   actionsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 2,
+    marginTop: 14,
+    marginBottom: 16,
   },
 
   // Título de la sección
   sectionHeading: {
-    marginTop: 8,
+    marginTop: 4,
+    marginBottom: 8,
     gap: 2,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: Colors.text,
   },
   sectionSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textSecondary,
     fontWeight: '500',
   },
@@ -651,45 +657,45 @@ const styles = StyleSheet.create({
   filterBar: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 2,
+    marginBottom: 10,
   },
   filterChip: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderRadius: Radius.md,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 999,
     backgroundColor: Colors.card,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterChipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primaryMid,
   },
   filterChipText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     color: Colors.textSecondary,
     textAlign: 'center',
   },
   filterChipTextActive: {
-    color: '#FFFFFF',
+    color: Colors.primary,
+    fontWeight: '800',
   },
 
   // Tabla Libreta de Cuentas
   tableHeaderRow: {
     flexDirection: 'row',
-    backgroundColor: '#FFF7ED',
+    backgroundColor: '#F8FAFC',
     borderTopLeftRadius: Radius.lg,
     borderTopRightRadius: Radius.lg,
-    borderWidth: 1.5,
-    borderBottomWidth: 1.5,
-    borderColor: Colors.border,
+    borderWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E2E8F0',
     paddingVertical: 10,
     paddingHorizontal: 12,
-    marginTop: 4,
   },
   tableColHeader: {
     fontSize: 11,
@@ -716,13 +722,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     backgroundColor: Colors.card,
-    borderLeftWidth: 1.5,
-    borderRightWidth: 1.5,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
+    borderColor: '#E2E8F0',
   },
   tableRowAlt: {
-    backgroundColor: '#FFFCF9',
+    backgroundColor: '#F8FAFC',
   },
   rowDateText: {
     fontSize: 12,
@@ -791,10 +797,10 @@ const styles = StyleSheet.create({
   // Estado vacío de la tabla
   tableEmpty: {
     backgroundColor: Colors.card,
-    borderLeftWidth: 1.5,
-    borderRightWidth: 1.5,
-    borderBottomWidth: 1.5,
-    borderColor: Colors.border,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E2E8F0',
     borderBottomLeftRadius: Radius.lg,
     borderBottomRightRadius: Radius.lg,
     padding: 28,
@@ -814,11 +820,11 @@ const styles = StyleSheet.create({
 
   // Resumen inferior de la libreta
   tableSummary: {
-    backgroundColor: '#FAF5EF',
-    borderLeftWidth: 1.5,
-    borderRightWidth: 1.5,
-    borderBottomWidth: 1.5,
-    borderColor: Colors.border,
+    backgroundColor: '#F8FAFC',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E2E8F0',
     borderBottomLeftRadius: Radius.lg,
     borderBottomRightRadius: Radius.lg,
     padding: 14,
@@ -846,7 +852,7 @@ const styles = StyleSheet.create({
   },
   summaryDivider: {
     height: 1,
-    backgroundColor: Colors.border,
+    backgroundColor: '#E2E8F0',
     marginVertical: 4,
   },
   summaryNetLabel: {

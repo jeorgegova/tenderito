@@ -3,21 +3,21 @@
 // Pensada para tenderos con poca experiencia digital, lectura rápida de números.
 
 export const Colors = {
-  // Marca — naranja intenso del logo
-  primary:        '#F97316',   // naranja principal
-  primaryDark:    '#EA6A00',   // hover / pressed
-  primaryLight:   '#FFF7ED',   // fondos suaves naranja
-  primaryMid:     '#FFEDD5',   // chips activos
+  // Marca — naranja vivo del logo (anillos, checkmark, acentos)
+  primary:        '#FF7A00',   // naranja principal brillante del logo
+  primaryDark:    '#EA580C',   // hover / pressed
+  primaryLight:   '#FFF7ED',   // fondos suaves naranja para chips/badges
+  primaryMid:     '#FFEDD5',   // bordes suaves naranja
 
-  // Fondos
-  background:     '#FDF8F3',   // blanco cálido (no frío iOS)
-  card:           '#FFFFFF',
-  cardAlt:        '#FAF5EF',   // card secundaria
+  // Fondos limpios y modernos (blanco nítido, libre de tonos amarillentos/cafés)
+  background:     '#F8FAFC',   // Slate-50: fondo ultra limpio, moderno y fresco
+  card:           '#FFFFFF',   // Blanco puro (como la libreta del logo)
+  cardAlt:        '#F1F5F9',   // Slate-100: fondos neutros de soporte
 
-  // Texto
-  text:           '#1C1008',   // casi negro con tono cálido
-  textSecondary:  '#78624E',   // marrón medio, cálido
-  textMuted:      '#B09880',   // hints
+  // Texto de alto contraste y legibilidad (inspirado en la tipografía 'Tenderito' del logo)
+  text:           '#0F172A',   // Slate-900: azul pizarra oscuro profundo
+  textSecondary:  '#475569',   // Slate-600: gris neutro elegante
+  textMuted:      '#94A3B8',   // Slate-400: hints y placeholders
 
   // Semánticos
   destructive:    '#DC2626',
@@ -27,13 +27,13 @@ export const Colors = {
   warning:        '#D97706',
   warningAlt:     '#FEF3C7',
 
-  // Bordes / separadores
-  border:         '#EDE3D8',
-  borderStrong:   '#D4C4B0',
+  // Bordes / separadores limpios
+  border:         '#E2E8F0',   // Slate-200: bordes nítidos y ligeros
+  borderStrong:   '#CBD5E1',   // Slate-300
 
   // Tab bar
   tabBar:         '#FFFFFF',
-  tabInactive:    '#C4A98C',
+  tabInactive:    '#94A3B8',   // Slate-400
 } as const;
 
 export const Radius = {

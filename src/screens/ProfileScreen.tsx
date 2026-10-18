@@ -7,9 +7,9 @@ import {Header} from '../components/ui/Header';
 import {MonochromeIcon} from '../components/ui/MonochromeIcon';
 import {showAlert} from '../components/ui/AlertModal';
 import {supabase} from '../lib/supabase';
+import {confirmLogout} from '../lib/session';
 import {useStore} from '../store/useStore';
 import {Colors} from '../theme';
-import {clearLocalDatabase} from '../database/db';
 import {
   calculateSubscriptionStatus,
   downgradeToFreePlan,
@@ -77,24 +77,8 @@ export function ProfileScreen() {
 
   const subStatus = calculateSubscriptionStatus(data as any);
 
-  async function logout() {
-    showAlert({
-      title: '¿Cerrar sesión?',
-      message: 'Tendrás que iniciar sesión nuevamente para acceder a tu tienda.',
-      type: 'warning',
-      buttons: [
-        {text: 'Cancelar', style: 'cancel'},
-        {
-          text: 'Sí, salir',
-          style: 'destructive',
-          onPress: async () => {
-            await clearLocalDatabase();
-            await supabase.auth.signOut();
-            setProfile(null);
-          },
-        },
-      ],
-    });
+  function logout() {
+    confirmLogout();
   }
 
   async function handlePlanAction(plan: SubscriptionPlanItem, isRenewal: boolean) {
@@ -292,7 +276,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 17,
-    backgroundColor: '#FFF1E6',
+    backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
@@ -304,10 +288,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: 12,
-    paddingHorizontal: 11,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: '#FFF1E6',
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 1,
+    borderColor: Colors.primaryMid,
   },
   planDot: {width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.primary},
   plan: {fontWeight: '700', color: Colors.primary, fontSize: 12, textTransform: 'capitalize'},
@@ -315,7 +301,7 @@ const styles = StyleSheet.create({
   section: {fontSize: 19, fontWeight: '800', color: Colors.text},
   sectionHint: {fontSize: 12, color: Colors.textSecondary, marginTop: 3},
   planCard: {flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13},
-  currentPlan: {borderColor: '#FFC99E', backgroundColor: '#FFFCF9'},
+  currentPlan: {borderColor: Colors.primary, borderWidth: 1.5, backgroundColor: Colors.card},
   planIcon: {
     width: 38,
     height: 38,
@@ -324,7 +310,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  planIconActive: {backgroundColor: '#FFF1E6'},
+  planIconActive: {backgroundColor: Colors.primaryLight},
   planTitleRow: {flexDirection: 'row', alignItems: 'center', gap: 7},
   planName: {fontWeight: '800', color: Colors.text},
   currentTag: {fontSize: 8, fontWeight: '800', color: Colors.primary, letterSpacing: 0.5},

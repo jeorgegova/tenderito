@@ -135,8 +135,8 @@ export function DashboardScreen({navigation}: any) {
             <View style={styles.heroHeaderTitle}>
               <Ionicons
                 name="wallet-outline"
-                size={15}
-                color="rgba(255,255,255,0.85)"
+                size={16}
+                color="rgba(255,255,255,0.9)"
               />
               <Text style={styles.heroCaption}>PLATA QUE TE DEBEN</Text>
             </View>
@@ -146,7 +146,7 @@ export function DashboardScreen({navigation}: any) {
               hitSlop={10}>
               <Ionicons
                 name={showBalance ? 'eye' : 'eye-off'}
-                color="rgba(255,255,255,0.8)"
+                color="rgba(255,255,255,0.85)"
                 size={22}
               />
             </Pressable>
@@ -390,33 +390,33 @@ const styles = StyleSheet.create({
 
   // ── Hero ──
   heroCard: {
-    backgroundColor: Colors.primary,
-    borderRadius: 28,
+    backgroundColor: '#EB782C',
+    borderRadius: 24,
     padding: 22,
     overflow: 'hidden',
-    shadowColor: Colors.primary,
-    shadowOffset: {width: 0, height: 8},
-    shadowOpacity: 0.38,
-    shadowRadius: 16,
-    elevation: 10,
+    shadowColor: '#C25514',
+    shadowOffset: {width: 0, height: 6},
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 6,
   },
   heroBgCircle1: {
     position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    backgroundColor: 'rgba(255,255,255,0.1)',
     top: -60,
     right: -40,
   },
   heroBgCircle2: {
     position: 'absolute',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     bottom: -30,
-    left: 20,
+    left: 15,
   },
   heroTop: {
     flexDirection: 'row',
@@ -426,16 +426,16 @@ const styles = StyleSheet.create({
   heroHeaderTitle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 7,
   },
   heroCaption: {
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(255,255,255,0.9)',
     fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   heroValue: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 38,
     lineHeight: 46,
     fontWeight: '900',
@@ -451,16 +451,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.2)',
   },
-  heroStat: {flexDirection: 'row', alignItems: 'baseline', gap: 4},
-  heroStatNum: {color: '#fff', fontSize: 22, fontWeight: '900'},
-  heroStatLabel: {color: 'rgba(255,255,255,0.75)', fontSize: 13},
+  heroStat: {flexDirection: 'row', alignItems: 'baseline', gap: 5},
+  heroStatNum: {color: '#FFFFFF', fontSize: 22, fontWeight: '900'},
+  heroStatLabel: {color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '500'},
   heroBtn: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.22)',
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 999,
   },
-  heroBtnText: {color: '#fff', fontSize: 13, fontWeight: '700'},
+  heroBtnText: {color: '#FFFFFF', fontSize: 13, fontWeight: '700'},
 
   // ── Sección headers ──
   sectionRow: {

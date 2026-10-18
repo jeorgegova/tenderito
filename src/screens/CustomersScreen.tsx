@@ -430,8 +430,9 @@ export function CustomersScreen({navigation}: any) {
           resetForm();
           setModal(true);
         }}
-        style={({pressed}) => [styles.fab, pressed && {opacity: 0.85}]}>
-        <Text style={styles.fabPlus}>+</Text>
+        accessibilityLabel="Nuevo cliente"
+        style={({pressed}) => [styles.fab, pressed && styles.fabPressed]}>
+        <Ionicons name="add-circle" size={22} color="#fff" />
         <Text style={styles.fabText}>Nuevo cliente</Text>
       </Pressable>
       <Modal
@@ -796,15 +797,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  filterChipActive: {backgroundColor: '#FFF1E6', borderColor: '#FFD5B3'},
+  filterChipActive: {backgroundColor: Colors.primaryLight, borderColor: Colors.primaryMid},
   filterText: {fontSize: 12, color: Colors.textSecondary, fontWeight: '600'},
   filterTextActive: {color: Colors.primary, fontWeight: '800'},
   flexOne: {flex: 1},
   customerCardItem: {
     padding: 14,
     gap: 10,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   customerCardMainRow: {
     flexDirection: 'row',
@@ -840,12 +841,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFF7ED',
+    backgroundColor: '#F8FAFC',
     paddingVertical: 7,
     paddingHorizontal: 10,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: '#FFEDD5',
+    borderColor: '#F1F5F9',
   },
   cardFooterText: {
     fontSize: 12,
@@ -875,7 +876,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFEAD6',
+    backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -953,7 +954,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   typeOptionSelected: {
-    backgroundColor: '#FFEAD6',
+    backgroundColor: Colors.primaryLight,
   },
   typeOptionText: {fontSize: 15, color: Colors.text},
   typeOptionTextSelected: {fontWeight: '700', color: Colors.text},
@@ -969,19 +970,26 @@ const styles = StyleSheet.create({
     bottom: 24,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     backgroundColor: Colors.primary,
-    borderRadius: 999,
-    paddingVertical: 14,
+    paddingVertical: 13,
     paddingHorizontal: 20,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 6,
+    borderRadius: 999,
+    shadowColor: Colors.primary,
+    shadowOffset: {width: 0, height: 6},
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  fabPlus: {color: '#fff', fontSize: 20, fontWeight: '800'},
-  fabText: {color: '#fff', fontSize: 16, fontWeight: '700'},
+  fabPressed: {
+    opacity: 0.88,
+    transform: [{scale: 0.96}],
+  },
+  fabText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
 
   // Estilos para cliente ya vinculado
   alreadyLinkedCard: {

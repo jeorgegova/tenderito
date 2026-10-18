@@ -352,8 +352,8 @@ const s = StyleSheet.create({
     borderColor: Colors.border,
   },
   presetChipActive: {
-    backgroundColor: '#FFF1E6',
-    borderColor: '#FFD5B3',
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primaryMid,
   },
   presetText: {fontSize: 13, fontWeight: '600', color: Colors.textSecondary},
   presetTextActive: {color: Colors.primary, fontWeight: '800'},
@@ -384,13 +384,13 @@ const s = StyleSheet.create({
   },
   summaryValue: {fontSize: 17, fontWeight: '800'},
   // Net card
-  netCard: {backgroundColor: '#FFFAF6', borderColor: '#FFD5B3', borderWidth: 1},
+  netCard: {backgroundColor: Colors.card, borderColor: '#F1F5F9', borderWidth: 1},
   netRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
   netIcon: {
     width: 40,
     height: 40,
     borderRadius: 15,
-    backgroundColor: '#FFF1E6',
+    backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
