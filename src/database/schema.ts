@@ -2,8 +2,9 @@ import {createCustomersTable} from './tables/customers';
 import {createCreditsTable} from './tables/credits';
 import {createPaymentsTable} from './tables/payments';
 import {createMetadataTable} from './tables/metadata';
+import {createSubscriptionPlansTable} from './tables/plans';
 
-export const DATABASE_VERSION = '1.1';
+export const DATABASE_VERSION = '1.2';
 
 /**
  * Crea las tablas base de la base de datos local si no existen.
@@ -13,6 +14,7 @@ export async function createBaseTables(db: any) {
   await createCustomersTable(db);
   await createCreditsTable(db);
   await createPaymentsTable(db);
+  await createSubscriptionPlansTable(db);
 }
 
 /**

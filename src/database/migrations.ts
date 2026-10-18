@@ -41,6 +41,28 @@ const MIGRATIONS: Migration[] = [
       } catch (_e) {}
     },
   },
+  {
+    version: '1.2',
+    description: 'Soporte offline-first para planes de suscripción',
+    up: async (db: any) => {
+      try {
+        await db.executeAsync(`
+          CREATE TABLE IF NOT EXISTS subscription_plans (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            price REAL NOT NULL DEFAULT 0,
+            price_text TEXT NOT NULL DEFAULT '$0',
+            customer_limit INTEGER NOT NULL DEFAULT 10,
+            badge TEXT,
+            sort_order INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 1,
+            updated_at TEXT
+          );
+        `);
+      } catch (_e) {}
+    },
+  },
 ];
 
 /**

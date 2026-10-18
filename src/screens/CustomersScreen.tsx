@@ -248,14 +248,11 @@ export function CustomersScreen({navigation}: any) {
       );
     }
     try {
-      if (!foundCustomer) {
-        const plan = profile?.subscription_plan ?? 'free';
-        const check = await canCreateCustomer(plan);
-        if (!check.allowed) {
-          setModal(false);
-          setShowUpgrade(true);
-          return;
-        }
+      const check = await canCreateCustomer(profile);
+      if (!check.allowed) {
+        setModal(false);
+        setShowUpgrade(true);
+        return;
       }
       if (foundCustomer) {
         await linkCustomerToStore(
@@ -424,7 +421,12 @@ export function CustomersScreen({navigation}: any) {
         }}
       />
       <Pressable
-        onPress={() => {
+        onPress={async () => {
+          const check = await canCreateCustomer(profile);
+          if (!check.allowed) {
+            setShowUpgrade(true);
+            return;
+          }
           resetForm();
           setModal(true);
         }}
@@ -748,11 +750,15 @@ export function CustomersScreen({navigation}: any) {
         animationType="fade"
         onRequestClose={() => setShowUpgrade(false)}>
         <View style={styles.overlay}>
-          <Card style={{gap: 8}}>
-            <Text style={styles.sheetTitle}>Límite del plan Free</Text>
-            <Text style={{color: Colors.textSecondary}}>
-              Llegaste a 10 clientes. Sube a Basic (100 clientes) o Pro
-              (ilimitado) para seguir creciendo.
+          <Card style={styles.upgradeCard}>
+            <View style={styles.upgradeIconWrap}>
+              <Ionicons name="sparkles" size={26} color={Colors.primary} />
+            </View>
+            <Text style={styles.upgradeTitle}>Límite del plan Free</Text>
+            <Text style={styles.upgradeText}>
+              No puedes agregar más clientes porque estás en el plan Free (máximo 10 clientes).
+              {'\n\n'}
+              Tus clientes actuales se mantienen intactos y seguros. Para continuar registrando clientes, suscríbete a uno de nuestros planes.
             </Text>
             <Button
               title="Ver planes"
@@ -760,6 +766,7 @@ export function CustomersScreen({navigation}: any) {
                 setShowUpgrade(false);
                 navigation.navigate('Perfil');
               }}
+              style={styles.upgradeBtn}
             />
             <Button
               title="Cerrar"
@@ -1068,5 +1075,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#15803D',
+  },
+  upgradeCard: {
+    padding: 24,
+    borderRadius: Radius.xl,
+    alignItems: 'center',
+    gap: 12,
+  },
+  upgradeIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FFF7ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFEDD5',
+  },
+  upgradeTitle: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  upgradeText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  upgradeBtn: {
+    width: '100%',
+    marginTop: 6,
   },
 });

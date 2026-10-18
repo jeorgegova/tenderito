@@ -43,3 +43,35 @@ export async function saveWriteDate(db: any, tableName: string, writeDate: strin
   );
 }
 
+/**
+ * Obtiene un valor de parametrización por clave.
+ */
+export async function getConfigParam(db: any, key: string): Promise<string | null> {
+  try {
+    const res = await db.executeAsync(
+      "SELECT valor FROM parametrizacion WHERE nombre = ? LIMIT 1;",
+      [key],
+    );
+    if (res?.rows?.length > 0) {
+      return res.rows.item(0).valor;
+    }
+    return null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * Guarda o actualiza un valor de parametrización por clave.
+ */
+export async function saveConfigParam(db: any, key: string, value: string): Promise<void> {
+  const now = new Date().toISOString();
+  await db.executeAsync(
+    `INSERT INTO parametrizacion (nombre, valor, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(nombre) DO UPDATE SET valor = excluded.valor, updated_at = excluded.updated_at;`,
+    [key, value, now],
+  );
+}
+
+

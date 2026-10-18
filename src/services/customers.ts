@@ -1,10 +1,17 @@
 import {supabase} from '../lib/supabase';
-import type {Customer, NewCustomerInput} from '../types';
+import type {Customer, NewCustomerInput, Profile} from '../types';
 import {PLAN_LIMITS, type SubscriptionPlan} from '../theme';
 import {getDbConnection, getData, executeQuery} from '../database/db';
 import {ESTADO_SINCRONIZACION} from '../database/synchronizationStatus';
 import {generateLocalId} from '../utils/id';
-import {sincronizar, insertOrReplaceCustomer, scheduleSync} from './sync';
+import {calculateSubscriptionStatus} from './plans';
+import {getLocalSubscriptionPlans} from '../database/tables/plans';
+import {
+  sincronizar,
+  insertOrReplaceCustomer,
+  scheduleSync,
+  getActiveStoreId,
+} from './sync';
 
 /**
  * Consulta la lista de clientes con prioridad Offline-First (SQLite local).
@@ -41,9 +48,9 @@ export async function fetchCustomers(search?: string): Promise<Customer[]> {
   } catch (_dbErr) {}
 
   // Si localmente no hay clientes registrados (primer inicio) e internet está disponible,
-  // intentar sincronizar para descargar la información a SQLite
+  // intentar sincronizar forzadamente para descargar la información a SQLite
   try {
-    await sincronizar();
+    await sincronizar({force: true});
     const db = await getDbConnection();
     let sql = 'SELECT * FROM customers';
     const params: any[] = [];
@@ -70,6 +77,49 @@ export async function fetchCustomers(search?: string): Promise<Customer[]> {
       }));
     }
   } catch (_e) {}
+
+  // Fallback directo a Supabase si SQLite aún no guardó y hay conexión
+  try {
+    const activeStoreId = await getActiveStoreId();
+    if (activeStoreId) {
+      const {data: storeCustomers, error} = await supabase
+        .from('customer_stores')
+        .select(
+          'store_id, current_balance, credit_limit, alias, joined_at, customers!inner(id, name, document_type, document_number, phone, notes, created_at)',
+        )
+        .eq('store_id', activeStoreId)
+        .order('current_balance', {ascending: false});
+
+      if (!error && storeCustomers && storeCustomers.length > 0) {
+        try {
+          const db = await getDbConnection();
+          for (const row of storeCustomers as any[]) {
+            await insertOrReplaceCustomer(db, {
+              ...row,
+              store_id: activeStoreId,
+            });
+          }
+        } catch (_dbSaveErr) {}
+
+        return storeCustomers.map((r: any) => {
+          const c = r.customers;
+          return {
+            id: c?.id,
+            name: c?.name || 'Cliente',
+            document_type: c?.document_type || 'CC',
+            document_number: c?.document_number || '',
+            phone: c?.phone || '',
+            notes: c?.notes || '',
+            alias: r.alias || '',
+            credit_limit: Number(r.credit_limit || 0),
+            current_balance: Number(r.current_balance || 0),
+            estadoServidor: 'sincronizado' as any,
+            created_at: c?.created_at || r.joined_at,
+          };
+        });
+      }
+    }
+  } catch (_netErr) {}
 
   return [];
 }
@@ -125,20 +175,44 @@ export async function fetchCustomerById(id: string): Promise<Customer> {
 }
 
 /**
- * Valida límite por plan antes de insertar cliente.
+ * Valida límite por plan antes de insertar o vincular un cliente.
  */
 export async function canCreateCustomer(
-  plan: SubscriptionPlan,
-): Promise<{allowed: boolean; count: number; limit: number}> {
-  // Primero contar en SQLite local
+  planOrProfile?: SubscriptionPlan | string | Profile | null,
+): Promise<{allowed: boolean; count: number; limit: number; effectivePlan: string}> {
   try {
     const db = await getDbConnection();
     const rows = await getData(db, 'SELECT COUNT(*) as total FROM customers;');
     const total = Number(rows[0]?.total || 0);
-    const limit = PLAN_LIMITS[plan];
-    return {allowed: total < limit, count: total, limit};
+
+    let effectivePlan = 'free';
+    if (typeof planOrProfile === 'object' && planOrProfile !== null) {
+      const status = calculateSubscriptionStatus(planOrProfile);
+      effectivePlan = status.effectivePlan;
+    } else if (typeof planOrProfile === 'string') {
+      effectivePlan = planOrProfile.toLowerCase();
+    }
+
+    // Buscar el límite en los planes locales parametrizables
+    let limit: number = (PLAN_LIMITS as any)[effectivePlan] ?? 10;
+    try {
+      const localPlans = await getLocalSubscriptionPlans(db);
+      const matched = localPlans.find(
+        p => p.id.toLowerCase() === effectivePlan,
+      );
+      if (matched && typeof matched.customer_limit === 'number') {
+        limit = matched.customer_limit;
+      }
+    } catch (_pErr) {}
+
+    return {
+      allowed: total < limit,
+      count: total,
+      limit,
+      effectivePlan,
+    };
   } catch (_e) {
-    return {allowed: true, count: 0, limit: PLAN_LIMITS[plan]};
+    return {allowed: true, count: 0, limit: 10, effectivePlan: 'free'};
   }
 }
 

@@ -9,8 +9,23 @@ export interface Profile {
   store_name: string;
   merchant_name: string;
   phone: string | null;
-  subscription_plan: SubscriptionPlan;
+  subscription_plan: SubscriptionPlan | string;
+  subscription_start_date?: string | null;
+  subscription_end_date?: string | null;
+  subscription_status?: string | null;
   created_at: string;
+}
+
+export interface SubscriptionPlanItem {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  price_text: string;
+  customer_limit: number;
+  badge?: string | null;
+  sort_order?: number;
+  is_active?: boolean;
 }
 
 export interface Customer {

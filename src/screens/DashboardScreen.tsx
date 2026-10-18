@@ -1,5 +1,12 @@
-import React, {useState} from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import React, {useEffect, useState} from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import {useQuery} from '@tanstack/react-query';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
@@ -8,9 +15,14 @@ import {fetchOverdueCredits, fetchTotalReceivable} from '../services/credits';
 import {fetchCustomers} from '../services/customers';
 import {Colors, formatCOP} from '../theme';
 import {AnimatedMoney} from '../components/ui/AnimatedMoney';
+import {useStore} from '../store/useStore';
+import {calculateSubscriptionStatus} from '../services/plans';
+import {showAlert} from '../components/ui/AlertModal';
 
 export function DashboardScreen({navigation}: any) {
   const [showBalance, setShowBalance] = useState(true);
+  const profile = useStore(s => s.profile);
+  const subStatus = calculateSubscriptionStatus(profile);
 
   const total = useQuery({
     queryKey: ['total-receivable'],
@@ -28,12 +40,91 @@ export function DashboardScreen({navigation}: any) {
     customer => Number(customer.current_balance) > 0,
   );
 
+  const totalAmount = Number(total.data ?? 0);
+  const hasAutoRefetchedRef = React.useRef(false);
+  const hasShownExpirationAlertRef = React.useRef(false);
+
+  useEffect(() => {
+    // Si la tienda tiene plata pendiente pero la lista de clientes aún no la refleja,
+    // forzar recarga una sola vez para garantizar que aparezcan de inmediato
+    if (
+      totalAmount > 0 &&
+      !customers.isLoading &&
+      debtors.length === 0 &&
+      !hasAutoRefetchedRef.current
+    ) {
+      hasAutoRefetchedRef.current = true;
+      customers.refetch();
+      overdue.refetch();
+    }
+  }, [totalAmount, customers.isLoading, debtors.length]);
+
+  useEffect(() => {
+    if (subStatus.expiresToday && !hasShownExpirationAlertRef.current) {
+      hasShownExpirationAlertRef.current = true;
+      showAlert({
+        title: '¡Hoy vence tu suscripción!',
+        message:
+          'Tu suscripción vence el día de hoy. Renueva ahora mismo por WhatsApp para continuar con todas las funciones de tu tienda sin interrupciones.',
+        type: 'warning',
+        buttons: [
+          {text: 'Más tarde', style: 'cancel'},
+          {
+            text: 'Renovar ahora',
+            style: 'default',
+            onPress: () => navigation.navigate('Perfil'),
+          },
+        ],
+      });
+    }
+  }, [subStatus.expiresToday, navigation]);
+
   return (
     <View style={styles.wrap}>
       <Header title="Inicio" subtitle="Tu plata, fácil y claro" />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
+        {/* Banner de vencimiento el día de hoy */}
+        {subStatus.expiresToday && (
+          <Pressable
+            onPress={() => navigation.navigate('Perfil')}
+            style={styles.toastBannerAlert}>
+            <View style={styles.toastBannerIconAlert}>
+              <Ionicons name="alert-circle" size={22} color="#DC2626" />
+            </View>
+            <View style={{flex: 1}}>
+              <Text style={styles.toastBannerTitleAlert}>
+                Hoy vence tu suscripción
+              </Text>
+              <Text style={styles.toastBannerSubtitle}>
+                Toca aquí para renovar tu plan por WhatsApp
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#DC2626" />
+          </Pressable>
+        )}
+
+        {/* Banner de periodo de gracia */}
+        {subStatus.inGracePeriod && !subStatus.expiresToday && (
+          <Pressable
+            onPress={() => navigation.navigate('Perfil')}
+            style={styles.toastBannerWarning}>
+            <View style={styles.toastBannerIconWarning}>
+              <Ionicons name="time" size={22} color="#D97706" />
+            </View>
+            <View style={{flex: 1}}>
+              <Text style={styles.toastBannerTitleWarning}>
+                Suscripción vencida ({Math.max(0, 10 - subStatus.daysSinceExpiration)} días de gracia restantes)
+              </Text>
+              <Text style={styles.toastBannerSubtitle}>
+                Toca para renovar antes de pasar al plan Free
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#D97706" />
+          </Pressable>
+        )}
+
         {/* ── Tarjeta hero — monto total ── */}
         <View style={styles.heroCard}>
           {/* Fondo decorativo */}
@@ -109,8 +200,9 @@ export function DashboardScreen({navigation}: any) {
         </View>
 
         {overdue.isLoading ? (
-          <Card>
-            <Text style={styles.muted}>Cargando…</Text>
+          <Card style={styles.loadingCard}>
+            <ActivityIndicator size="small" color={Colors.destructive} />
+            <Text style={styles.loadingText}>Cargando cuentas atrasadas…</Text>
           </Card>
         ) : (overdue.data ?? []).length === 0 ? (
           <Card style={styles.emptyCard}>
@@ -201,53 +293,16 @@ export function DashboardScreen({navigation}: any) {
           </Pressable>
         </View>
 
-        {[...debtors]
-          .sort((a, b) => Number(b.current_balance) - Number(a.current_balance))
-          .slice(0, 5)
-          .map(customer => (
-            <Pressable
-              key={customer.id}
-              onPress={() =>
-                navigation.navigate('CustomerDetail', {id: customer.id})
-              }>
-              <Card style={styles.debtorRow}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
-                    {(customer.alias || customer.name).charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.flex1}>
-                  <Text style={styles.customerName} numberOfLines={1}>
-                    {customer.alias || customer.name}
-                  </Text>
-                  {customer.alias ? (
-                    <Text style={styles.customerRealName} numberOfLines={1}>
-                      {customer.name}
-                    </Text>
-                  ) : null}
-                  <Text style={styles.muted}>
-                    {customer.phone ? `📞 ${customer.phone}` : 'Sin teléfono'}
-                  </Text>
-                  <Text style={styles.touchHint}>Toca para ver libreta →</Text>
-                </View>
-                <View style={styles.balanceWrap}>
-                  <Text style={styles.balanceLabel}>Te debe</Text>
-                  <Text style={styles.balance}>
-                    {formatCOP(Number(customer.current_balance))}
-                  </Text>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={18}
-                  color={Colors.textMuted}
-                />
-              </Card>
-            </Pressable>
-          ))}
-
-        {!customers.isLoading && debtors.length === 0 ? (
+        {customers.isLoading ? (
+          <Card style={styles.loadingCard}>
+            <ActivityIndicator size="small" color={Colors.primary} />
+            <Text style={styles.loadingText}>
+              Cargando clientes que deben más…
+            </Text>
+          </Card>
+        ) : debtors.length === 0 ? (
           <Card style={styles.emptyCard}>
-            <View style={styles.emptyIcon}>
+            <View style={styles.emptyDebtorsIcon}>
               <Ionicons
                 name="checkmark-done-outline"
                 size={24}
@@ -261,7 +316,57 @@ export function DashboardScreen({navigation}: any) {
               </Text>
             </View>
           </Card>
-        ) : null}
+        ) : (
+          [...debtors]
+            .sort(
+              (a, b) => Number(b.current_balance) - Number(a.current_balance),
+            )
+            .slice(0, 5)
+            .map(customer => (
+              <Pressable
+                key={customer.id}
+                onPress={() =>
+                  navigation.navigate('CustomerDetail', {id: customer.id})
+                }>
+                <Card style={styles.debtorRow}>
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>
+                      {(customer.alias || customer.name)
+                        .charAt(0)
+                        .toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.flex1}>
+                    <Text style={styles.customerName} numberOfLines={1}>
+                      {customer.alias || customer.name}
+                    </Text>
+                    {customer.alias ? (
+                      <Text style={styles.customerRealName} numberOfLines={1}>
+                        {customer.name}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.muted}>
+                      {customer.phone ? `📞 ${customer.phone}` : 'Sin teléfono'}
+                    </Text>
+                    <Text style={styles.touchHint}>
+                      Toca para ver libreta →
+                    </Text>
+                  </View>
+                  <View style={styles.balanceWrap}>
+                    <Text style={styles.balanceLabel}>Te debe</Text>
+                    <Text style={styles.balance}>
+                      {formatCOP(Number(customer.current_balance))}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={18}
+                    color={Colors.textMuted}
+                  />
+                </Card>
+              </Pressable>
+            ))
+        )}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
@@ -425,8 +530,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  emptyDebtorsIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   emptyTitle: {fontSize: 14, color: Colors.text, fontWeight: '700'},
   muted: {fontSize: 12, color: Colors.textSecondary},
+
+  // ── Loading ──
+  loadingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
 
   // ── FAB ──
   fab: {
@@ -457,5 +585,58 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 24,
+  },
+  toastBannerAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 4,
+  },
+  toastBannerIconAlert: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toastBannerTitleAlert: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
+  toastBannerWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 4,
+  },
+  toastBannerIconWarning: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toastBannerTitleWarning: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#D97706',
+  },
+  toastBannerSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
 });

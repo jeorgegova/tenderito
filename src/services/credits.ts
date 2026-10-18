@@ -94,7 +94,7 @@ export async function fetchOverdueCredits(): Promise<Credit[]> {
   try {
     const {data, error} = await supabase
       .from('credits')
-      .select('*, customers(id, name, alias, phone)')
+      .select('*, customers(id, name, phone)')
       .neq('status', 'paid')
       .lt('due_date', today)
       .order('due_date', {ascending: true});

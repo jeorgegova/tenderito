@@ -1,8 +1,10 @@
 import NetInfo from '@react-native-community/netinfo';
 import {getDbConnection, getData, executeQuery} from '../database/db';
 import {ESTADO_SINCRONIZACION} from '../database/synchronizationStatus';
-import {getWriteDate, saveWriteDate} from '../database/tables/metadata';
+import {getWriteDate, saveWriteDate, saveConfigParam} from '../database/tables/metadata';
+import {insertOrReplaceSubscriptionPlan} from '../database/tables/plans';
 import {supabase} from '../lib/supabase';
+import {useStore} from '../store/useStore';
 
 let syncInProgress: Promise<any> | null = null;
 let lastPullTimestamp = 0;
@@ -21,10 +23,16 @@ let cachedStoreId: string | null = null;
  * aislamiento estricto de datos en todas las consultas y almacenamiento.
  */
 export async function getActiveStoreId(): Promise<string | null> {
-  if (cachedStoreId) return cachedStoreId;
+  if (cachedStoreId) {
+    return cachedStoreId;
+  }
   try {
-    const {data: {user}} = await supabase.auth.getUser();
-    if (!user) return null;
+    const {
+      data: {user},
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return null;
+    }
     const {data, error} = await supabase
       .from('store_memberships')
       .select('store_id')
@@ -41,6 +49,7 @@ export async function getActiveStoreId(): Promise<string | null> {
 
 export function clearCachedStoreId() {
   cachedStoreId = null;
+  lastPullTimestamp = 0;
 }
 
 /**
@@ -116,7 +125,9 @@ async function pushPendingCustomers(db: any) {
     [ESTADO_SINCRONIZACION.PENDIENTE],
   );
 
-  if (pending.length === 0) return;
+  if (pending.length === 0) {
+    return;
+  }
 
   await processInChunks(pending, MAX_CONCURRENT_PUSH, async item => {
     try {
@@ -130,7 +141,9 @@ async function pushPendingCustomers(db: any) {
         p_credit_limit: Number(item.credit_limit || 0),
       });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       const serverId = data?.id || data;
       const now = new Date().toISOString();
@@ -150,7 +163,10 @@ async function pushPendingCustomers(db: any) {
         ],
       );
     } catch (e: any) {
-      console.warn(`[Sync] Error sincronizando cliente local ${item.local_id}:`, e?.message);
+      console.warn(
+        `[Sync] Error sincronizando cliente local ${item.local_id}:`,
+        e?.message,
+      );
     }
   });
 }
@@ -170,12 +186,16 @@ async function pushPendingCredits(db: any) {
     [ESTADO_SINCRONIZACION.PENDIENTE],
   );
 
-  if (pending.length === 0) return;
+  if (pending.length === 0) {
+    return;
+  }
 
   await processInChunks(pending, MAX_CONCURRENT_PUSH, async item => {
     try {
       const targetCustomerId = item.customer_server_id || item.customer_id;
-      if (!targetCustomerId) return;
+      if (!targetCustomerId) {
+        return;
+      }
 
       const {data, error} = await supabase.rpc('create_credit', {
         p_customer_id: targetCustomerId,
@@ -184,7 +204,9 @@ async function pushPendingCredits(db: any) {
         p_due_date: item.due_date || null,
       });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       const serverId = data?.id || data;
       const now = new Date().toISOString();
@@ -204,7 +226,10 @@ async function pushPendingCredits(db: any) {
         ],
       );
     } catch (e: any) {
-      console.warn(`[Sync] Error sincronizando crédito local ${item.local_id}:`, e?.message);
+      console.warn(
+        `[Sync] Error sincronizando crédito local ${item.local_id}:`,
+        e?.message,
+      );
     }
   });
 }
@@ -226,12 +251,16 @@ async function pushPendingPayments(db: any) {
     [ESTADO_SINCRONIZACION.PENDIENTE],
   );
 
-  if (pending.length === 0) return;
+  if (pending.length === 0) {
+    return;
+  }
 
   await processInChunks(pending, MAX_CONCURRENT_PUSH, async item => {
     try {
       const targetCustomerId = item.customer_server_id || item.customer_id;
-      if (!targetCustomerId) return;
+      if (!targetCustomerId) {
+        return;
+      }
 
       const targetCreditId = item.credit_server_id || item.credit_id || null;
 
@@ -242,7 +271,9 @@ async function pushPendingPayments(db: any) {
         p_notes: item.notes || null,
       });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       const serverId = data?.id || data;
       const now = new Date().toISOString();
@@ -262,7 +293,10 @@ async function pushPendingPayments(db: any) {
         ],
       );
     } catch (e: any) {
-      console.warn(`[Sync] Error sincronizando abono local ${item.local_id}:`, e?.message);
+      console.warn(
+        `[Sync] Error sincronizando abono local ${item.local_id}:`,
+        e?.message,
+      );
     }
   });
 }
@@ -284,7 +318,10 @@ export async function insertOrReplaceCustomer(db: any, row: any) {
     [customerId, customerId],
   );
 
-  if (existing.length > 0 && existing[0].estadoServidor === ESTADO_SINCRONIZACION.PENDIENTE) {
+  if (
+    existing.length > 0 &&
+    existing[0].estadoServidor === ESTADO_SINCRONIZACION.PENDIENTE
+  ) {
     return;
   }
 
@@ -331,7 +368,10 @@ export async function insertOrReplaceCredit(db: any, cr: any) {
     [cr.id, cr.id],
   );
 
-  if (existing.length > 0 && existing[0].estadoServidor === ESTADO_SINCRONIZACION.PENDIENTE) {
+  if (
+    existing.length > 0 &&
+    existing[0].estadoServidor === ESTADO_SINCRONIZACION.PENDIENTE
+  ) {
     return;
   }
 
@@ -373,7 +413,10 @@ export async function insertOrReplacePayment(db: any, p: any) {
     [p.id, p.id],
   );
 
-  if (existing.length > 0 && existing[0].estadoServidor === ESTADO_SINCRONIZACION.PENDIENTE) {
+  if (
+    existing.length > 0 &&
+    existing[0].estadoServidor === ESTADO_SINCRONIZACION.PENDIENTE
+  ) {
     return;
   }
 
@@ -410,12 +453,12 @@ export async function insertOrReplacePayment(db: any, p: any) {
  * - Utiliza writeDate para descargar solo los deltas modificados.
  * - Limita el tamaño de respuesta por página para no saturar memoria ni ancho de banda.
  */
-async function pullRemoteData(db: any) {
+async function pullRemoteData(db: any): Promise<boolean> {
   try {
     const activeStoreId = await getActiveStoreId();
     if (!activeStoreId) {
-      // Si el usuario no tiene tienda asignada aún, omitir descarga
-      return;
+      // Si el usuario no tiene tienda asignada aún, omitir descarga sin bloquear cooldown
+      return false;
     }
 
     // 1. Descarga incremental de clientes pertenecientes a la tienda activa
@@ -449,7 +492,9 @@ async function pullRemoteData(db: any) {
     const lastWriteDateCred = await getWriteDate(db, 'credits');
     let credQuery = supabase
       .from('credits')
-      .select('id, store_id, customer_id, concept, amount, due_date, status, created_at')
+      .select(
+        'id, store_id, customer_id, concept, amount, due_date, status, created_at',
+      )
       .eq('store_id', activeStoreId)
       .order('created_at', {ascending: true})
       .limit(PULL_PAGE_LIMIT);
@@ -474,7 +519,9 @@ async function pullRemoteData(db: any) {
     const lastWriteDatePay = await getWriteDate(db, 'payments');
     let payQuery = supabase
       .from('payments')
-      .select('id, store_id, customer_id, credit_id, amount, notes, payment_date, created_at')
+      .select(
+        'id, store_id, customer_id, credit_id, amount, notes, payment_date, created_at',
+      )
       .eq('store_id', activeStoreId)
       .order('created_at', {ascending: true})
       .limit(PULL_PAGE_LIMIT);
@@ -495,9 +542,57 @@ async function pullRemoteData(db: any) {
       }
       await saveWriteDate(db, 'payments', maxPayDate);
     }
+
+    // 4. Descarga de planes de suscripción parametrizables
+    try {
+      const {data: plansData} = await supabase
+        .from('subscription_plans')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order', {ascending: true});
+      if (plansData && plansData.length > 0) {
+        for (const pl of plansData) {
+          await insertOrReplaceSubscriptionPlan(db, pl);
+        }
+      }
+    } catch (_plansErr) {}
+
+    // 5. Descarga de configuración de plataforma (soporte WhatsApp, días de gracia)
+    try {
+      const {data: configData} = await supabase
+        .from('app_config')
+        .select('key, value');
+      if (configData && configData.length > 0) {
+        for (const cfg of configData) {
+          await saveConfigParam(db, cfg.key, cfg.value);
+        }
+      }
+    } catch (_cfgErr) {}
+
+    // 6. Actualización de perfil del usuario (fechas de suscripción, plan actual)
+    try {
+      const {
+        data: {user},
+      } = await supabase.auth.getUser();
+      if (user) {
+        const {data: profileData} = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (profileData) {
+          useStore.getState().setProfile(profileData as any);
+        }
+      }
+    } catch (_profErr) {}
   } catch (e: any) {
-    console.warn('[Sync] Error descargando datos incrementales remotos:', e?.message);
+    console.warn(
+      '[Sync] Error descargando datos incrementales remotos:',
+      e?.message,
+    );
+    return false;
   }
+  return true;
 }
 
 export interface SyncOptions {
@@ -511,7 +606,9 @@ export interface SyncOptions {
  * 3. Ejecuta Push solo si hay pendientes reales.
  * 4. Aplica cooldown de 1 minuto a las descargas para no quemar cuota en llamadas seguidas.
  */
-export async function sincronizar(options?: SyncOptions): Promise<{pushed: boolean; pulled: boolean}> {
+export async function sincronizar(
+  options?: SyncOptions,
+): Promise<{pushed: boolean; pulled: boolean}> {
   return withSyncLock(async () => {
     try {
       const netState = await NetInfo.fetch();
@@ -537,12 +634,17 @@ export async function sincronizar(options?: SyncOptions): Promise<{pushed: boole
 
       // Fase 2: Descarga incremental con Cooldown para ahorrar peticiones
       const now = Date.now();
-      const shouldPull = options?.force || didPush || now - lastPullTimestamp >= MIN_PULL_INTERVAL_MS;
+      const shouldPull =
+        options?.force ||
+        didPush ||
+        now - lastPullTimestamp >= MIN_PULL_INTERVAL_MS;
 
       if (shouldPull) {
-        await pullRemoteData(db);
-        lastPullTimestamp = Date.now();
-        didPull = true;
+        const pullSuccess = await pullRemoteData(db);
+        if (pullSuccess) {
+          lastPullTimestamp = Date.now();
+          didPull = true;
+        }
       }
 
       return {pushed: didPush, pulled: didPull};
@@ -557,15 +659,20 @@ export async function sincronizar(options?: SyncOptions): Promise<{pushed: boole
  * Programa una sincronización con debounce para agrupar múltiples operaciones
  * locales consecutivas en una única llamada hacia Supabase.
  */
-export function scheduleSync(delayMs = DEBOUNCE_DELAY_MS, onFinish?: () => void) {
+export function scheduleSync(
+  delayMs = DEBOUNCE_DELAY_MS,
+  onFinish?: () => void,
+) {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
   }
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
-    sincronizar().then(() => {
-      onFinish?.();
-    }).catch(() => {});
+    sincronizar()
+      .then(() => {
+        onFinish?.();
+      })
+      .catch(() => {});
   }, delayMs);
 }
 

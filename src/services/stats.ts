@@ -155,7 +155,7 @@ export async function fetchStats(filters: StatsFilters = {}): Promise<StatsResul
     // --- Saldo actual de customer_stores ---
     let balanceQuery = supabase
       .from('customer_stores')
-      .select('customer_id, current_balance, customers!inner(id, name, alias: alias)');
+      .select('customer_id, current_balance, alias, customers!inner(id, name)');
 
     if (customerIds?.length) balanceQuery = balanceQuery.in('customer_id', customerIds);
 
@@ -199,7 +199,7 @@ export async function fetchStats(filters: StatsFilters = {}): Promise<StatsResul
     for (const row of balanceData ?? []) {
       const cid = row.customer_id;
       if (map[cid]) {
-        map[cid].alias = (row as any).customers?.alias ?? null;
+        map[cid].alias = (row as any).alias ?? null;
         map[cid].balance = Number(row.current_balance);
       }
     }

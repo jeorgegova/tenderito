@@ -1,4 +1,4 @@
-import {Pressable, StyleSheet, Text, type ViewStyle} from 'react-native';
+import {Pressable, StyleSheet, Text, type StyleProp, type ViewStyle} from 'react-native';
 import {Colors, Radius} from '../../theme';
 import {MonochromeIcon, type IconName} from './MonochromeIcon';
 
@@ -7,8 +7,9 @@ interface Props {
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'destructive' | 'ghost';
   disabled?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   icon?: IconName;
+  leftElement?: React.ReactNode;
 }
 
 export function Button({
@@ -18,6 +19,7 @@ export function Button({
   disabled,
   style,
   icon,
+  leftElement,
 }: Props) {
   const iconColor =
     variant === 'primary' || variant === 'destructive'
@@ -41,7 +43,9 @@ export function Button({
         disabled && {opacity: 0.45},
         style,
       ]}>
-      {icon ? (
+      {leftElement ? (
+        leftElement
+      ) : icon ? (
         <MonochromeIcon name={icon} color={iconColor} size={18} />
       ) : null}
       <Text
