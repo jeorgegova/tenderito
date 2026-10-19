@@ -1,6 +1,7 @@
-import React, {useState} from 'react';
+import React, {useCallback, useState} from 'react';
 import {
   Alert,
+  BackHandler,
   Image,
   Pressable,
   ScrollView,
@@ -8,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Button} from '../components/ui/Button';
@@ -24,6 +26,21 @@ export function LoginScreen({navigation}: any) {
   const [role, setRole] = useState<'store' | 'customer'>('store');
   const [loading, setLoading] = useState(false);
   const insets = useSafeAreaInsets();
+
+  // En el login, presionar atrás no debe hacer nada para mantener la app abierta
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress,
+      );
+      return () => subscription.remove();
+    }, []),
+  );
 
   async function onLogin() {
     if (

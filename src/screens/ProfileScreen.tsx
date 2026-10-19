@@ -1,6 +1,7 @@
 import {useQuery} from '@tanstack/react-query';
-import {useEffect} from 'react';
-import {ScrollView, StyleSheet, Text, View} from 'react-native';
+import {useCallback, useEffect} from 'react';
+import {BackHandler, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {Button} from '../components/ui/Button';
 import {Card} from '../components/ui/Card';
 import {Header} from '../components/ui/Header';
@@ -57,7 +58,7 @@ async function fetchProfile() {
   return data;
 }
 
-export function ProfileScreen() {
+export function ProfileScreen({navigation}: any) {
   const setProfile = useStore(s => s.setProfile);
   const {data, refetch: refetchProfile} = useQuery({
     queryKey: ['profile'],
@@ -76,6 +77,22 @@ export function ProfileScreen() {
   }, [data, setProfile]);
 
   const subStatus = calculateSubscriptionStatus(data as any);
+
+  // Botón físico "Atrás" en Perfil: vuelve a Inicio
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        navigation.navigate('Inicio');
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress,
+      );
+      return () => subscription.remove();
+    }, [navigation]),
+  );
 
   function logout() {
     confirmLogout();

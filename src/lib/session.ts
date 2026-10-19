@@ -37,9 +37,9 @@ export async function performLogout(clearLocalData = true): Promise<void> {
  */
 export function confirmLogout(options: LogoutOptions = {}): void {
   const {
-    title = '¿Cerrar sesión?',
-    message = 'Tendrás que iniciar sesión nuevamente para acceder a tu tienda.',
-    confirmText = 'Sí, salir',
+    title = '¿Seguro que deseas cerrar sesión?',
+    message = 'Tendrás que volver a iniciar sesión para acceder a tu tienda.',
+    confirmText = 'Cerrar sesión',
     clearLocalData = true,
   } = options;
 

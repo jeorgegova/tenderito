@@ -1,12 +1,14 @@
-import React, {useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {useQuery} from '@tanstack/react-query';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
@@ -18,11 +20,33 @@ import {AnimatedMoney} from '../components/ui/AnimatedMoney';
 import {useStore} from '../store/useStore';
 import {calculateSubscriptionStatus} from '../services/plans';
 import {showAlert} from '../components/ui/AlertModal';
+import {confirmLogout} from '../lib/session';
 
 export function DashboardScreen({navigation}: any) {
   const [showBalance, setShowBalance] = useState(true);
   const profile = useStore(s => s.profile);
   const subStatus = calculateSubscriptionStatus(profile);
+
+  // Al estar en Inicio, presionar el botón físico "Atrás" activa el modal de cerrar sesión
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        confirmLogout({
+          title: '¿Seguro que deseas cerrar sesión?',
+          message:
+            'Tendrás que volver a iniciar sesión para acceder a tu tienda.',
+          confirmText: 'Cerrar sesión',
+        });
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress,
+      );
+      return () => subscription.remove();
+    }, []),
+  );
 
   const total = useQuery({
     queryKey: ['total-receivable'],

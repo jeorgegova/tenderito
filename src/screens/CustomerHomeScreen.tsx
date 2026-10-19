@@ -19,6 +19,7 @@ import {showAlert} from '../utils/alert';
 import {confirmLogout, CUSTOMER_LOGOUT_MESSAGE} from '../lib/session';
 import {fetchCustomerPortal} from '../services/customerPortal';
 import {Colors, Radius, formatCOP} from '../theme';
+import {useFocusEffect} from '@react-navigation/native';
 
 export function CustomerHomeScreen() {
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
@@ -32,17 +33,24 @@ export function CustomerHomeScreen() {
   });
 
   // Manejo del botón físico "Atrás" en Android
-  useEffect(() => {
-    const onBackPress = () => {
-      if (selectedStoreId) {
-        setSelectedStoreId(null);
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        if (selectedStoreId) {
+          setSelectedStoreId(null);
+          return true;
+        }
+        confirmLogout({
+          title: '¿Seguro que deseas cerrar sesión?',
+          message: CUSTOMER_LOGOUT_MESSAGE,
+          confirmText: 'Cerrar sesión',
+        });
         return true;
-      }
-      return false;
-    };
-    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-    return () => sub.remove();
-  }, [selectedStoreId]);
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [selectedStoreId]),
+  );
 
   const stores = useMemo(() => data?.stores ?? [], [data?.stores]);
   const customerName = data?.customer?.name ?? 'Cliente';

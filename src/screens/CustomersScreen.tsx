@@ -1,7 +1,8 @@
 import {useQuery} from '@tanstack/react-query';
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   Animated,
+  BackHandler,
   FlatList,
   KeyboardAvoidingView,
   Modal,
@@ -12,6 +13,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {Button} from '../components/ui/Button';
 import {Card} from '../components/ui/Card';
 import {Header} from '../components/ui/Header';
@@ -62,6 +64,34 @@ export function CustomersScreen({navigation}: any) {
   const profile = useStore(s => s.profile);
   const setShowUpgrade = useStore(s => s.setShowUpgradeModal);
   const showUpgrade = useStore(s => s.showUpgradeModal);
+
+  // Botón físico "Atrás" en Clientes: si hay un modal abierto lo cierra, de lo contrario vuelve a Inicio
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        if (showTypePicker) {
+          setShowTypePicker(false);
+          return true;
+        }
+        if (modal) {
+          setModal(false);
+          return true;
+        }
+        if (showUpgrade) {
+          setShowUpgrade(false);
+          return true;
+        }
+        navigation.navigate('Inicio');
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress,
+      );
+      return () => subscription.remove();
+    }, [showTypePicker, modal, showUpgrade, navigation, setShowUpgrade]),
+  );
 
   function resetForm() {
     setName('');

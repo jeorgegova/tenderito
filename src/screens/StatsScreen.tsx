@@ -1,6 +1,7 @@
 import {useQuery} from '@tanstack/react-query';
-import {useMemo, useState} from 'react';
+import {useCallback, useMemo, useState} from 'react';
 import {
+  BackHandler,
   FlatList,
   Modal,
   Platform,
@@ -10,6 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
@@ -86,6 +88,26 @@ export function StatsScreen({navigation}: any) {
   const [preset, setPreset] = useState<number>(2); // default "Últ. 30 días"
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
+
+  // Botón físico "Atrás" en Estadísticas: cierra el selector de clientes o vuelve a Inicio
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        if (showCustomerPicker) {
+          setShowCustomerPicker(false);
+          return true;
+        }
+        navigation.navigate('Inicio');
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress,
+      );
+      return () => subscription.remove();
+    }, [showCustomerPicker, navigation]),
+  );
 
   const activePreset = DATE_PRESETS[preset];
   const filters: StatsFilters = {

@@ -1,11 +1,9 @@
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {useEffect, useState} from 'react';
-import {ActivityIndicator, BackHandler, View} from 'react-native';
+import {ActivityIndicator, View} from 'react-native';
 import {MagnetTabBar} from '../components/ui/MagnetTabBar';
 import {supabase} from '../lib/supabase';
-import {confirmLogout, CUSTOMER_LOGOUT_MESSAGE} from '../lib/session';
-import {goToHome, isTabRoute, navigationRef} from './navigationRef';
 import {Colors} from '../theme';
 import {CustomerDetailScreen} from '../screens/CustomerDetailScreen';
 import {CustomersScreen} from '../screens/CustomersScreen';
@@ -28,6 +26,7 @@ function MainTabs() {
   return (
     <Tabs.Navigator
       tabBar={props => <MagnetTabBar {...props} />}
+      backBehavior="none"
       screenOptions={{
         headerShown: false,
       }}>
@@ -63,50 +62,6 @@ export function RootNavigator() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
-
-  // Botón físico "Atrás" (Android) para usuarios autenticados:
-  //  - Tienda: en cualquier pestaña vuelve a Inicio; en Inicio pregunta si
-  //    desea cerrar sesión.
-  //  - Cliente: en su pantalla principal pregunta si desea cerrar sesión.
-  // En pantallas internas (detalle, modales) se conserva el comportamiento normal.
-  useEffect(() => {
-    if (!session) {
-      return;
-    }
-
-    const onBackPress = () => {
-      const routeName = navigationRef.isReady()
-        ? navigationRef.getCurrentRoute()?.name
-        : undefined;
-
-      if (!routeName) {
-        return false;
-      }
-
-      if (routeName === 'Inicio') {
-        confirmLogout();
-        return true;
-      }
-
-      if (routeName === 'CustomerMain') {
-        confirmLogout({message: CUSTOMER_LOGOUT_MESSAGE});
-        return true;
-      }
-
-      if (isTabRoute(routeName)) {
-        goToHome();
-        return true;
-      }
-
-      return false;
-    };
-
-    const subscription = BackHandler.addEventListener(
-      'hardwareBackPress',
-      onBackPress,
-    );
-    return () => subscription.remove();
-  }, [session, userType]);
 
   if (loading) {
     return (
