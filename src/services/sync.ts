@@ -5,6 +5,7 @@ import {getWriteDate, saveWriteDate, saveConfigParam} from '../database/tables/m
 import {insertOrReplaceSubscriptionPlan} from '../database/tables/plans';
 import {supabase} from '../lib/supabase';
 import {useStore} from '../store/useStore';
+import {notifyCustomerMovement} from './deviceService';
 
 let syncInProgress: Promise<any> | null = null;
 let lastPullTimestamp = 0;
@@ -225,6 +226,18 @@ async function pushPendingCredits(db: any) {
           item.local_id,
         ],
       );
+
+      // Notificar al cliente si tiene celular vinculado (sin webhooks)
+      notifyCustomerMovement({
+        customerId: targetCustomerId,
+        storeId: item.store_id || (await getActiveStoreId()),
+        type: 'credit',
+        amount: Number(item.amount),
+        concept: item.concept,
+        movementId: serverId,
+      }).catch(notifErr => {
+        console.warn('[Sync] Error notificando crédito:', notifErr?.message);
+      });
     } catch (e: any) {
       console.warn(
         `[Sync] Error sincronizando crédito local ${item.local_id}:`,
@@ -292,6 +305,18 @@ async function pushPendingPayments(db: any) {
           item.local_id,
         ],
       );
+
+      // Notificar al cliente si tiene celular vinculado (sin webhooks)
+      notifyCustomerMovement({
+        customerId: targetCustomerId,
+        storeId: item.store_id || (await getActiveStoreId()),
+        type: 'payment',
+        amount: Number(item.amount),
+        notes: item.notes,
+        movementId: serverId,
+      }).catch(notifErr => {
+        console.warn('[Sync] Error notificando abono:', notifErr?.message);
+      });
     } catch (e: any) {
       console.warn(
         `[Sync] Error sincronizando abono local ${item.local_id}:`,

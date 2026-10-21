@@ -2,6 +2,7 @@ import {showAlert} from '../components/ui/AlertModal';
 import {clearLocalDatabase} from '../database/db';
 import {useStore} from '../store/useStore';
 import {supabase} from './supabase';
+import {unregister_fcm_token} from '../services/deviceService';
 
 /** Mensaje de confirmación para el acceso de clientes (portal). */
 export const CUSTOMER_LOGOUT_MESSAGE =
@@ -16,11 +17,17 @@ interface LogoutOptions {
 }
 
 /**
- * Cierra la sesión activa: limpia los datos locales del negocio (opcional),
- * cierra la sesión en Supabase y restablece el perfil en memoria.
+ * Cierra la sesión activa: desvincula el dispositivo de Supabase,
+ * limpia los datos locales del negocio (opcional), cierra la sesión
+ * en Supabase y restablece el perfil en memoria.
  */
 export async function performLogout(clearLocalData = true): Promise<void> {
   try {
+    // 1. Desvincular el dispositivo en Supabase antes de cerrar la sesión
+    await unregister_fcm_token().catch(err => {
+      console.warn('[session] Error desvinculando dispositivo en logout:', err);
+    });
+
     if (clearLocalData) {
       await clearLocalDatabase();
     }

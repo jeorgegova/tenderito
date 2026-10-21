@@ -7,12 +7,15 @@ import {
   getMessaging,
   getToken,
   onMessage,
+  onTokenRefresh,
 } from '@react-native-firebase/messaging';
 import notifee, {AndroidImportance} from 'react-native-notify-kit';
 import {RootNavigator} from './src/navigation/RootNavigator';
 import {useDatabase} from './src/hooks/useDatabase';
 import {useSync} from './src/hooks/useSync';
 import {AlertModal} from './src/components/ui/AlertModal';
+import {supabase} from './src/lib/supabase';
+import {register_fcm_token, syncPendingDeviceToken} from './src/services/deviceService';
 
 function useFirebaseNotifications() {
   useEffect(() => {
@@ -44,11 +47,32 @@ function useFirebaseNotifications() {
 
     getToken(messaging)
       .then(token => {
-        if (mounted) console.log('FCM_TOKEN:', token);
+        if (mounted) {
+          console.log('FCM_TOKEN:', token);
+          register_fcm_token(token);
+        }
       })
       .catch(tokenError => {
         console.warn('No fue posible obtener el token FCM:', tokenError);
       });
+
+    const unsubscribeTokenRefresh = onTokenRefresh(messaging, token => {
+      console.log('FCM_TOKEN_REFRESCADO:', token);
+      register_fcm_token(token);
+    });
+
+    const {
+      data: {subscription: authSubscription},
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (
+        session?.user &&
+        (event === 'SIGNED_IN' ||
+          event === 'INITIAL_SESSION' ||
+          event === 'TOKEN_REFRESHED')
+      ) {
+        syncPendingDeviceToken();
+      }
+    });
 
     const unsubscribe = onMessage(messaging, async remoteMessage => {
       console.log('FCM_MENSAJE_RECIBIDO:', JSON.stringify(remoteMessage));
@@ -97,6 +121,8 @@ function useFirebaseNotifications() {
     return () => {
       mounted = false;
       unsubscribe();
+      unsubscribeTokenRefresh();
+      authSubscription.unsubscribe();
     };
   }, []);
 }

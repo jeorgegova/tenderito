@@ -23,6 +23,7 @@
     "@tanstack/react-query": "^5.104.0",
     "react": "18.2.0",
     "react-native": "0.74.5",
+    "react-native-device-info": "^15.0.2",
     "react-native-dotenv": "^5.0.0",
     "react-native-notify-kit": "^10.8.0",
     "react-native-quick-sqlite": "^8.2.7",

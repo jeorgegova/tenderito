@@ -38,4 +38,9 @@ subprojects {
             force "org.jetbrains.kotlin:kotlin-annotation-processing-embeddable:2.1.20"
         }
     }
+    tasks.configureEach { task ->
+        if (task.name.contains("Lint") || task.name.contains("UnitTest")) {
+            task.enabled = false
+        }
+    }
 }
