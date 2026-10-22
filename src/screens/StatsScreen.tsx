@@ -24,13 +24,20 @@ import {Colors, formatCOP} from '../theme';
 // ──────────────── Helpers ────────────────
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function daysAgo(n: number) {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 const DATE_PRESETS = [
@@ -40,44 +47,6 @@ const DATE_PRESETS = [
   {label: 'Este mes', from: today().slice(0, 7) + '-01', to: today()},
   {label: 'Todo', from: undefined, to: undefined},
 ] as const;
-
-// ──────────────── Mini bar chart ────────────────
-
-function BarRow({
-  label,
-  credits,
-  payments,
-  maxVal,
-}: {
-  label: string;
-  credits: number;
-  payments: number;
-  maxVal: number;
-}) {
-  const ratio = maxVal > 0 ? 1 / maxVal : 0;
-  const creditW = Math.max(credits * ratio * 180, credits > 0 ? 4 : 0);
-  const paymentW = Math.max(payments * ratio * 180, payments > 0 ? 4 : 0);
-  return (
-    <View style={bar.row}>
-      <Text style={bar.label} numberOfLines={1}>
-        {label}
-      </Text>
-      <View style={bar.bars}>
-        <View style={[bar.segment, bar.credit, {width: creditW}]} />
-        <View style={[bar.segment, bar.payment, {width: paymentW}]} />
-      </View>
-    </View>
-  );
-}
-
-const bar = StyleSheet.create({
-  row: {flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8},
-  label: {width: 90, fontSize: 11, color: Colors.text, fontWeight: '600'},
-  bars: {flex: 1, gap: 3},
-  segment: {height: 8, borderRadius: 4, minWidth: 0},
-  credit: {backgroundColor: Colors.destructive},
-  payment: {backgroundColor: '#15803D'},
-});
 
 // ──────────────── Main screen ────────────────
 
@@ -187,7 +156,7 @@ export function StatsScreen({navigation}: any) {
           <Ionicons name="chevron-down" size={14} color={Colors.primary} />
         </Pressable>
 
-        {/* ── Tarjetas de resumen ── */}
+        {/* ── Tarjetas de resumen compactas ── */}
         {isLoading ? (
           <Card>
             <Text style={s.muted}>Calculando estadísticas…</Text>
@@ -195,45 +164,69 @@ export function StatsScreen({navigation}: any) {
         ) : (
           <>
             <View style={s.summaryGrid}>
-              <Card style={[s.summaryCard, s.summaryDebt]}>
-                <Ionicons name="arrow-up-circle-outline" size={24} color={Colors.destructive} />
-                <Text style={s.summaryLabel}>TOTAL FIADO</Text>
-                <Text style={[s.summaryValue, {color: Colors.destructive}]}>
+              <View style={[s.summaryCard, s.summaryDebt]}>
+                <View style={s.summaryTopRow}>
+                  <View style={[s.summaryIconCircle, {backgroundColor: '#FEE2E2'}]}>
+                    <Ionicons name="arrow-up" size={12} color={Colors.destructive} />
+                  </View>
+                  <Text style={s.summaryLabel}>TOTAL FIADO</Text>
+                </View>
+                <Text
+                  style={[s.summaryValue, {color: Colors.destructive}]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit>
                   {formatCOP(stats?.totalCredits ?? 0)}
                 </Text>
-              </Card>
-              <Card style={[s.summaryCard, s.summaryPaid]}>
-                <Ionicons name="arrow-down-circle-outline" size={24} color="#15803D" />
-                <Text style={s.summaryLabel}>TOTAL ABONADO</Text>
-                <Text style={[s.summaryValue, {color: '#15803D'}]}>
+              </View>
+
+              <View style={[s.summaryCard, s.summaryPaid]}>
+                <View style={s.summaryTopRow}>
+                  <View style={[s.summaryIconCircle, {backgroundColor: '#DCFCE7'}]}>
+                    <Ionicons name="arrow-down" size={12} color="#15803D" />
+                  </View>
+                  <Text style={s.summaryLabel}>TOTAL ABONADO</Text>
+                </View>
+                <Text
+                  style={[s.summaryValue, {color: '#15803D'}]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit>
                   {formatCOP(stats?.totalPayments ?? 0)}
                 </Text>
-              </Card>
+              </View>
             </View>
 
-            <Card style={s.netCard}>
+            <View style={s.netCard}>
               <View style={s.netRow}>
                 <View style={s.netIcon}>
-                  <MonochromeIcon name="wallet" color={Colors.primary} size={20} />
+                  <MonochromeIcon name="wallet" color={Colors.primary} size={18} />
                 </View>
                 <View style={{flex: 1}}>
                   <Text style={s.netLabel}>SALDO PENDIENTE NETO</Text>
-                  <Text style={s.netValue}>
+                  <Text style={s.netValue} numberOfLines={1} adjustsFontSizeToFit>
                     {formatCOP(stats?.netBalance ?? 0)}
                   </Text>
                 </View>
                 <View style={s.countBadge}>
                   <Text style={s.countText}>{stats?.customerCount ?? 0}</Text>
-                  <Text style={s.countSub}>clientes</Text>
+                  <Text style={s.countSub}>
+                    {stats?.customerCount === 1 ? 'cliente' : 'clientes'}
+                  </Text>
                 </View>
               </View>
-            </Card>
+            </View>
 
-            {/* ── Leyenda del gráfico ── */}
+            {/* ── Desglose por cliente ── */}
             {(stats?.rows.length ?? 0) > 0 && (
-              <>
+              <View style={s.customerSection}>
                 <View style={s.sectionHead}>
-                  <Text style={s.sectionTitle}>Por cliente</Text>
+                  <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                    <Text style={s.sectionTitle}>Por cliente</Text>
+                    <View style={s.sectionCountBadge}>
+                      <Text style={s.sectionCountText}>
+                        {stats?.rows.length ?? 0}
+                      </Text>
+                    </View>
+                  </View>
                   <View style={s.legend}>
                     <View style={[s.dot, {backgroundColor: Colors.destructive}]} />
                     <Text style={s.legendText}>Fiado</Text>
@@ -242,38 +235,151 @@ export function StatsScreen({navigation}: any) {
                   </View>
                 </View>
 
-                <Card style={{gap: 0}}>
-                  {(stats?.rows ?? []).slice(0, 12).map(row => (
-                    <Pressable
-                      key={row.customer_id}
-                      onPress={() =>
-                        navigation.navigate('CustomerDetail', {id: row.customer_id})
-                      }>
-                      <View style={s.tableRow}>
-                        <View style={{flex: 1, gap: 4}}>
-                          <Text style={s.tableName} numberOfLines={1}>
-                            {row.alias || row.name}
-                          </Text>
-                          <BarRow
-                            label=""
-                            credits={row.total_credits}
-                            payments={row.total_payments}
-                            maxVal={maxVal}
+                <View style={s.customerList}>
+                  {(stats?.rows ?? []).map(row => {
+                    const creditPct =
+                      maxVal > 0
+                        ? Math.min(
+                            100,
+                            Math.max(
+                              0,
+                              Math.round((row.total_credits / maxVal) * 100),
+                            ),
+                          )
+                        : 0;
+                    const paymentPct =
+                      maxVal > 0
+                        ? Math.min(
+                            100,
+                            Math.max(
+                              0,
+                              Math.round((row.total_payments / maxVal) * 100),
+                            ),
+                          )
+                        : 0;
+                    const displayName = row.alias || row.name || 'Cliente';
+                    const initial = displayName.charAt(0).toUpperCase();
+
+                    return (
+                      <Pressable
+                        key={row.customer_id}
+                        style={({pressed}) => [
+                          s.customerCard,
+                          pressed && s.customerCardPressed,
+                        ]}
+                        onPress={() =>
+                          navigation.navigate('CustomerDetail', {
+                            id: row.customer_id,
+                          })
+                        }>
+                        {/* Fila Superior: Avatar + Nombre + Saldo actual */}
+                        <View style={s.custTopRow}>
+                          <View style={s.custAvatar}>
+                            <Text style={s.custInitial}>{initial}</Text>
+                          </View>
+
+                          <View style={s.custNameCol}>
+                            <Text style={s.custName} numberOfLines={1}>
+                              {displayName}
+                            </Text>
+                            {row.alias && row.name && row.name !== row.alias ? (
+                              <Text style={s.custSubName} numberOfLines={1}>
+                                {row.name}
+                              </Text>
+                            ) : null}
+                          </View>
+
+                          <View style={s.custBalanceCol}>
+                            <Text style={s.custBalanceLabel}>SALDO ACTUAL</Text>
+                            <Text
+                              style={[
+                                s.custBalanceVal,
+                                row.balance > 0
+                                  ? s.custBalanceDebt
+                                  : s.custBalanceZero,
+                              ]}
+                              numberOfLines={1}>
+                              {formatCOP(row.balance)}
+                            </Text>
+                          </View>
+
+                          <Ionicons
+                            name="chevron-forward"
+                            size={16}
+                            color={Colors.textSecondary}
                           />
                         </View>
-                        <View style={s.tableAmounts}>
-                          <Text style={s.tableDebt}>
-                            {formatCOP(row.balance)}
-                          </Text>
-                          <Text style={s.tablePayment}>
-                            +{formatCOP(row.total_payments)}
-                          </Text>
+
+                        {/* Fila Inferior: Métricas del período (Fiado vs Abonado) */}
+                        <View style={s.custMetricsRow}>
+                          {/* Box Fiado */}
+                          <View style={[s.custMetricBox, s.metricBoxFiado]}>
+                            <View style={s.metricTop}>
+                              <View
+                                style={[
+                                  s.metricDot,
+                                  {backgroundColor: Colors.destructive},
+                                ]}
+                              />
+                              <Text style={s.metricLabel}>FIADO EN PERÍODO</Text>
+                            </View>
+                            <Text
+                              style={[
+                                s.metricValue,
+                                {color: Colors.destructive},
+                              ]}
+                              numberOfLines={1}
+                              adjustsFontSizeToFit>
+                              {formatCOP(row.total_credits)}
+                            </Text>
+                            <View style={s.metricTrack}>
+                              <View
+                                style={[
+                                  s.metricFill,
+                                  {
+                                    backgroundColor: Colors.destructive,
+                                    width: `${creditPct}%`,
+                                  },
+                                ]}
+                              />
+                            </View>
+                          </View>
+
+                          {/* Box Abonado */}
+                          <View style={[s.custMetricBox, s.metricBoxAbonado]}>
+                            <View style={s.metricTop}>
+                              <View
+                                style={[
+                                  s.metricDot,
+                                  {backgroundColor: '#15803D'},
+                                ]}
+                              />
+                              <Text style={s.metricLabel}>ABONADO EN PERÍODO</Text>
+                            </View>
+                            <Text
+                              style={[s.metricValue, {color: '#15803D'}]}
+                              numberOfLines={1}
+                              adjustsFontSizeToFit>
+                              {formatCOP(row.total_payments)}
+                            </Text>
+                            <View style={s.metricTrack}>
+                              <View
+                                style={[
+                                  s.metricFill,
+                                  {
+                                    backgroundColor: '#15803D',
+                                    width: `${paymentPct}%`,
+                                  },
+                                ]}
+                              />
+                            </View>
+                          </View>
                         </View>
-                      </View>
-                    </Pressable>
-                  ))}
-                </Card>
-              </>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
             )}
 
             {(stats?.rows.length ?? 0) === 0 && !isLoading && (
@@ -392,64 +498,234 @@ const s = StyleSheet.create({
     borderColor: Colors.border,
   },
   customerBtnText: {flex: 1, fontSize: 14, color: Colors.text, fontWeight: '600'},
-  // Summary cards
-  summaryGrid: {flexDirection: 'row', gap: 12},
-  summaryCard: {flex: 1, alignItems: 'flex-start', gap: 4},
-  summaryDebt: {backgroundColor: '#FFF0EF', borderColor: '#FCCFCC'},
-  summaryPaid: {backgroundColor: '#F0FBF4', borderColor: '#BBF0CE'},
-  summaryEmoji: {fontSize: 22},
+  // Summary cards (compactos para aprovechar espacio)
+  summaryGrid: {flexDirection: 'row', gap: 10},
+  summaryCard: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    gap: 4,
+    shadowColor: '#0F172A',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  summaryDebt: {backgroundColor: '#FFF5F5', borderColor: '#FECACA'},
+  summaryPaid: {backgroundColor: '#F0FDF4', borderColor: '#BBF7D0'},
+  summaryTopRow: {flexDirection: 'row', alignItems: 'center', gap: 6},
+  summaryIconCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   summaryLabel: {
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: '800',
     color: Colors.textSecondary,
-    letterSpacing: 0.7,
+    letterSpacing: 0.5,
   },
-  summaryValue: {fontSize: 17, fontWeight: '800'},
-  // Net card
-  netCard: {backgroundColor: Colors.card, borderColor: '#F1F5F9', borderWidth: 1},
+  summaryValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  // Net card (compacto)
+  netCard: {
+    backgroundColor: Colors.card,
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    shadowColor: '#0F172A',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1.5,
+  },
   netRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
   netIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 15,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   netLabel: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '800',
     color: Colors.primary,
-    letterSpacing: 0.7,
+    letterSpacing: 0.5,
   },
-  netValue: {fontSize: 22, fontWeight: '800', color: Colors.text, marginTop: 2},
-  countBadge: {alignItems: 'center'},
-  countText: {fontSize: 22, fontWeight: '800', color: Colors.text},
-  countSub: {fontSize: 10, color: Colors.textSecondary},
-  // Section
+  netValue: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: Colors.text,
+    letterSpacing: -0.3,
+    marginTop: 1,
+  },
+  countBadge: {
+    alignItems: 'center',
+    paddingLeft: 12,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: Colors.border,
+  },
+  countText: {fontSize: 18, fontWeight: '800', color: Colors.text},
+  countSub: {fontSize: 10, color: Colors.textSecondary, fontWeight: '500'},
+  // Section Por cliente
+  customerSection: {gap: 10},
   sectionHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  sectionTitle: {fontSize: 17, fontWeight: '800', color: Colors.text},
+  sectionTitle: {fontSize: 16, fontWeight: '800', color: Colors.text},
+  sectionCountBadge: {
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    borderRadius: 10,
+  },
+  sectionCountText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
   legend: {flexDirection: 'row', alignItems: 'center', gap: 6},
   dot: {width: 8, height: 8, borderRadius: 4},
   legendText: {fontSize: 11, color: Colors.textSecondary},
-  // Table
-  tableRow: {
+  // Customer cards list
+  customerList: {gap: 10},
+  customerCard: {
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 10,
+    shadowColor: '#0F172A',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  customerCardPressed: {
+    opacity: 0.85,
+    backgroundColor: '#F8FAFC',
+  },
+  custTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
+    gap: 10,
+  },
+  custAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  custInitial: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  custNameCol: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  custName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  custSubName: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  custBalanceCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  custBalanceLabel: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
+  },
+  custBalanceVal: {
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 1,
+  },
+  custBalanceDebt: {
+    color: Colors.destructive,
+  },
+  custBalanceZero: {
+    color: '#15803D',
+  },
+  custMetricsRow: {
+    flexDirection: 'row',
     gap: 8,
   },
-  tableName: {fontSize: 12, fontWeight: '700', color: Colors.text},
-  tableAmounts: {alignItems: 'flex-end', gap: 2},
-  tableDebt: {fontSize: 13, fontWeight: '800', color: Colors.destructive},
-  tablePayment: {fontSize: 11, fontWeight: '700', color: '#15803D'},
+  custMetricBox: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+    gap: 3,
+  },
+  metricBoxFiado: {
+    backgroundColor: '#FFF8F8',
+    borderColor: '#FEE2E2',
+  },
+  metricBoxAbonado: {
+    backgroundColor: '#F3FCF6',
+    borderColor: '#DCFCE7',
+  },
+  metricTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metricDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  metricLabel: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: Colors.textSecondary,
+    letterSpacing: 0.4,
+  },
+  metricValue: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  metricTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    overflow: 'hidden',
+    marginTop: 2,
+  },
+  metricFill: {
+    height: '100%',
+    borderRadius: 2,
+    minWidth: 0,
+  },
   // Empty
   emptyCard: {alignItems: 'center', gap: 8, paddingVertical: 24},
   emptyTitle: {fontWeight: '800', color: Colors.text, fontSize: 15},

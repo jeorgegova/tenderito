@@ -8,7 +8,13 @@ export async function findCustomerForActivation(documentNumber: string) {
   return data?.[0] ?? null;
 }
 
-export async function fetchCustomerPortal() {
+export interface CustomerPortalFilters {
+  month?: string; // 'YYYY-MM' o 'all'
+  storeId?: string | null;
+}
+
+export async function fetchCustomerPortal(filters: CustomerPortalFilters = {}) {
+  const {month, storeId} = filters;
   const {
     data: {user},
   } = await supabase.auth.getUser();
@@ -21,11 +27,10 @@ export async function fetchCustomerPortal() {
     .single();
   if (accountError) throw accountError;
 
+  // 1. Datos del cliente y tiendas vinculadas (saldo acumulado por tienda)
   const [
     {data: customer, error: customerError},
     {data: stores, error: storesError},
-    {data: credits, error: creditsError},
-    {data: payments, error: paymentsError},
   ] = await Promise.all([
     supabase
       .from('customers')
@@ -39,21 +44,63 @@ export async function fetchCustomerPortal() {
       )
       .eq('customer_id', account.customer_id)
       .eq('active', true),
-    supabase
-      .from('credits')
-      .select('*, stores(store_name, address)')
-      .eq('customer_id', account.customer_id)
-      .order('created_at', {ascending: false}),
-    supabase
-      .from('payments')
-      .select('*, stores(store_name, address)')
-      .eq('customer_id', account.customer_id)
-      .order('payment_date', {ascending: false}),
   ]);
 
-  const firstError =
-    customerError ?? storesError ?? creditsError ?? paymentsError;
-  if (firstError) throw firstError;
+  if (customerError) throw customerError;
+  if (storesError) throw storesError;
+
+  // 2. Consultas de créditos y abonos filtradas directamente en Supabase por mes y tienda
+  let creditsQuery = supabase
+    .from('credits')
+    .select('*, stores(store_name, address)')
+    .eq('customer_id', account.customer_id)
+    .order('created_at', {ascending: false});
+
+  let paymentsQuery = supabase
+    .from('payments')
+    .select('*, stores(store_name, address)')
+    .eq('customer_id', account.customer_id)
+    .order('payment_date', {ascending: false});
+
+  if (storeId) {
+    creditsQuery = creditsQuery.eq('store_id', storeId);
+    paymentsQuery = paymentsQuery.eq('store_id', storeId);
+  }
+
+  if (month && month !== 'all') {
+    const [yearStr, monthStr] = month.split('-');
+    const year = parseInt(yearStr, 10);
+    const monthNum = parseInt(monthStr, 10);
+    if (!isNaN(year) && !isNaN(monthNum)) {
+      const startOfMonth = new Date(
+        year,
+        monthNum - 1,
+        1,
+        0,
+        0,
+        0,
+        0,
+      ).toISOString();
+      const endOfMonth = new Date(year, monthNum, 1, 0, 0, 0, 0).toISOString();
+
+      creditsQuery = creditsQuery
+        .gte('created_at', startOfMonth)
+        .lt('created_at', endOfMonth);
+
+      paymentsQuery = paymentsQuery
+        .gte('payment_date', startOfMonth)
+        .lt('payment_date', endOfMonth);
+    }
+  }
+
+  const [
+    {data: credits, error: creditsError},
+    {data: payments, error: paymentsError},
+  ] = await Promise.all([creditsQuery, paymentsQuery]);
+
+  if (creditsError) throw creditsError;
+  if (paymentsError) throw paymentsError;
+
   return {
     customer,
     stores: stores ?? [],

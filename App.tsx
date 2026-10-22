@@ -19,50 +19,112 @@ import {register_fcm_token, syncPendingDeviceToken} from './src/services/deviceS
 
 function useFirebaseNotifications() {
   useEffect(() => {
-    const messaging = getMessaging();
     let mounted = true;
+    let unsubscribeMessage: (() => void) | null = null;
+    let unsubscribeRefresh: (() => void) | null = null;
+    let authSubscription: {unsubscribe: () => void} | null = null;
 
-    const notificationSetup = (async () => {
-      const settings = await notifee.requestPermission();
-      console.log(
-        'FCM_PERMISO_STATUS:',
-        (settings as any)?.authorizationStatus,
-      );
-      await notifee.createChannel({
-        id: 'mensajes',
-        name: 'Mensajes',
-        importance: AndroidImportance.HIGH,
-        sound: 'default',
-        vibration: true,
-      });
-      console.log('FCM_CANAL_CREADO: mensajes');
-      return 'mensajes';
-    })().catch(notificationError => {
-      console.warn(
-        'No fue posible configurar las notificaciones:',
-        notificationError,
-      );
-      return null;
-    });
+    const setupNotificationsSafe = async () => {
+      try {
+        // 1. Configurar Notifee (permisos y canal) de forma protegida
+        let channelId = 'mensajes';
+        try {
+          const settings = await notifee.requestPermission();
+          console.log('FCM_PERMISO_STATUS:', (settings as any)?.authorizationStatus);
 
-    getToken(messaging)
-      .then(token => {
-        if (mounted) {
-          console.log('FCM_TOKEN:', token);
-          register_fcm_token(token);
+          await notifee.createChannel({
+            id: 'mensajes',
+            name: 'Mensajes',
+            importance: AndroidImportance.HIGH,
+            sound: 'default',
+            vibration: true,
+          });
+          console.log('FCM_CANAL_CREADO: mensajes');
+        } catch (notifeeErr) {
+          console.warn('Error configurando canal Notifee:', notifeeErr);
         }
-      })
-      .catch(tokenError => {
-        console.warn('No fue posible obtener el token FCM:', tokenError);
-      });
 
-    const unsubscribeTokenRefresh = onTokenRefresh(messaging, token => {
-      console.log('FCM_TOKEN_REFRESCADO:', token);
-      register_fcm_token(token);
-    });
+        if (!mounted) return;
+
+        // 2. Inicializar Firebase Messaging
+        let messaging: any = null;
+        try {
+          messaging = getMessaging();
+        } catch (msgInitErr) {
+          console.warn('No se pudo inicializar Firebase Messaging:', msgInitErr);
+          return;
+        }
+
+        if (!messaging || !mounted) return;
+
+        // 3. Obtener el token FCM de forma segura
+        try {
+          const token = await getToken(messaging);
+          if (mounted && token) {
+            console.log('FCM_TOKEN:', token);
+            await register_fcm_token(token);
+          }
+        } catch (tokenError) {
+          console.warn('No fue posible obtener el token FCM (posible falta de Google Play Services o red):', tokenError);
+        }
+
+        if (!mounted) return;
+
+        // 4. Suscripción a rotación de tokens
+        try {
+          unsubscribeRefresh = onTokenRefresh(messaging, token => {
+            console.log('FCM_TOKEN_REFRESCADO:', token);
+            register_fcm_token(token);
+          });
+        } catch (refreshErr) {
+          console.warn('Error en onTokenRefresh:', refreshErr);
+        }
+
+        // 5. Suscripción a mensajes en primer plano
+        try {
+          unsubscribeMessage = onMessage(messaging, async remoteMessage => {
+            console.log('FCM_MENSAJE_RECIBIDO:', JSON.stringify(remoteMessage));
+            const title = String(
+              remoteMessage?.notification?.title ??
+                remoteMessage?.data?.title ??
+                'Nuevo mensaje',
+            );
+            const body = String(
+              remoteMessage?.notification?.body ??
+                remoteMessage?.data?.body ??
+                'Tienes un mensaje nuevo.',
+            );
+
+            try {
+              const notificationId = await notifee.displayNotification({
+                title,
+                body,
+                android: {
+                  channelId: 'mensajes',
+                  pressAction: {id: 'default'},
+                },
+                ios: {sound: 'default'},
+              });
+              console.log('FCM_MOSTRADA_ID:', notificationId);
+            } catch (notificationError) {
+              console.warn('No fue posible mostrar la notificación:', notificationError);
+            }
+          });
+        } catch (onMessageErr) {
+          console.warn('Error en onMessage:', onMessageErr);
+        }
+      } catch (err) {
+        console.warn('Excepción general en setupNotificationsSafe:', err);
+      }
+    };
+
+    // Pequeño retardo (600ms) para garantizar que la Activity nativa esté totalmente lista
+    const timer = setTimeout(() => {
+      setupNotificationsSafe();
+    }, 600);
 
     const {
-      data: {subscription: authSubscription},
+      data: {subscription},
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (
         session?.user &&
@@ -73,56 +135,14 @@ function useFirebaseNotifications() {
         syncPendingDeviceToken();
       }
     });
-
-    const unsubscribe = onMessage(messaging, async remoteMessage => {
-      console.log('FCM_MENSAJE_RECIBIDO:', JSON.stringify(remoteMessage));
-      console.log('FCM_TITULO:', remoteMessage?.notification?.title);
-      console.log('FCM_CUERPO:', remoteMessage?.notification?.body);
-      console.log('FCM_DATA:', JSON.stringify(remoteMessage?.data ?? {}));
-      console.log('FCM_MESSAGE_ID:', (remoteMessage as any)?.messageId);
-
-      const channelId = await notificationSetup;
-      console.log('FCM_CHANNEL_ID:', channelId);
-      if (!channelId) {
-        console.warn('FCM_SIN_CANAL: no se muestra notificación');
-        return;
-      }
-
-      const title = String(
-        remoteMessage?.notification?.title ??
-          remoteMessage?.data?.title ??
-          'Nuevo mensaje',
-      );
-      const body = String(
-        remoteMessage?.notification?.body ??
-          remoteMessage?.data?.body ??
-          'Tienes un mensaje nuevo.',
-      );
-
-      try {
-        const notificationId = await notifee.displayNotification({
-          title,
-          body,
-          android: {
-            channelId,
-            pressAction: {id: 'default'},
-          },
-          ios: {sound: 'default'},
-        });
-        console.log('FCM_MOSTRADA_ID:', notificationId);
-      } catch (notificationError) {
-        console.warn(
-          'No fue posible mostrar la notificación:',
-          notificationError,
-        );
-      }
-    });
+    authSubscription = subscription;
 
     return () => {
       mounted = false;
-      unsubscribe();
-      unsubscribeTokenRefresh();
-      authSubscription.unsubscribe();
+      clearTimeout(timer);
+      unsubscribeMessage?.();
+      unsubscribeRefresh?.();
+      authSubscription?.unsubscribe();
     };
   }, []);
 }

@@ -1,36 +1,271 @@
-import {useQuery} from '@tanstack/react-query';
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import { useQuery } from '@tanstack/react-query';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   BackHandler,
+  Easing,
   FlatList,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
-import {Card} from '../components/ui/Card';
-import {Button} from '../components/ui/Button';
-import {showAlert} from '../utils/alert';
-import {confirmLogout, CUSTOMER_LOGOUT_MESSAGE} from '../lib/session';
-import {fetchCustomerPortal} from '../services/customerPortal';
-import {Colors, Radius, formatCOP} from '../theme';
-import {useFocusEffect} from '@react-navigation/native';
+import NetInfo from '@react-native-community/netinfo';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { showAlert } from '../utils/alert';
+import { confirmLogout, CUSTOMER_LOGOUT_MESSAGE } from '../lib/session';
+import { fetchCustomerPortal } from '../services/customerPortal';
+import { Colors, Radius, formatCOP } from '../theme';
+import { useFocusEffect } from '@react-navigation/native';
+
+const MONTH_NAMES = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+];
+
+const MONTH_SHORT_NAMES = [
+  'Ene',
+  'Feb',
+  'Mar',
+  'Abr',
+  'May',
+  'Jun',
+  'Jul',
+  'Ago',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dic',
+];
+
+const getCurrentMonthKey = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
+const getMonthKeyFromDate = (dateStr?: string | null) => {
+  if (!dateStr) {
+    return '';
+  }
+  try {
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      return `${year}-${month}`;
+    }
+  } catch (_e) {}
+  return String(dateStr).slice(0, 7);
+};
+
+const formatMonthLabel = (monthKey: string) => {
+  if (monthKey === 'all') {
+    return 'Todos los meses';
+  }
+  const [yearStr, monthStr] = monthKey.split('-');
+  const monthIdx = parseInt(monthStr, 10) - 1;
+  const monthName = MONTH_NAMES[monthIdx] || monthKey;
+  return `${monthName} ${yearStr}`;
+};
+
+const formatMonthHeader = (monthKey: string) => {
+  if (monthKey === 'all') {
+    return 'TODOS';
+  }
+  const [yearStr, monthStr] = monthKey.split('-');
+  const monthIdx = parseInt(monthStr, 10) - 1;
+  const monthName = MONTH_NAMES[monthIdx] || monthKey;
+  const currentYear = new Date().getFullYear().toString();
+  if (yearStr === currentYear) {
+    return monthName.toUpperCase();
+  }
+  const shortMonth = MONTH_SHORT_NAMES[monthIdx] || monthKey;
+  return `${shortMonth.toUpperCase()} ${yearStr}`;
+};
+
+const normalizeSearchText = (text: string) =>
+  text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+const generateAvailableMonths = (createdAt?: string | null) => {
+  const months: string[] = [];
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  let pastLimitMonths = 12;
+  if (createdAt) {
+    try {
+      const createdDate = new Date(createdAt);
+      if (!isNaN(createdDate.getTime())) {
+        const diffYears = currentYear - createdDate.getFullYear();
+        const diffMonths =
+          diffYears * 12 + (currentMonth - createdDate.getMonth());
+        if (diffMonths > 12) {
+          pastLimitMonths = Math.min(diffMonths + 1, 36);
+        }
+      }
+    } catch (_e) {}
+  }
+
+  for (let i = 0; i < pastLimitMonths; i++) {
+    const d = new Date(currentYear, currentMonth - i, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    months.push(`${y}-${m}`);
+  }
+  return months;
+};
 
 export function CustomerHomeScreen() {
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'payment'>(
     'all',
   );
+  const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthKey);
+  const [isMonthModalVisible, setIsMonthModalVisible] = useState(false);
+  const [searchConcept, setSearchConcept] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  const {data, isLoading, refetch} = useQuery({
-    queryKey: ['customer-portal'],
-    queryFn: fetchCustomerPortal,
+  // Animaciones suaves para la apertura y cierre del buscador
+  const searchInputRef = useRef<TextInput>(null);
+  const searchAnim = useRef(new Animated.Value(0)).current;
+
+  const handleOpenSearch = () => {
+    setIsSearchOpen(true);
+    Animated.timing(searchAnim, {
+      toValue: 1,
+      duration: 380,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      searchInputRef.current?.focus();
+    });
+  };
+
+  const handleCloseSearch = () => {
+    Animated.timing(searchAnim, {
+      toValue: 0,
+      duration: 320,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setIsSearchOpen(false);
+        setSearchConcept('');
+      }
+    });
+  };
+
+  const conceptRowOpacity = searchAnim.interpolate({
+    inputRange: [0, 0.4],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
   });
+
+  const conceptRowTranslateX = searchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -10],
+  });
+
+  const searchBoxOpacity = searchAnim.interpolate({
+    inputRange: [0.1, 1],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const searchBoxScaleX = searchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.65, 1],
+  });
+
+  const searchBoxTranslateX = searchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [16, 0],
+  });
+
+  // Al cambiar o salir de la tienda seleccionada, restablecer filtros a mes actual
+  useEffect(() => {
+    setSelectedMonth(getCurrentMonthKey());
+    setSearchConcept('');
+    setIsSearchOpen(false);
+    searchAnim.setValue(0);
+    setFilterType('all');
+  }, [selectedStoreId]);
+
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
+    queryKey: ['customer-portal', selectedStoreId, selectedMonth],
+    queryFn: () =>
+      fetchCustomerPortal({
+        storeId: selectedStoreId,
+        month: selectedMonth,
+      }),
+  });
+
+  // Validación de conexión a internet antes de intentar cambiar de fecha / mes
+  const checkInternetConnection = async (): Promise<boolean> => {
+    try {
+      const netState = await NetInfo.fetch();
+      const isOnline = Boolean(
+        netState.isConnected && netState.isInternetReachable !== false,
+      );
+      if (!isOnline) {
+        showAlert({
+          title: 'Sin conexión a internet',
+          message:
+            'Para consultar los movimientos de otro mes o traer más datos debes tener conexión a internet.',
+          type: 'warning',
+        });
+        return false;
+      }
+      return true;
+    } catch (_e) {
+      return true;
+    }
+  };
+
+  const handleOpenMonthPicker = async () => {
+    const hasNet = await checkInternetConnection();
+    if (!hasNet) {
+      return;
+    }
+    setIsMonthModalVisible(true);
+  };
+
+  const handleSelectMonth = async (monthKey: string) => {
+    if (monthKey === selectedMonth) {
+      setIsMonthModalVisible(false);
+      return;
+    }
+    const hasNet = await checkInternetConnection();
+    if (!hasNet) {
+      return;
+    }
+    setSelectedMonth(monthKey);
+    setIsMonthModalVisible(false);
+  };
 
   // Manejo del botón físico "Atrás" en Android
   useFocusEffect(
@@ -118,20 +353,40 @@ export function CustomerHomeScreen() {
         paymentsSum += m.amount;
       }
     });
-    return {creditsSum, paymentsSum};
+    return { creditsSum, paymentsSum };
   }, [storeMovements]);
 
-  // Movimientos filtrados para la tienda seleccionada
-  const filteredStoreMovements = useMemo(() => {
+  // Lista de meses disponibles para selección (últimos meses hacia atrás desde hoy o creación)
+  const availableMonths = useMemo(() => {
+    return generateAvailableMonths(data?.customer?.created_at);
+  }, [data?.customer?.created_at]);
+
+  // Movimientos filtrados por tipo (todo / compras / abonos) en memoria sobre los datos traídos de Supabase
+  const typeFilteredMovements = useMemo(() => {
     if (filterType === 'all') {
       return storeMovements;
     }
     return storeMovements.filter(m => m.kind === filterType);
   }, [storeMovements, filterType]);
 
+  // Movimientos finales filtrados por el buscador "Qué fue" en memoria sobre los datos traídos
+  const filteredStoreMovements = useMemo(() => {
+    const term = normalizeSearchText(searchConcept.trim());
+    if (!term) {
+      return typeFilteredMovements;
+    }
+    return typeFilteredMovements.filter(m => {
+      const titleMatch = normalizeSearchText(m.title).includes(term);
+      const notesMatch = m.notes
+        ? normalizeSearchText(m.notes).includes(term)
+        : false;
+      return titleMatch || notesMatch;
+    });
+  }, [typeFilteredMovements, searchConcept]);
+
   // Función para cerrar sesión con confirmación
   const handleLogout = useCallback(() => {
-    confirmLogout({message: CUSTOMER_LOGOUT_MESSAGE});
+    confirmLogout({ message: CUSTOMER_LOGOUT_MESSAGE });
   }, []);
 
   const handleCallStore = (phone?: string | null) => {
@@ -191,7 +446,7 @@ export function CustomerHomeScreen() {
           <TouchableOpacity
             style={styles.backBtn}
             onPress={() => setSelectedStoreId(null)}
-            hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Ionicons name="arrow-back" size={20} color={Colors.primary} />
             <Text style={styles.backBtnText}>Volver a mis tiendas</Text>
           </TouchableOpacity>
@@ -266,11 +521,11 @@ export function CustomerHomeScreen() {
                 {isPaid
                   ? 'No tienes ninguna deuda pendiente con este tendero.'
                   : 'Este es el dinero que te falta por pagar.'}
-                {creditLimit > 0
+                {/* {creditLimit > 0
                   ? ` Tu tope máximo de fiado aquí es de ${formatCOP(
-                      creditLimit,
-                    )}.`
-                  : ''}
+                    creditLimit,
+                  )}.`
+                  : ''} */}
               </Text>
             </View>
           </Card>
@@ -335,29 +590,165 @@ export function CustomerHomeScreen() {
 
           {/* Tabla / Libreta de apuntes */}
           <View style={styles.ledgerTable}>
-            {/* Encabezado de la tabla */}
+            {/* Encabezado de la tabla con filtro Mes y Buscador "Qué fue" */}
             <View style={styles.tableHeaderRow}>
-              <Text style={[styles.tableColHeader, styles.colDate]}>FECHA</Text>
-              <Text style={[styles.tableColHeader, styles.colConcept]}>
-                QUÉ FUE
-              </Text>
-              <Text style={[styles.tableColHeader, styles.colAmount]}>
-                VALOR
-              </Text>
+              {/* Filtro Mes (reemplaza FECHA con el mes actual y abre modal de selección) */}
+              <View style={styles.colDate}>
+                <TouchableOpacity
+                  style={styles.headerMonthBtn}
+                  onPress={handleOpenMonthPicker}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+                  <Text style={styles.headerMonthBtnText} numberOfLines={1}>
+                    {formatMonthHeader(selectedMonth)}
+                  </Text>
+                  <Ionicons name="caret-down" size={10} color="#9A3412" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Filtro QUÉ FUE con Lupa interactiva y apertura/cierre animados */}
+              <View style={[styles.colConcept, styles.colConceptHeader]}>
+                {/* Vista 1: Título y Lupa (se desvanece suavemente al abrir) */}
+                <Animated.View
+                  pointerEvents={isSearchOpen ? 'none' : 'auto'}
+                  style={[
+                    styles.headerConceptRow,
+                    {
+                      opacity: conceptRowOpacity,
+                      transform: [{ translateX: conceptRowTranslateX }],
+                    },
+                  ]}>
+                  <Text style={styles.tableColHeader}>QUÉ FUE</Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.headerSearchIconBtn,
+                      searchConcept.trim().length > 0 &&
+                        styles.headerSearchIconBtnActive,
+                    ]}
+                    onPress={handleOpenSearch}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                    <Ionicons
+                      name="search"
+                      size={12}
+                      color={
+                        searchConcept.trim().length > 0
+                          ? '#FFFFFF'
+                          : '#9A3412'
+                      }
+                    />
+                  </TouchableOpacity>
+                </Animated.View>
+
+                {/* Vista 2: Input de Búsqueda (se expande y cierra animado despacio) */}
+                <Animated.View
+                  pointerEvents={isSearchOpen ? 'auto' : 'none'}
+                  style={[
+                    styles.headerSearchBox,
+                    {
+                      opacity: searchBoxOpacity,
+                      transform: [
+                        { scaleX: searchBoxScaleX },
+                        { translateX: searchBoxTranslateX },
+                      ],
+                    },
+                  ]}>
+                  <Ionicons name="search" size={12} color={Colors.primary} />
+                  <TextInput
+                    ref={searchInputRef}
+                    style={styles.headerSearchInput}
+                    placeholder="Buscar..."
+                    placeholderTextColor={Colors.textMuted}
+                    value={searchConcept}
+                    onChangeText={setSearchConcept}
+                    returnKeyType="done"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <TouchableOpacity
+                    onPress={handleCloseSearch}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons
+                      name="close-circle"
+                      size={15}
+                      color={Colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                </Animated.View>
+              </View>
+
+              {/* Columna Valor */}
+              <View style={styles.colAmount}>
+                <Text style={styles.tableColHeader}>VALOR</Text>
+              </View>
             </View>
 
             {/* Filas de la tabla */}
-            {filteredStoreMovements.length === 0 ? (
+            {isError ? (
               <View style={styles.tableEmpty}>
                 <Ionicons
-                  name="receipt-outline"
+                  name="cloud-offline-outline"
+                  size={36}
+                  color={Colors.destructive}
+                />
+                <Text style={styles.tableEmptyTitle}>
+                  Sin conexión a internet
+                </Text>
+                <Text style={styles.tableEmptyText}>
+                  No se pudieron cargar los datos de {formatMonthLabel(selectedMonth)}. Para traer más datos debes tener conexión a internet.
+                </Text>
+                <TouchableOpacity
+                  style={styles.emptyActionBtn}
+                  onPress={() => refetch()}>
+                  <Text style={styles.emptyActionBtnText}>Reintentar</Text>
+                </TouchableOpacity>
+              </View>
+            ) : isFetching && !isLoading ? (
+              <View style={styles.tableLoadingWrap}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={styles.tableLoadingText}>
+                  Consultando movimientos de {formatMonthLabel(selectedMonth)}...
+                </Text>
+              </View>
+            ) : filteredStoreMovements.length === 0 ? (
+              <View style={styles.tableEmpty}>
+                <Ionicons
+                  name={
+                    searchConcept.trim().length > 0
+                      ? 'search-outline'
+                      : 'receipt-outline'
+                  }
                   size={32}
                   color={Colors.textMuted}
                 />
-                <Text style={styles.tableEmptyTitle}>Sin registros</Text>
-                <Text style={styles.tableEmptyText}>
-                  No hay movimientos para mostrar en este filtro.
+                <Text style={styles.tableEmptyTitle}>
+                  {searchConcept.trim().length > 0
+                    ? 'Sin coincidencias'
+                    : 'Sin registros en este mes'}
                 </Text>
+                <Text style={styles.tableEmptyText}>
+                  {searchConcept.trim().length > 0
+                    ? `No hay compras ni abonos que contengan "${searchConcept}".`
+                    : `No hay compras ni abonos registrados para ${formatMonthLabel(
+                        selectedMonth,
+                      )}.`}
+                </Text>
+                {searchConcept.trim().length > 0 ? (
+                  <TouchableOpacity
+                    style={styles.emptyActionBtn}
+                    onPress={() => setSearchConcept('')}>
+                    <Text style={styles.emptyActionBtnText}>
+                      Limpiar búsqueda
+                    </Text>
+                  </TouchableOpacity>
+                ) : selectedMonth !== 'all' && storeMovements.length > 0 ? (
+                  <TouchableOpacity
+                    style={styles.emptyActionBtn}
+                    onPress={() => handleSelectMonth('all')}>
+                    <Text style={styles.emptyActionBtnText}>
+                      Ver historial completo ({storeMovements.length})
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             ) : (
               filteredStoreMovements.map((item, index) => {
@@ -369,7 +760,7 @@ export function CustomerHomeScreen() {
                       styles.tableRow,
                       index % 2 === 1 && styles.tableRowAlt,
                       index === filteredStoreMovements.length - 1 &&
-                        styles.tableRowLast,
+                      styles.tableRowLast,
                     ]}>
                     {/* Columna Fecha */}
                     <View style={styles.colDate}>
@@ -436,7 +827,9 @@ export function CustomerHomeScreen() {
               <View style={styles.tableSummary}>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>
-                    Total fiado acumulado:
+                    {selectedMonth === 'all'
+                      ? 'Total fiado acumulado:'
+                      : `Total fiado en ${formatMonthLabel(selectedMonth)}:`}
                   </Text>
                   <Text style={styles.summaryCreditValue}>
                     +{formatCOP(storeTotals.creditsSum)}
@@ -444,7 +837,9 @@ export function CustomerHomeScreen() {
                 </View>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>
-                    Total que has abonado:
+                    {selectedMonth === 'all'
+                      ? 'Total que has abonado:'
+                      : `Total abonado en ${formatMonthLabel(selectedMonth)}:`}
                   </Text>
                   <Text style={styles.summaryPaymentValue}>
                     −{formatCOP(storeTotals.paymentsSum)}
@@ -477,6 +872,179 @@ export function CustomerHomeScreen() {
             style={styles.returnBtn}
           />
         </ScrollView>
+
+        {/* Modal para seleccionar el mes */}
+        <Modal
+          visible={isMonthModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIsMonthModalVisible(false)}>
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setIsMonthModalVisible(false)}>
+            <Pressable
+              style={styles.modalCard}
+              onPress={e => e.stopPropagation()}>
+              {/* Cabecera del modal */}
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeaderTitleWrap}>
+                  <View style={styles.modalIconWrap}>
+                    <Ionicons
+                      name="calendar"
+                      size={20}
+                      color={Colors.primary}
+                    />
+                  </View>
+                  <View style={styles.flexOne}>
+                    <Text style={styles.modalTitle}>Seleccionar el mes...</Text>
+                    <Text style={styles.modalSubtitle}>
+                      Filtra tus cuentas y abonos por mes
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setIsMonthModalVisible(false)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={styles.modalCloseBtn}>
+                  <Ionicons
+                    name="close"
+                    size={22}
+                    color={Colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* Lista de meses disponibles */}
+              <ScrollView
+                style={styles.modalMonthList}
+                showsVerticalScrollIndicator={true}>
+                {availableMonths.map(monthKey => {
+                  const isSelected = selectedMonth === monthKey;
+                  const isCurrent = monthKey === getCurrentMonthKey();
+                  const count = storeMovements.filter(
+                    m => getMonthKeyFromDate(m.date) === monthKey,
+                  ).length;
+
+                  return (
+                    <TouchableOpacity
+                      key={monthKey}
+                      style={[
+                        styles.modalMonthItem,
+                        isSelected && styles.modalMonthItemSelected,
+                      ]}
+                      activeOpacity={0.7}
+                      onPress={() => handleSelectMonth(monthKey)}>
+                      <View style={styles.modalMonthItemLeft}>
+                        <View
+                          style={[
+                            styles.modalMonthItemIcon,
+                            isSelected && styles.modalMonthItemIconSelected,
+                          ]}>
+                          <Ionicons
+                            name="calendar-outline"
+                            size={18}
+                            color={
+                              isSelected ? Colors.primary : Colors.textSecondary
+                            }
+                          />
+                        </View>
+                        <View style={styles.flexOne}>
+                          <View style={styles.modalMonthNameRow}>
+                            <Text
+                              style={[
+                                styles.modalMonthName,
+                                isSelected && styles.modalMonthNameSelected,
+                              ]}>
+                              {formatMonthLabel(monthKey)}
+                            </Text>
+                            {isCurrent && (
+                              <View style={styles.currentBadge}>
+                                <Text style={styles.currentBadgeText}>
+                                  Mes actual
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={styles.modalMonthCount}>
+                            {isSelected
+                              ? `${storeMovements.length} movimiento${
+                                  storeMovements.length === 1 ? '' : 's'
+                                } en este mes`
+                              : 'Consultar este mes'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Ionicons
+                        name={
+                          isSelected ? 'checkmark-circle' : 'ellipse-outline'
+                        }
+                        size={22}
+                        color={isSelected ? Colors.primary : Colors.border}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* Opción para ver todos los meses */}
+                <TouchableOpacity
+                  style={[
+                    styles.modalMonthItem,
+                    selectedMonth === 'all' && styles.modalMonthItemSelected,
+                    styles.modalMonthItemAll,
+                  ]}
+                  activeOpacity={0.7}
+                  onPress={() => handleSelectMonth('all')}>
+                  <View style={styles.modalMonthItemLeft}>
+                    <View
+                      style={[
+                        styles.modalMonthItemIcon,
+                        selectedMonth === 'all' &&
+                          styles.modalMonthItemIconSelected,
+                      ]}>
+                      <Ionicons
+                        name="layers-outline"
+                        size={18}
+                        color={
+                          selectedMonth === 'all'
+                            ? Colors.primary
+                            : Colors.textSecondary
+                        }
+                      />
+                    </View>
+                    <View style={styles.flexOne}>
+                      <Text
+                        style={[
+                          styles.modalMonthName,
+                          selectedMonth === 'all' &&
+                            styles.modalMonthNameSelected,
+                        ]}>
+                        Todos los meses
+                      </Text>
+                      <Text style={styles.modalMonthCount}>
+                        {selectedMonth === 'all'
+                          ? `${storeMovements.length} movimientos en total`
+                          : 'Consultar historial completo sin filtro de fecha'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Ionicons
+                    name={
+                      selectedMonth === 'all'
+                        ? 'checkmark-circle'
+                        : 'ellipse-outline'
+                    }
+                    size={22}
+                    color={
+                      selectedMonth === 'all' ? Colors.primary : Colors.border
+                    }
+                  />
+                </TouchableOpacity>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     );
   }
@@ -499,7 +1067,7 @@ export function CustomerHomeScreen() {
         <TouchableOpacity
           style={styles.logoutBtn}
           onPress={handleLogout}
-          hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons
             name="log-out-outline"
             size={20}
@@ -549,9 +1117,8 @@ export function CustomerHomeScreen() {
               <Text style={styles.heroHelpText}>
                 {allClear
                   ? 'No tienes ninguna deuda pendiente. ¡Felicitaciones!'
-                  : `Tienes cuenta en ${stores.length} tienda${
-                      stores.length !== 1 ? 's' : ''
-                    }. Toca cualquiera de tus tiendas abajo para ver tu libreta detallada.`}
+                  : `Tienes cuenta en ${stores.length} tienda${stores.length !== 1 ? 's' : ''
+                  }. Toca cualquiera de tus tiendas abajo para ver tu libreta detallada.`}
               </Text>
             </Card>
 
@@ -582,7 +1149,7 @@ export function CustomerHomeScreen() {
             </Text>
           </Card>
         }
-        renderItem={({item}: any) => {
+        renderItem={({ item }: any) => {
           const rawStore: any = item.stores;
           const store: any = Array.isArray(rawStore) ? rawStore[0] : rawStore;
           const storeName = store?.store_name ?? 'Tienda de barrio';
@@ -615,14 +1182,14 @@ export function CustomerHomeScreen() {
                     <Text style={styles.storeCardName}>{storeName}</Text>
                     {store?.address ? (
                       <Text style={styles.storeCardMeta} numberOfLines={1}>
-                        📍 {store.address}
+                        {store.address}
                       </Text>
                     ) : null}
-                    {creditLimit > 0 ? (
+                    {/* {creditLimit > 0 ? (
                       <Text style={styles.storeCardLimit}>
                         Tope de fiado: {formatCOP(creditLimit)}
                       </Text>
-                    ) : null}
+                    ) : null} */}
                   </View>
 
                   {/* Saldo de la tienda */}
@@ -811,7 +1378,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.border,
     shadowColor: '#1C1008',
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 2,
@@ -1068,11 +1635,13 @@ const styles = StyleSheet.create({
   },
   tableHeaderRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#FFF7ED',
     borderBottomWidth: 1.5,
     borderBottomColor: Colors.border,
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 12,
+    minHeight: 46,
   },
   tableColHeader: {
     fontSize: 11,
@@ -1081,15 +1650,81 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   colDate: {
-    width: 82,
+    width: 90,
   },
   colConcept: {
     flex: 1,
     paddingHorizontal: 6,
   },
+  colConceptHeader: {
+    justifyContent: 'center',
+    position: 'relative',
+    height: 32,
+    paddingHorizontal: 4,
+  },
   colAmount: {
-    width: 95,
+    width: 90,
     alignItems: 'flex-end',
+  },
+
+  // Filtro de mes en cabecera
+  headerMonthBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FED7AA',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: Radius.sm,
+    gap: 3,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+  },
+  headerMonthBtnText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#9A3412',
+    letterSpacing: 0.5,
+  },
+
+  // Filtro "Qué fue" y buscador animado
+  headerConceptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  headerSearchIconBtn: {
+    padding: 4,
+    borderRadius: Radius.sm,
+    backgroundColor: '#FED7AA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSearchIconBtnActive: {
+    backgroundColor: Colors.primary,
+  },
+  headerSearchBox: {
+    position: 'absolute',
+    left: 2,
+    right: 2,
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    borderRadius: Radius.sm,
+    paddingHorizontal: 6,
+    height: 32,
+    gap: 4,
+  },
+  headerSearchInput: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.text,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
   },
 
   // Filas
@@ -1174,6 +1809,162 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     textAlign: 'center',
+  },
+  emptyActionBtn: {
+    marginTop: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: Radius.md,
+    backgroundColor: '#FFEDD5',
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+  },
+  emptyActionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#9A3412',
+  },
+
+  // Modal Seleccionar Mes
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    width: '100%',
+    maxHeight: '80%',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    padding: 18,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalHeaderTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  modalIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFEDD5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalMonthList: {
+    maxHeight: 320,
+  },
+  modalMonthItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.cardAlt,
+    marginBottom: 8,
+  },
+  modalMonthItemSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: '#FFF7ED',
+  },
+  modalMonthItemAll: {
+    marginTop: 4,
+    borderStyle: 'dashed',
+  },
+  modalMonthItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  modalMonthItemIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalMonthItemIconSelected: {
+    backgroundColor: '#FFEDD5',
+  },
+  modalMonthNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  modalMonthName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  modalMonthNameSelected: {
+    color: '#9A3412',
+    fontWeight: '800',
+  },
+  currentBadge: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  currentBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#0369A1',
+  },
+  modalMonthCount: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  tableLoadingWrap: {
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  tableLoadingText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textSecondary,
   },
 
   // Resumen inferior de la tabla
