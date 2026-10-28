@@ -29,6 +29,7 @@ import {
   linkCustomerToStore,
 } from '../services/customers';
 import {useStore} from '../store/useStore';
+import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
 import {Colors, Radius, formatCOP} from '../theme';
 import {FormatMoney, parseMoney} from '../utils/format';
 
@@ -312,31 +313,33 @@ export function CustomersScreen({navigation}: any) {
 
   return (
     <View style={styles.wrap}>
+      <DynamicBrandCurves />
       <Header title="Clientes" subtitle="Busca y gestiona tus fiados" />
-      <View style={{paddingHorizontal: 20}}>
+      <View style={styles.searchWrap}>
         <Input
-          placeholder="Nombre, alias, cédula o teléfono"
+          placeholder="Buscar nombre o teléfono"
           value={search}
           onChangeText={setSearch}
           leadingIcon="search"
           returnKeyType="search"
+          pill
         />
       </View>
       <View style={styles.filterRow}>
         {(
           [
-            {key: 'all', label: `Todos · ${data?.length ?? 0}`},
+            {key: 'all', label: `Todos (${data?.length ?? 0})`},
             {
               key: 'owing',
-              label: `Con deuda · ${
+              label: `Con deuda (${
                 (data ?? []).filter(c => Number(c.current_balance) > 0).length
-              }`,
+              })`,
             },
             {
               key: 'clear',
-              label: `Al día · ${
+              label: `Al día (${
                 (data ?? []).filter(c => Number(c.current_balance) === 0).length
-              }`,
+              })`,
             },
           ] as const
         ).map(filter => (
@@ -358,7 +361,7 @@ export function CustomersScreen({navigation}: any) {
         ))}
       </View>
       <FlatList
-        contentContainerStyle={{padding: 20, gap: 12, paddingBottom: 96}}
+        contentContainerStyle={styles.listContent}
         data={visibleCustomers}
         keyExtractor={i => i.id}
         refreshing={isLoading}
@@ -391,6 +394,15 @@ export function CustomersScreen({navigation}: any) {
                 navigation.navigate('CustomerDetail', {id: item.id})
               }>
               <Card style={styles.customerCardItem}>
+                {/* Onda curva decorativa sutil en la esquina superior derecha de la tarjeta */}
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.cardCornerWave,
+                    !isOwing && styles.cardCornerWavePaid,
+                  ]}
+                />
+
                 <View style={styles.customerCardMainRow}>
                   <View style={[styles.avatar, !isOwing && styles.avatarPaid]}>
                     <Text
@@ -410,9 +422,16 @@ export function CustomersScreen({navigation}: any) {
                         {item.name}
                       </Text>
                     ) : null}
-                    <Text style={styles.sub}>
-                      {item.phone ? `📞 ${item.phone}` : 'Sin teléfono'}
-                    </Text>
+                    <View style={styles.phoneRow}>
+                      <Ionicons
+                        name="call"
+                        size={12}
+                        color={Colors.textSecondary}
+                      />
+                      <Text style={styles.phoneText} numberOfLines={1}>
+                        {item.phone || 'Sin teléfono'}
+                      </Text>
+                    </View>
                   </View>
                   <View style={styles.customerCardBalanceCol}>
                     <Text
@@ -422,7 +441,7 @@ export function CustomersScreen({navigation}: any) {
                           ? styles.balanceLabelOwing
                           : styles.balanceLabelPaid,
                       ]}>
-                      {isOwing ? 'Te debe' : 'Al día'}
+                      {isOwing ? 'TE DEBE' : 'AL DÍA'}
                     </Text>
                     <Text
                       style={[
@@ -434,14 +453,14 @@ export function CustomersScreen({navigation}: any) {
                   </View>
                 </View>
 
-                {/* Pastilla indicativa clara para tocar */}
+                {/* Botón de acceso a libreta de cuentas dentro de la tarjeta */}
                 <View style={styles.cardFooterHint}>
                   <Text style={styles.cardFooterText}>
-                    Toca para ver su libreta de cuentas
+                    Ver libreta de cuentas
                   </Text>
                   <Ionicons
                     name="chevron-forward"
-                    size={15}
+                    size={16}
                     color={Colors.primary}
                   />
                 </View>
@@ -812,81 +831,168 @@ export function CustomersScreen({navigation}: any) {
 }
 
 const styles = StyleSheet.create({
-  wrap: {flex: 1, backgroundColor: Colors.background},
+  wrap: {flex: 1, backgroundColor: Colors.background, overflow: 'hidden'},
+  searchWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
   filterRow: {
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: Colors.card,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  filterChipActive: {backgroundColor: Colors.primaryLight, borderColor: Colors.primaryMid},
-  filterText: {fontSize: 12, color: Colors.textSecondary, fontWeight: '600'},
-  filterTextActive: {color: Colors.primary, fontWeight: '800'},
+  filterChipActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primaryMid,
+  },
+  filterText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  filterTextActive: {
+    color: Colors.primaryDark,
+    fontWeight: '800',
+  },
+  listContent: {
+    padding: 20,
+    gap: 14,
+    paddingBottom: 100,
+  },
   flexOne: {flex: 1},
   customerCardItem: {
-    padding: 14,
-    gap: 10,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: Colors.border,
+    gap: 14,
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#142033',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  cardCornerWave: {
+    position: 'absolute',
+    top: -16,
+    right: -16,
+    width: 68,
+    height: 68,
+    borderBottomLeftRadius: 55,
+    backgroundColor: '#FFE4D0',
+    opacity: 0.65,
+  },
+  cardCornerWavePaid: {
+    backgroundColor: '#D1F5E0',
   },
   customerCardMainRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarPaid: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: Colors.successAlt,
+  },
+  avatarText: {
+    color: Colors.primary,
+    fontWeight: '800',
+    fontSize: 19,
   },
   avatarTextPaid: {
-    color: '#15803D',
+    color: Colors.success,
+  },
+  name: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: Colors.text,
+    letterSpacing: -0.2,
+  },
+  sub: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 3,
+  },
+  phoneText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '500',
   },
   customerCardBalanceCol: {
     alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   balanceLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 2,
   },
   balanceLabelOwing: {
     color: Colors.destructive,
   },
   balanceLabelPaid: {
-    color: '#15803D',
+    color: Colors.success,
+  },
+  balance: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
   balanceOwing: {
     color: Colors.destructive,
   },
   balancePaid: {
-    color: '#15803D',
+    color: Colors.success,
   },
   cardFooterHint: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F8FAFC',
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: Radius.md,
+    backgroundColor: '#FFF8F2',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: '#FFEFE5',
   },
   cardFooterText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.primary,
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 32,
+    paddingVertical: 36,
     paddingHorizontal: 20,
     gap: 8,
   },
@@ -902,18 +1008,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   row: {flexDirection: 'row', alignItems: 'center', gap: 12},
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {color: Colors.primary, fontWeight: '800', fontSize: 18},
-  name: {fontWeight: '700', color: Colors.text},
-  sub: {color: Colors.textSecondary, fontSize: 12},
-  balance: {fontWeight: '800', color: Colors.text},
   sheet: {
     flex: 1,
     backgroundColor: Colors.card,

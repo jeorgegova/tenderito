@@ -5,6 +5,7 @@ import {useFocusEffect} from '@react-navigation/native';
 import {Button} from '../components/ui/Button';
 import {Card} from '../components/ui/Card';
 import {Header} from '../components/ui/Header';
+import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
 import {MonochromeIcon} from '../components/ui/MonochromeIcon';
 import {showAlert} from '../components/ui/AlertModal';
 import {supabase} from '../lib/supabase';
@@ -141,6 +142,7 @@ export function ProfileScreen({navigation}: any) {
 
   return (
     <View style={styles.wrap}>
+      <DynamicBrandCurves />
       <Header title="Mi negocio" subtitle="Perfil y suscripción" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Card style={styles.accountCard}>
@@ -286,27 +288,34 @@ export function ProfileScreen({navigation}: any) {
 }
 
 const styles = StyleSheet.create({
-  wrap: {flex: 1, backgroundColor: Colors.background},
+  wrap: {flex: 1, backgroundColor: Colors.background, overflow: 'hidden'},
   content: {padding: 20, paddingTop: 4, paddingBottom: 32, gap: 12},
-  accountCard: {alignItems: 'center', paddingVertical: 22},
+  accountCard: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: '#FFFFFF',
+  },
   storeIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 17,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
   },
-  store: {fontSize: 20, fontWeight: '800', color: Colors.text},
-  merchant: {color: Colors.textSecondary},
+  store: {fontSize: 22, fontWeight: '800', color: Colors.text},
+  merchant: {color: Colors.textSecondary, fontSize: 14, marginTop: 2},
   planPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 999,
     backgroundColor: Colors.primaryLight,
     borderWidth: 1,
@@ -314,11 +323,20 @@ const styles = StyleSheet.create({
   },
   planDot: {width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.primary},
   plan: {fontWeight: '700', color: Colors.primary, fontSize: 12, textTransform: 'capitalize'},
-  sectionHeader: {marginTop: 9, marginBottom: -3},
-  section: {fontSize: 19, fontWeight: '800', color: Colors.text},
-  sectionHint: {fontSize: 12, color: Colors.textSecondary, marginTop: 3},
-  planCard: {flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13},
-  currentPlan: {borderColor: Colors.primary, borderWidth: 1.5, backgroundColor: Colors.card},
+  sectionHeader: {marginTop: 10, marginBottom: -2},
+  section: {fontSize: 18, fontWeight: '800', color: Colors.text},
+  sectionHint: {fontSize: 13, color: Colors.textSecondary, marginTop: 2},
+  planCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 15,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: '#FFFFFF',
+  },
+  currentPlan: {borderColor: Colors.primary, borderWidth: 1.5, backgroundColor: '#FFFFFF'},
   planIcon: {
     width: 38,
     height: 38,

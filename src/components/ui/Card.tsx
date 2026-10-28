@@ -12,14 +12,14 @@ export function Card({children, style, ...rest}: ViewProps) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.card,
-    borderRadius: Radius.lg,
+    borderRadius: Radius.xl, // 20-24px rounded corners
     padding: 16,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
-    shadowColor: '#0F172A',
-    shadowOffset: {width: 0, height: 2},
+    borderColor: Colors.border,
+    shadowColor: '#142033',
+    shadowOffset: {width: 0, height: 4},
     shadowOpacity: 0.04,
-    shadowRadius: 8,
+    shadowRadius: 12,
     elevation: 2,
   },
 });

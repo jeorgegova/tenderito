@@ -1,19 +1,27 @@
 import {useEffect, useRef, useState} from 'react';
 import {Animated, Pressable, StyleSheet, Text, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import Ionicons from '@react-native-vector-icons/ionicons';
 import {Colors} from '../../theme';
-import {MonochromeIcon, type IconName} from './MonochromeIcon';
 
-const PILL_W = 58;
-const PILL_H = 34;
+const PILL_W = 60;
+const PILL_H = 32;
 
-function iconFor(routeName: string): IconName {
-  if (routeName === 'Inicio') return 'home';
-  if (routeName === 'Clientes') return 'clients';
-  if (routeName === 'Estadísticas') return 'chart';
-  if (routeName === 'Alertas') return 'alerts';
-  if (routeName === 'Perfil') return 'profile';
-  return 'receipt';
+function getTabIcon(routeName: string, focused: boolean) {
+  switch (routeName) {
+    case 'Inicio':
+      return focused ? 'home' : 'home-outline';
+    case 'Clientes':
+      return focused ? 'people' : 'people-outline';
+    case 'Estadísticas':
+      return focused ? 'stats-chart' : 'stats-chart-outline';
+    case 'Alertas':
+      return focused ? 'notifications' : 'notifications-outline';
+    case 'Perfil':
+      return focused ? 'person' : 'person-outline';
+    default:
+      return focused ? 'document-text' : 'document-text-outline';
+  }
 }
 
 export function MagnetTabBar({state, navigation}: any) {
@@ -28,42 +36,55 @@ export function MagnetTabBar({state, navigation}: any) {
     Animated.spring(x, {
       toValue: 8 + state.index * itemW + (itemW - PILL_W) / 2,
       useNativeDriver: true,
-      speed: 20,
-      bounciness: 8,
+      speed: 22,
+      bounciness: 6,
     }).start();
   }, [state.index, itemW, x]);
 
   return (
     <View
-      style={[styles.bar, {paddingBottom: insets.bottom + 4}]}
+      style={[
+        styles.bar,
+        {
+          paddingBottom: Math.max(insets.bottom, 6) + 4,
+        },
+      ]}
       onLayout={e => setWidth(e.nativeEvent.layout.width)}>
       {width > 0 ? (
         <Animated.View
-          style={[
-            styles.pill,
-            {transform: [{translateX: x}]},
-          ]}
+          pointerEvents="none"
+          style={[styles.pill, {transform: [{translateX: x}]}]}
         />
       ) : null}
       {state.routes.map((route: any, index: number) => {
         const focused = state.index === index;
         const color = focused ? Colors.primary : Colors.tabInactive;
+        const iconName = getTabIcon(route.name, focused);
+
         return (
           <Pressable
             key={route.key}
             onPress={() => navigation.navigate(route.name)}
             style={styles.item}
-            hitSlop={8}>
+            hitSlop={6}
+            accessibilityRole="tab"
+            accessibilityState={{selected: focused}}
+            accessibilityLabel={route.name}>
             <View style={styles.iconBox}>
-              <MonochromeIcon
-                name={iconFor(route.name)}
-                color={color}
+              <Ionicons
+                name={iconName}
                 size={22}
-                strokeWidth={focused ? 2.5 : 1.9}
+                color={color}
               />
             </View>
-            <Text style={[styles.label, {color}]}>
-              {route.name === 'Estadísticas' ? 'Stats' : route.name}
+            <Text
+              style={[
+                styles.label,
+                {color},
+                focused && styles.labelFocused,
+              ]}
+              numberOfLines={1}>
+              {route.name}
             </Text>
           </Pressable>
         );
@@ -75,16 +96,16 @@ export function MagnetTabBar({state, navigation}: any) {
 const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
-    backgroundColor: Colors.card,
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: Colors.border,
     paddingTop: 8,
     paddingHorizontal: 8,
-    shadowColor: '#0F172A',
+    shadowColor: '#142033',
     shadowOffset: {width: 0, height: -3},
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    elevation: 14,
+    elevation: 12,
   },
   pill: {
     position: 'absolute',
@@ -92,10 +113,30 @@ const styles = StyleSheet.create({
     left: 0,
     width: PILL_W,
     height: PILL_H,
-    borderRadius: 17,
+    borderRadius: 16,
     backgroundColor: Colors.primaryLight,
   },
-  item: {flex: 1, alignItems: 'center', gap: 2, paddingVertical: 2, zIndex: 1},
-  iconBox: {height: 28, alignItems: 'center', justifyContent: 'center'},
-  label: {fontSize: 10, fontWeight: '700'},
+  item: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 2,
+    zIndex: 1,
+  },
+  iconBox: {
+    width: PILL_W,
+    height: PILL_H,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.tabInactive,
+    textAlign: 'center',
+  },
+  labelFocused: {
+    fontWeight: '800',
+    color: Colors.primary,
+  },
 });

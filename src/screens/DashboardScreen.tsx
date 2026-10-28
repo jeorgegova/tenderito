@@ -13,6 +13,7 @@ import {useQuery} from '@tanstack/react-query';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
 import {Header} from '../components/ui/Header';
+import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
 import {fetchOverdueCredits, fetchTotalReceivable} from '../services/credits';
 import {fetchCustomers} from '../services/customers';
 import {Colors, formatCOP} from '../theme';
@@ -105,6 +106,7 @@ export function DashboardScreen({navigation}: any) {
 
   return (
     <View style={styles.wrap}>
+      <DynamicBrandCurves />
       <Header title="Inicio" subtitle="Tu plata, fácil y claro" />
       <ScrollView
         contentContainerStyle={styles.content}
@@ -151,26 +153,26 @@ export function DashboardScreen({navigation}: any) {
 
         {/* ── Tarjeta hero — monto total ── */}
         <View style={styles.heroCard}>
-          {/* Fondo decorativo */}
-          <View style={styles.heroBgCircle1} />
-          <View style={styles.heroBgCircle2} />
+          {/* Fondo decorativo con curvas orgánicas de la marca */}
+          <View pointerEvents="none" style={styles.heroBgCurve1} />
+          <View pointerEvents="none" style={styles.heroBgCurve2} />
 
           <View style={styles.heroTop}>
             <View style={styles.heroHeaderTitle}>
               <Ionicons
                 name="wallet-outline"
                 size={16}
-                color="rgba(255,255,255,0.9)"
+                color="rgba(255,255,255,0.95)"
               />
               <Text style={styles.heroCaption}>PLATA QUE TE DEBEN</Text>
             </View>
             <Pressable
               onPress={() => setShowBalance(v => !v)}
               accessibilityLabel={showBalance ? 'Ocultar saldo' : 'Ver saldo'}
-              hitSlop={10}>
+              hitSlop={12}>
               <Ionicons
                 name={showBalance ? 'eye' : 'eye-off'}
-                color="rgba(255,255,255,0.85)"
+                color="rgba(255,255,255,0.9)"
                 size={22}
               />
             </Pressable>
@@ -228,13 +230,24 @@ export function DashboardScreen({navigation}: any) {
             <ActivityIndicator size="small" color={Colors.destructive} />
             <Text style={styles.loadingText}>Cargando cuentas atrasadas…</Text>
           </Card>
+        ) : overdue.isError ? (
+          <Card style={styles.errorCard}>
+            <Ionicons name="warning" size={24} color={Colors.destructive} />
+            <View style={styles.flex1}>
+              <Text style={styles.errorTitle}>Error al obtener alertas</Text>
+              <Text style={styles.muted}>Toca para reintentar la carga.</Text>
+            </View>
+            <Pressable onPress={() => overdue.refetch()} style={styles.retryBtn}>
+              <Text style={styles.retryText}>Reintentar</Text>
+            </Pressable>
+          </Card>
         ) : (overdue.data ?? []).length === 0 ? (
           <Card style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
               <Ionicons
-                name="checkmark-circle-outline"
+                name="checkmark-circle"
                 size={26}
-                color="#15803D"
+                color={Colors.success}
               />
             </View>
             <View style={styles.flex1}>
@@ -277,7 +290,14 @@ export function DashboardScreen({navigation}: any) {
                       {item.concept} · venció el {item.due_date}
                     </Text>
                     {cust?.phone ? (
-                      <Text style={styles.muted}>📞 {cust.phone}</Text>
+                      <View style={styles.phoneInline}>
+                        <Ionicons
+                          name="call"
+                          size={11}
+                          color={Colors.textSecondary}
+                        />
+                        <Text style={styles.muted}>{cust.phone}</Text>
+                      </View>
                     ) : null}
                     <Text style={styles.touchHint}>
                       Toca para ver su libreta →
@@ -328,7 +348,7 @@ export function DashboardScreen({navigation}: any) {
           <Card style={styles.emptyCard}>
             <View style={styles.emptyDebtorsIcon}>
               <Ionicons
-                name="checkmark-done-outline"
+                name="checkmark-done"
                 size={24}
                 color={Colors.primary}
               />
@@ -369,9 +389,16 @@ export function DashboardScreen({navigation}: any) {
                         {customer.name}
                       </Text>
                     ) : null}
-                    <Text style={styles.muted}>
-                      {customer.phone ? `📞 ${customer.phone}` : 'Sin teléfono'}
-                    </Text>
+                    <View style={styles.phoneInline}>
+                      <Ionicons
+                        name="call"
+                        size={11}
+                        color={Colors.textSecondary}
+                      />
+                      <Text style={styles.muted}>
+                        {customer.phone || 'Sin teléfono'}
+                      </Text>
+                    </View>
                     <Text style={styles.touchHint}>
                       Toca para ver libreta →
                     </Text>
@@ -408,44 +435,47 @@ export function DashboardScreen({navigation}: any) {
 }
 
 const styles = StyleSheet.create({
-  wrap: {flex: 1, backgroundColor: Colors.background},
+  wrap: {flex: 1, backgroundColor: Colors.background, overflow: 'hidden'},
   content: {paddingHorizontal: 20, paddingTop: 16, paddingBottom: 96, gap: 12},
   flex1: {flex: 1},
 
   // ── Hero ──
   heroCard: {
-    backgroundColor: '#EB782C',
-    borderRadius: 24,
+    backgroundColor: Colors.primary,
+    borderRadius: 22,
     padding: 22,
     overflow: 'hidden',
-    shadowColor: '#C25514',
+    position: 'relative',
+    shadowColor: Colors.primary,
     shadowOffset: {width: 0, height: 6},
     shadowOpacity: 0.28,
     shadowRadius: 14,
     elevation: 6,
   },
-  heroBgCircle1: {
+  heroBgCurve1: {
     position: 'absolute',
-    width: 190,
-    height: 190,
-    borderRadius: 95,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    top: -60,
-    right: -40,
+    top: -45,
+    right: -25,
+    width: 200,
+    height: 160,
+    borderBottomLeftRadius: 110,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    transform: [{rotate: '-8deg'}],
   },
-  heroBgCircle2: {
+  heroBgCurve2: {
     position: 'absolute',
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    bottom: -30,
-    left: 15,
+    bottom: -35,
+    left: -20,
+    width: 140,
+    height: 120,
+    borderTopRightRadius: 80,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   heroTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    zIndex: 1,
   },
   heroHeaderTitle: {
     flexDirection: 'row',
@@ -453,18 +483,19 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   heroCaption: {
-    color: 'rgba(255,255,255,0.9)',
+    color: 'rgba(255,255,255,0.92)',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.6,
   },
   heroValue: {
     color: '#FFFFFF',
-    fontSize: 38,
-    lineHeight: 46,
-    fontWeight: '900',
+    fontSize: 36,
+    lineHeight: 44,
+    fontWeight: '800',
     marginTop: 10,
-    letterSpacing: -1,
+    letterSpacing: -0.8,
+    zIndex: 1,
   },
   heroBottom: {
     flexDirection: 'row',
@@ -473,11 +504,12 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.2)',
+    borderTopColor: 'rgba(255,255,255,0.22)',
+    zIndex: 1,
   },
   heroStat: {flexDirection: 'row', alignItems: 'baseline', gap: 5},
-  heroStatNum: {color: '#FFFFFF', fontSize: 22, fontWeight: '900'},
-  heroStatLabel: {color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '500'},
+  heroStatNum: {color: '#FFFFFF', fontSize: 22, fontWeight: '800'},
+  heroStatLabel: {color: 'rgba(255,255,255,0.88)', fontSize: 13, fontWeight: '500'},
   heroBtn: {
     backgroundColor: 'rgba(255,255,255,0.22)',
     paddingHorizontal: 14,
@@ -491,7 +523,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 6,
+    marginTop: 8,
     marginBottom: -2,
   },
   sectionHeaderTitle: {
@@ -504,48 +536,82 @@ const styles = StyleSheet.create({
   sectionLink: {fontSize: 13, fontWeight: '700', color: Colors.primary},
 
   // ── Cards de alertas ──
-  alertRow: {flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13},
+  alertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 15,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: '#FFFFFF',
+  },
   alertIcon: {
-    width: 40,
-    height: 40,
+    width: 42,
+    height: 42,
     borderRadius: 14,
     backgroundColor: Colors.destructiveAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  customerName: {fontSize: 15, color: Colors.text, fontWeight: '700'},
-  customerRealName: {fontSize: 12, color: Colors.textSecondary},
-  alertAmountWrap: {alignItems: 'flex-end'},
+  customerName: {fontSize: 16, color: Colors.text, fontWeight: '800'},
+  customerRealName: {fontSize: 12, color: Colors.textSecondary, marginTop: 1},
+  phoneInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  alertAmountWrap: {alignItems: 'flex-end', justifyContent: 'center'},
   alertAmountLabel: {
     fontSize: 11,
     color: Colors.destructive,
-    fontWeight: '600',
+    fontWeight: '700',
+    marginBottom: 2,
   },
-  alertAmount: {fontSize: 14, color: Colors.destructive, fontWeight: '800'},
+  alertAmount: {fontSize: 16, color: Colors.destructive, fontWeight: '800'},
 
   // ── Cards de deudores ──
-  debtorRow: {flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13},
+  debtorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 15,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: '#FFFFFF',
+  },
   avatar: {
     width: 44,
     height: 44,
-    borderRadius: 16,
+    borderRadius: 22,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {color: Colors.primary, fontSize: 18, fontWeight: '800'},
   balanceWrap: {alignItems: 'flex-end', gap: 2},
-  balanceLabel: {fontSize: 11, color: Colors.textSecondary, fontWeight: '600'},
-  balance: {fontSize: 15, color: Colors.destructive, fontWeight: '800'},
+  balanceLabel: {fontSize: 11, color: Colors.textSecondary, fontWeight: '700'},
+  balance: {fontSize: 16, color: Colors.destructive, fontWeight: '800'},
   touchHint: {
     fontSize: 11,
     color: Colors.primary,
     fontWeight: '700',
-    marginTop: 3,
+    marginTop: 4,
   },
 
   // ── Empty ──
-  emptyCard: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  emptyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+  },
   emptyIcon: {
     width: 42,
     height: 42,
@@ -562,17 +628,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyTitle: {fontSize: 14, color: Colors.text, fontWeight: '700'},
+  emptyTitle: {fontSize: 15, color: Colors.text, fontWeight: '800'},
   muted: {fontSize: 12, color: Colors.textSecondary},
 
-  // ── Loading ──
+  // ── Error & Loading ──
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: Colors.destructiveAlt,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  errorTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.destructive,
+  },
+  retryBtn: {
+    backgroundColor: Colors.destructive,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   loadingCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    paddingVertical: 18,
+    paddingVertical: 20,
     paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: '#FFFFFF',
   },
   loadingText: {
     fontSize: 13,

@@ -16,6 +16,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
 import {Header} from '../components/ui/Header';
+import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
 import {MonochromeIcon} from '../components/ui/MonochromeIcon';
 import {fetchCustomers} from '../services/customers';
 import {fetchStats, type StatsFilters} from '../services/stats';
@@ -116,6 +117,7 @@ export function StatsScreen({navigation}: any) {
 
   return (
     <View style={s.wrap}>
+      <DynamicBrandCurves />
       <Header title="Estadísticas" subtitle="Deudas, abonos y saldo por cliente" />
 
       <ScrollView
@@ -147,18 +149,18 @@ export function StatsScreen({navigation}: any) {
         <Pressable
           onPress={() => setShowCustomerPicker(true)}
           style={s.customerBtn}>
-          <MonochromeIcon name="person" color={Colors.primary} size={16} />
+          <Ionicons name="people-outline" color={Colors.primary} size={18} />
           <Text style={s.customerBtnText} numberOfLines={1}>
             {selectedIds.length === 0
               ? 'Todos los clientes'
               : `${selectedIds.length} cliente${selectedIds.length > 1 ? 's' : ''}: ${selectedNames.slice(0, 2).join(', ')}${selectedNames.length > 2 ? '…' : ''}`}
           </Text>
-          <Ionicons name="chevron-down" size={14} color={Colors.primary} />
+          <Ionicons name="chevron-down" size={16} color={Colors.primary} />
         </Pressable>
 
         {/* ── Tarjetas de resumen compactas ── */}
         {isLoading ? (
-          <Card>
+          <Card style={s.loadingCard}>
             <Text style={s.muted}>Calculando estadísticas…</Text>
           </Card>
         ) : (
@@ -166,8 +168,8 @@ export function StatsScreen({navigation}: any) {
             <View style={s.summaryGrid}>
               <View style={[s.summaryCard, s.summaryDebt]}>
                 <View style={s.summaryTopRow}>
-                  <View style={[s.summaryIconCircle, {backgroundColor: '#FEE2E2'}]}>
-                    <Ionicons name="arrow-up" size={12} color={Colors.destructive} />
+                  <View style={[s.summaryIconCircle, {backgroundColor: Colors.destructiveAlt}]}>
+                    <Ionicons name="arrow-up" size={13} color={Colors.destructive} />
                   </View>
                   <Text style={s.summaryLabel}>TOTAL FIADO</Text>
                 </View>
@@ -181,13 +183,13 @@ export function StatsScreen({navigation}: any) {
 
               <View style={[s.summaryCard, s.summaryPaid]}>
                 <View style={s.summaryTopRow}>
-                  <View style={[s.summaryIconCircle, {backgroundColor: '#DCFCE7'}]}>
-                    <Ionicons name="arrow-down" size={12} color="#15803D" />
+                  <View style={[s.summaryIconCircle, {backgroundColor: Colors.successAlt}]}>
+                    <Ionicons name="arrow-down" size={13} color={Colors.success} />
                   </View>
                   <Text style={s.summaryLabel}>TOTAL ABONADO</Text>
                 </View>
                 <Text
-                  style={[s.summaryValue, {color: '#15803D'}]}
+                  style={[s.summaryValue, {color: Colors.success}]}
                   numberOfLines={1}
                   adjustsFontSizeToFit>
                   {formatCOP(stats?.totalPayments ?? 0)}
@@ -198,7 +200,7 @@ export function StatsScreen({navigation}: any) {
             <View style={s.netCard}>
               <View style={s.netRow}>
                 <View style={s.netIcon}>
-                  <MonochromeIcon name="wallet" color={Colors.primary} size={18} />
+                  <Ionicons name="wallet-outline" color={Colors.primary} size={20} />
                 </View>
                 <View style={{flex: 1}}>
                   <Text style={s.netLabel}>SALDO PENDIENTE NETO</Text>
@@ -467,15 +469,15 @@ export function StatsScreen({navigation}: any) {
 }
 
 const s = StyleSheet.create({
-  wrap: {flex: 1, backgroundColor: Colors.background},
+  wrap: {flex: 1, backgroundColor: Colors.background, overflow: 'hidden'},
   content: {paddingHorizontal: 20, paddingTop: 4, gap: 14},
   // Presets
   presetRow: {gap: 8, paddingRight: 4},
   presetChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: Colors.card,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -484,139 +486,144 @@ const s = StyleSheet.create({
     borderColor: Colors.primaryMid,
   },
   presetText: {fontSize: 13, fontWeight: '600', color: Colors.textSecondary},
-  presetTextActive: {color: Colors.primary, fontWeight: '800'},
+  presetTextActive: {color: Colors.primaryDark, fontWeight: '800'},
   // Customer selector
   customerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.card,
-    borderRadius: 14,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: Colors.border,
+    shadowColor: '#142033',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 1,
   },
-  customerBtnText: {flex: 1, fontSize: 14, color: Colors.text, fontWeight: '600'},
+  customerBtnText: {flex: 1, fontSize: 14, color: Colors.text, fontWeight: '700'},
   // Summary cards (compactos para aprovechar espacio)
   summaryGrid: {flexDirection: 'row', gap: 10},
   summaryCard: {
     flex: 1,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     borderWidth: 1,
-    gap: 4,
-    shadowColor: '#0F172A',
-    shadowOffset: {width: 0, height: 1},
+    gap: 6,
+    shadowColor: '#142033',
+    shadowOffset: {width: 0, height: 3},
     shadowOpacity: 0.03,
-    shadowRadius: 4,
+    shadowRadius: 6,
     elevation: 1,
   },
-  summaryDebt: {backgroundColor: '#FFF5F5', borderColor: '#FECACA'},
-  summaryPaid: {backgroundColor: '#F0FDF4', borderColor: '#BBF7D0'},
+  summaryDebt: {backgroundColor: Colors.destructiveAlt, borderColor: '#FECACA'},
+  summaryPaid: {backgroundColor: Colors.successAlt, borderColor: '#BBF7D0'},
   summaryTopRow: {flexDirection: 'row', alignItems: 'center', gap: 6},
   summaryIconCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   summaryLabel: {
-    fontSize: 9.5,
+    fontSize: 11,
     fontWeight: '800',
     color: Colors.textSecondary,
     letterSpacing: 0.5,
   },
   summaryValue: {
-    fontSize: 16,
+    fontSize: 19,
     fontWeight: '800',
     letterSpacing: -0.3,
   },
   // Net card (compacto)
   netCard: {
-    backgroundColor: Colors.card,
-    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    borderColor: Colors.border,
     borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    shadowColor: '#0F172A',
-    shadowOffset: {width: 0, height: 1},
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    shadowColor: '#142033',
+    shadowOffset: {width: 0, height: 4},
     shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1.5,
+    shadowRadius: 8,
+    elevation: 2,
   },
   netRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
   netIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   netLabel: {
-    fontSize: 9.5,
+    fontSize: 11,
     fontWeight: '800',
     color: Colors.primary,
     letterSpacing: 0.5,
   },
   netValue: {
-    fontSize: 19,
+    fontSize: 22,
     fontWeight: '800',
     color: Colors.text,
-    letterSpacing: -0.3,
-    marginTop: 1,
+    letterSpacing: -0.5,
+    marginTop: 2,
   },
   countBadge: {
     alignItems: 'center',
-    paddingLeft: 12,
+    paddingLeft: 14,
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderLeftColor: Colors.border,
   },
-  countText: {fontSize: 18, fontWeight: '800', color: Colors.text},
-  countSub: {fontSize: 10, color: Colors.textSecondary, fontWeight: '500'},
+  countText: {fontSize: 19, fontWeight: '800', color: Colors.text},
+  countSub: {fontSize: 11, color: Colors.textSecondary, fontWeight: '500'},
   // Section Por cliente
-  customerSection: {gap: 10},
+  customerSection: {gap: 12, marginTop: 4},
   sectionHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  sectionTitle: {fontSize: 16, fontWeight: '800', color: Colors.text},
+  sectionTitle: {fontSize: 17, fontWeight: '800', color: Colors.text},
   sectionCountBadge: {
     backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 7,
-    paddingVertical: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderRadius: 10,
   },
   sectionCountText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     color: Colors.primary,
   },
-  legend: {flexDirection: 'row', alignItems: 'center', gap: 6},
+  legend: {flexDirection: 'row', alignItems: 'center', gap: 8},
   dot: {width: 8, height: 8, borderRadius: 4},
-  legendText: {fontSize: 11, color: Colors.textSecondary},
+  legendText: {fontSize: 12, color: Colors.textSecondary, fontWeight: '500'},
   // Customer cards list
-  customerList: {gap: 10},
+  customerList: {gap: 12},
   customerCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 16,
-    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    gap: 10,
-    shadowColor: '#0F172A',
-    shadowOffset: {width: 0, height: 1},
+    borderColor: Colors.border,
+    gap: 12,
+    shadowColor: '#142033',
+    shadowOffset: {width: 0, height: 3},
     shadowOpacity: 0.03,
-    shadowRadius: 4,
+    shadowRadius: 6,
     elevation: 1,
   },
   customerCardPressed: {
-    opacity: 0.85,
+    opacity: 0.88,
     backgroundColor: '#F8FAFC',
   },
   custTopRow: {
@@ -625,15 +632,15 @@ const s = StyleSheet.create({
     gap: 10,
   },
   custAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   custInitial: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
     color: Colors.primary,
   },
@@ -642,12 +649,12 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   custName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
     color: Colors.text,
   },
   custSubName: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.textSecondary,
     fontWeight: '500',
     marginTop: 1,
@@ -657,13 +664,13 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   custBalanceLabel: {
-    fontSize: 8.5,
+    fontSize: 10,
     fontWeight: '800',
     color: Colors.textSecondary,
     letterSpacing: 0.5,
   },
   custBalanceVal: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '800',
     marginTop: 1,
   },
@@ -671,7 +678,7 @@ const s = StyleSheet.create({
     color: Colors.destructive,
   },
   custBalanceZero: {
-    color: '#15803D',
+    color: Colors.success,
   },
   custMetricsRow: {
     flexDirection: 'row',
@@ -679,19 +686,19 @@ const s = StyleSheet.create({
   },
   custMetricBox: {
     flex: 1,
-    borderRadius: 10,
-    paddingVertical: 7,
-    paddingHorizontal: 9,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderWidth: 1,
     gap: 3,
   },
   metricBoxFiado: {
-    backgroundColor: '#FFF8F8',
-    borderColor: '#FEE2E2',
+    backgroundColor: Colors.destructiveAlt,
+    borderColor: '#FECACA',
   },
   metricBoxAbonado: {
-    backgroundColor: '#F3FCF6',
-    borderColor: '#DCFCE7',
+    backgroundColor: Colors.successAlt,
+    borderColor: '#BBF7D0',
   },
   metricTop: {
     flexDirection: 'row',
@@ -699,18 +706,18 @@ const s = StyleSheet.create({
     gap: 4,
   },
   metricDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   metricLabel: {
-    fontSize: 8.5,
+    fontSize: 9,
     fontWeight: '800',
     color: Colors.textSecondary,
     letterSpacing: 0.4,
   },
   metricValue: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '800',
     letterSpacing: -0.2,
   },
@@ -725,6 +732,11 @@ const s = StyleSheet.create({
     height: '100%',
     borderRadius: 2,
     minWidth: 0,
+  },
+  loadingCard: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Empty
   emptyCard: {alignItems: 'center', gap: 8, paddingVertical: 24},

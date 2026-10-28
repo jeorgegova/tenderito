@@ -1,24 +1,36 @@
 import {StyleSheet, Text, TextInput, View, type TextInputProps} from 'react-native';
+import Ionicons from '@react-native-vector-icons/ionicons';
 import {Colors, Radius} from '../../theme';
-import {MonochromeIcon} from './MonochromeIcon';
 
 interface Props extends TextInputProps {
   label?: string;
   error?: string;
   leadingIcon?: 'search';
+  pill?: boolean;
 }
 
-export function Input({label, error, leadingIcon, ...rest}: Props) {
+export function Input({label, error, leadingIcon, pill, ...rest}: Props) {
+  const isPill = pill || leadingIcon === 'search';
   return (
     <View style={styles.wrap}>
       {label && <Text style={styles.label}>{label}</Text>}
-      <View style={[styles.field, error ? styles.invalid : null]}>
-        {leadingIcon ? (
-          <MonochromeIcon name={leadingIcon} color={Colors.textMuted} size={18} />
+      <View
+        style={[
+          styles.field,
+          isPill && styles.pillField,
+          error ? styles.invalid : null,
+        ]}>
+        {leadingIcon === 'search' ? (
+          <Ionicons
+            name="search-outline"
+            size={19}
+            color={Colors.textMuted}
+            style={styles.leadingIcon}
+          />
         ) : null}
         <TextInput
           placeholderTextColor={Colors.textMuted}
-          style={styles.input}
+          style={[styles.input, leadingIcon && {paddingLeft: 0}]}
           {...rest}
         />
       </View>
@@ -40,25 +52,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     backgroundColor: Colors.card,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: Radius.md,
-    minHeight: 52,
+    minHeight: 50,
     paddingVertical: 2,
-    paddingHorizontal: 14,
-    // Sombra sutil para elevar los campos
-    shadowColor: '#0F172A',
-    shadowOffset: {width: 0, height: 1},
-    shadowOpacity: 0.02,
-    shadowRadius: 3,
+    paddingHorizontal: 16,
+    shadowColor: '#142033',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
     elevation: 1,
+  },
+  pillField: {
+    borderRadius: 24,
+    minHeight: 50,
+    paddingHorizontal: 16,
+    borderColor: '#E8EDF3',
+  },
+  leadingIcon: {
+    marginRight: 2,
   },
   invalid: {borderColor: Colors.destructive, borderWidth: 1.5},
   input: {
     flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 0,
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.text,
     fontWeight: '500',
   },

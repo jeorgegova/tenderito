@@ -3,37 +3,37 @@
 // Pensada para tenderos con poca experiencia digital, lectura rápida de números.
 
 export const Colors = {
-  // Marca — naranja vivo del logo (anillos, checkmark, acentos)
-  primary:        '#FF7A00',   // naranja principal brillante del logo
-  primaryDark:    '#EA580C',   // hover / pressed
-  primaryLight:   '#FFF7ED',   // fondos suaves naranja para chips/badges
-  primaryMid:     '#FFEDD5',   // bordes suaves naranja
+  // Marca — naranja vivo de Tenderito
+  primary:        '#FF6B00',   // naranja principal de la marca
+  primaryDark:    '#E85D00',   // naranja oscuro para pressed / énfasis
+  primaryLight:   '#FFF1E5',   // naranja claro para fondos de chips / badges activos
+  primaryMid:     '#FFD7B8',   // bordes suaves naranja
 
-  // Fondos limpios y modernos (blanco nítido, libre de tonos amarillentos/cafés)
-  background:     '#F8FAFC',   // Slate-50: fondo ultra limpio, moderno y fresco
-  card:           '#FFFFFF',   // Blanco puro (como la libreta del logo)
-  cardAlt:        '#F1F5F9',   // Slate-100: fondos neutros de soporte
+  // Fondos limpios y modernos
+  background:     '#F7F9FC',   // fondo general casi blanco, fresco y limpio
+  card:           '#FFFFFF',   // superficies / tarjetas blancas
+  cardAlt:        '#F1F5F9',   // neutro de soporte
 
-  // Texto de alto contraste y legibilidad (inspirado en la tipografía 'Tenderito' del logo)
-  text:           '#0F172A',   // Slate-900: azul pizarra oscuro profundo
-  textSecondary:  '#475569',   // Slate-600: gris neutro elegante
-  textMuted:      '#94A3B8',   // Slate-400: hints y placeholders
+  // Texto de alto contraste y legibilidad
+  text:           '#142033',   // azul marino oscuro para títulos y texto principal
+  textSecondary:  '#52647D',   // gris azulado para textos secundarios y subtítulos
+  textMuted:      '#8E9BAE',   // gris suave para placeholders e hints
 
   // Semánticos
-  destructive:    '#DC2626',
-  destructiveAlt: '#FEE2E2',   // fondo rojo suave
-  success:        '#16A34A',
-  successAlt:     '#DCFCE7',   // fondo verde suave
+  destructive:    '#E53935',   // rojo para deudas pendientes y alertas
+  destructiveAlt: '#FFF0EF',   // fondo rojo suave
+  success:        '#16834A',   // verde para pagos al día y estados positivos
+  successAlt:     '#E3F8EC',   // fondo verde suave
   warning:        '#D97706',
   warningAlt:     '#FEF3C7',
 
-  // Bordes / separadores limpios
-  border:         '#E2E8F0',   // Slate-200: bordes nítidos y ligeros
-  borderStrong:   '#CBD5E1',   // Slate-300
+  // Bordes sutiles
+  border:         '#E8EDF3',   // bordes discretos de tarjetas y campos
+  borderStrong:   '#CBD5E1',
 
   // Tab bar
   tabBar:         '#FFFFFF',
-  tabInactive:    '#94A3B8',   // Slate-400
+  tabInactive:    '#52647D',
 } as const;
 
 export const Radius = {
