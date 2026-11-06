@@ -20,46 +20,35 @@ export async function fetchCustomerPortal(filters: CustomerPortalFilters = {}) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error('No autenticado');
 
-  const {data: account, error: accountError} = await supabase
-    .from('customer_accounts')
-    .select('customer_id')
+  // 1. Obtener los datos del cliente directamente por su user_id
+  const {data: customer, error: customerError} = await supabase
+    .from('customers')
+    .select('*')
     .eq('user_id', user.id)
     .single();
-  if (accountError) throw accountError;
-
-  // 1. Datos del cliente y tiendas vinculadas (saldo acumulado por tienda)
-  const [
-    {data: customer, error: customerError},
-    {data: stores, error: storesError},
-  ] = await Promise.all([
-    supabase
-      .from('customers')
-      .select('*')
-      .eq('id', account.customer_id)
-      .single(),
-    supabase
-      .from('customer_stores')
-      .select(
-        'customer_id, store_id, current_balance, credit_limit, active, stores(store_name, phone, address)',
-      )
-      .eq('customer_id', account.customer_id)
-      .eq('active', true),
-  ]);
-
   if (customerError) throw customerError;
+
+  // 2. Tiendas vinculadas (saldo acumulado por tienda)
+  const {data: stores, error: storesError} = await supabase
+    .from('customer_stores')
+    .select(
+      'customer_id, store_id, current_balance, credit_limit, active, stores(store_name, phone, address)',
+    )
+    .eq('customer_id', customer.id)
+    .eq('active', true);
   if (storesError) throw storesError;
 
-  // 2. Consultas de créditos y abonos filtradas directamente en Supabase por mes y tienda
+  // 3. Consultas de créditos y abonos filtradas directamente en Supabase por mes y tienda
   let creditsQuery = supabase
     .from('credits')
     .select('*, stores(store_name, address)')
-    .eq('customer_id', account.customer_id)
+    .eq('customer_id', customer.id)
     .order('created_at', {ascending: false});
 
   let paymentsQuery = supabase
     .from('payments')
     .select('*, stores(store_name, address)')
-    .eq('customer_id', account.customer_id)
+    .eq('customer_id', customer.id)
     .order('payment_date', {ascending: false});
 
   if (storeId) {

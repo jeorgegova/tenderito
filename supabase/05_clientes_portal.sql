@@ -4,128 +4,131 @@
 -- ============================================================
 
 alter table public.customers add column if not exists email text;
+alter table public.customers add column if not exists user_id uuid unique references auth.users(id) on delete set null;
+alter table public.customers add column if not exists activated_at timestamptz;
+create index if not exists customers_user_id_idx on public.customers(user_id);
+
 alter table public.customer_stores add column if not exists credit_limit numeric(12, 2) not null default 0;
 alter table public.customer_stores add column if not exists alias text;
 alter table public.stores add column if not exists address text;
 
-create table if not exists public.customer_accounts (
-  customer_id uuid primary key references public.customers(id) on delete cascade,
-  user_id uuid unique not null references auth.users(id) on delete cascade,
-  activated_at timestamptz not null default now()
-);
+-- Funciones auxiliares para RLS
+create or replace function public.is_store_member(p_store_id uuid)
+returns boolean language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.store_memberships
+    where store_id = p_store_id and user_id = auth.uid()
+  );
+$$;
 
-alter table public.customer_accounts enable row level security;
+create or replace function public.is_customer_of_my_stores(p_customer_id uuid)
+returns boolean language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.customer_stores cs
+    join public.store_memberships m on m.store_id = cs.store_id
+    where cs.customer_id = p_customer_id and m.user_id = auth.uid()
+  );
+$$;
 
+create or replace function public.is_portal_customer(p_customer_id uuid)
+returns boolean language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.customers c
+    where c.id = p_customer_id and c.user_id = auth.uid()
+  );
+$$;
+
+-- Políticas RLS
 drop policy if exists stores_member_select on public.stores;
 drop policy if exists stores_visible_to_owner_or_customer on public.stores;
 create policy stores_visible_to_owner_or_customer on public.stores
   for select using (
-    exists (
-      select 1 from public.store_memberships m
-      where m.store_id = stores.id and m.user_id = auth.uid()
-    )
+    public.is_store_member(stores.id)
     or exists (
-      select 1
-      from public.customer_stores cs
-      join public.customer_accounts ca on ca.customer_id = cs.customer_id
-      where cs.store_id = stores.id and ca.user_id = auth.uid() and cs.active
+      select 1 from public.customer_stores cs
+      where cs.store_id = stores.id and cs.active and public.is_portal_customer(cs.customer_id)
     )
   );
-
-drop policy if exists customer_accounts_own_select on public.customer_accounts;
-create policy customer_accounts_own_select on public.customer_accounts
-  for select using (user_id = auth.uid());
 
 drop policy if exists customer_stores_member_all on public.customer_stores;
 drop policy if exists customer_stores_owner_all on public.customer_stores;
-create policy customer_stores_owner_all on public.customer_stores
-  for all using (exists (
-    select 1 from public.store_memberships m
-    where m.store_id = customer_stores.store_id and m.user_id = auth.uid()
-  )) with check (exists (
-    select 1 from public.store_memberships m
-    where m.store_id = customer_stores.store_id and m.user_id = auth.uid()
-  ));
-
 drop policy if exists customer_stores_customer_select on public.customer_stores;
+
+create policy customer_stores_owner_all on public.customer_stores
+  for all using (
+    public.is_store_member(customer_stores.store_id)
+  ) with check (
+    public.is_store_member(customer_stores.store_id)
+  );
+
 create policy customer_stores_customer_select on public.customer_stores
-  for select using (exists (
-    select 1 from public.customer_accounts ca
-    where ca.customer_id = customer_stores.customer_id and ca.user_id = auth.uid()
-  ));
+  for select using (
+    public.is_portal_customer(customer_stores.customer_id)
+  );
 
 drop policy if exists customers_member_select on public.customers;
 drop policy if exists customers_owner_or_customer_select on public.customers;
-create policy customers_owner_or_customer_select on public.customers
-  for select using (
-    exists (
-      select 1 from public.customer_stores cs
-      join public.store_memberships m on m.store_id = cs.store_id
-      where cs.customer_id = customers.id and m.user_id = auth.uid()
-    )
-    or exists (
-      select 1 from public.customer_accounts ca
-      where ca.customer_id = customers.id and ca.user_id = auth.uid()
-    )
-  );
-
 drop policy if exists customers_member_update on public.customers;
 drop policy if exists customers_owner_update on public.customers;
-create policy customers_owner_update on public.customers
-  for update using (exists (
-    select 1 from public.customer_stores cs
-    join public.store_memberships m on m.store_id = cs.store_id
-    where cs.customer_id = customers.id and m.user_id = auth.uid()
-  )) with check (exists (
-    select 1 from public.customer_stores cs
-    join public.store_memberships m on m.store_id = cs.store_id
-    where cs.customer_id = customers.id and m.user_id = auth.uid()
-  ));
-
 drop policy if exists customers_member_delete on public.customers;
 drop policy if exists customers_owner_delete on public.customers;
+drop policy if exists customers_owner_insert on public.customers;
+
+create policy customers_owner_or_customer_select on public.customers
+  for select using (
+    customers.user_id = auth.uid()
+    or public.is_customer_of_my_stores(customers.id)
+  );
+
+create policy customers_owner_insert on public.customers
+  for insert with check (auth.uid() is not null);
+
+create policy customers_owner_update on public.customers
+  for update using (
+    public.is_customer_of_my_stores(customers.id)
+  ) with check (
+    public.is_customer_of_my_stores(customers.id)
+  );
+
 create policy customers_owner_delete on public.customers
-  for delete using (exists (
-    select 1 from public.customer_stores cs
-    join public.store_memberships m on m.store_id = cs.store_id
-    where cs.customer_id = customers.id and m.user_id = auth.uid()
-  ));
+  for delete using (
+    public.is_customer_of_my_stores(customers.id)
+  );
 
 drop policy if exists credits_member_all on public.credits;
 drop policy if exists credits_owner_all on public.credits;
-create policy credits_owner_all on public.credits
-  for all using (exists (
-    select 1 from public.store_memberships m
-    where m.store_id = credits.store_id and m.user_id = auth.uid()
-  )) with check (exists (
-    select 1 from public.store_memberships m
-    where m.store_id = credits.store_id and m.user_id = auth.uid()
-  ));
-
 drop policy if exists credits_customer_select on public.credits;
+
+create policy credits_owner_all on public.credits
+  for all using (
+    public.is_store_member(credits.store_id)
+  ) with check (
+    public.is_store_member(credits.store_id)
+  );
+
 create policy credits_customer_select on public.credits
-  for select using (exists (
-    select 1 from public.customer_accounts ca
-    where ca.customer_id = credits.customer_id and ca.user_id = auth.uid()
-  ));
+  for select using (
+    public.is_portal_customer(credits.customer_id)
+  );
 
 drop policy if exists payments_member_all on public.payments;
 drop policy if exists payments_owner_all on public.payments;
-create policy payments_owner_all on public.payments
-  for all using (exists (
-    select 1 from public.store_memberships m
-    where m.store_id = payments.store_id and m.user_id = auth.uid()
-  )) with check (exists (
-    select 1 from public.store_memberships m
-    where m.store_id = payments.store_id and m.user_id = auth.uid()
-  ));
-
 drop policy if exists payments_customer_select on public.payments;
+
+create policy payments_owner_all on public.payments
+  for all using (
+    public.is_store_member(payments.store_id)
+  ) with check (
+    public.is_store_member(payments.store_id)
+  );
+
 create policy payments_customer_select on public.payments
-  for select using (exists (
-    select 1 from public.customer_accounts ca
-    where ca.customer_id = payments.customer_id and ca.user_id = auth.uid()
-  ));
+  for select using (
+    public.is_portal_customer(payments.customer_id)
+  );
 
 create or replace function public.find_customer_by_document(p_document_number text)
 returns table (
@@ -218,7 +221,6 @@ as $$
   limit 1;
 $$;
 
--- El trigger diferencia dueños y clientes por user_type.
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public
 as $$
@@ -232,10 +234,23 @@ begin
         and regexp_replace(coalesce(c.phone, ''), '[^0-9]', '', 'g') =
             regexp_replace(coalesce(new.raw_user_meta_data ->> 'phone', ''), '[^0-9]', '', 'g')
     ) then raise exception 'Los datos del cliente no coinciden'; end if;
-    insert into public.customer_accounts(customer_id, user_id)
-    values (v_customer_id, new.id);
+
+    update public.customers
+    set user_id = new.id,
+        activated_at = coalesce(activated_at, now())
+    where id = v_customer_id;
+
+    update auth.users
+    set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"user_type": "customer"}'::jsonb
+    where id = new.id;
+
     return new;
   end if;
+
+  update auth.users
+  set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"user_type": "store"}'::jsonb
+  where id = new.id;
+
   insert into public.profiles(id, store_name, merchant_name, subscription_plan)
   values (new.id,
     coalesce(nullif(new.raw_user_meta_data ->> 'store_name', ''), 'Mi negocio'),
@@ -248,6 +263,13 @@ $$;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
 for each row execute function public.handle_new_user();
+
+grant select, insert, update, delete on public.customers to authenticated;
+grant select, insert, update, delete on public.customer_stores to authenticated;
+grant select, insert, update, delete on public.credits to authenticated;
+grant select, insert, update, delete on public.payments to authenticated;
+grant select, update on public.stores to authenticated;
+grant select on public.store_memberships to authenticated;
 
 revoke all on function public.find_customer_by_document(text) from public;
 revoke all on function public.link_customer_to_store(uuid, numeric, text) from public;

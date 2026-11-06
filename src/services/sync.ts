@@ -6,6 +6,7 @@ import {insertOrReplaceSubscriptionPlan} from '../database/tables/plans';
 import {supabase} from '../lib/supabase';
 import {useStore} from '../store/useStore';
 import {notifyCustomerMovement} from './deviceService';
+import {refreshSubscriptionLifecycle} from './portfolio';
 
 let syncInProgress: Promise<any> | null = null;
 let lastPullTimestamp = 0;
@@ -336,6 +337,8 @@ export async function insertOrReplaceCustomer(db: any, row: any) {
   const alias = row.alias || c.alias || '';
   const currentBalance = Number(row.current_balance ?? c.current_balance ?? 0);
   const creditLimit = Number(row.credit_limit ?? c.credit_limit ?? 0);
+  const freePlanSelected =
+    row.free_plan_selected ?? c.free_plan_selected ?? true;
 
   const existing = await getData(
     db,
@@ -358,9 +361,9 @@ export async function insertOrReplaceCustomer(db: any, row: any) {
     db,
     `INSERT OR REPLACE INTO customers (
        local_id, server_id, store_id, name, document_type, document_number,
-       phone, notes, alias, current_balance, credit_limit,
+       phone, notes, alias, current_balance, credit_limit, free_plan_selected,
        estadoServidor, sync_status, last_synced_at, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       localId,
       customerId,
@@ -373,6 +376,7 @@ export async function insertOrReplaceCustomer(db: any, row: any) {
       alias,
       currentBalance,
       creditLimit,
+      freePlanSelected ? 1 : 0,
       ESTADO_SINCRONIZACION.SINCRONIZADO,
       ESTADO_SINCRONIZACION.SINCRONIZADO,
       now,
@@ -480,6 +484,10 @@ export async function insertOrReplacePayment(db: any, p: any) {
  */
 async function pullRemoteData(db: any): Promise<boolean> {
   try {
+    // Primero expira suscripciones vencidas y prepara cartera Free.
+    // Si falla (sin red), la app sigue con el estado local.
+    await refreshSubscriptionLifecycle();
+
     const activeStoreId = await getActiveStoreId();
     if (!activeStoreId) {
       // Si el usuario no tiene tienda asignada aún, omitir descarga sin bloquear cooldown
@@ -491,7 +499,7 @@ async function pullRemoteData(db: any): Promise<boolean> {
     let custQuery = supabase
       .from('customer_stores')
       .select(
-        'store_id, current_balance, credit_limit, alias, joined_at, customers!inner(id, name, document_type, document_number, phone, notes, created_at)',
+        'store_id, current_balance, credit_limit, alias, free_plan_selected, joined_at, customers!inner(id, name, document_type, document_number, phone, notes, created_at)',
       )
       .eq('store_id', activeStoreId)
       .limit(PULL_PAGE_LIMIT);
@@ -512,6 +520,32 @@ async function pullRemoteData(db: any): Promise<boolean> {
       }
       await saveWriteDate(db, 'customers', maxCustDate);
     }
+
+    // 1.b Sincronizar la selección de cartera Free de TODOS los clientes.
+    // No depende de created_at, porque free_plan_selected cambia sin que
+    // cambie el cliente.
+    try {
+      const {data: portfolioRows, error: portfolioErr} = await supabase
+        .from('customer_stores')
+        .select('customer_id, free_plan_selected')
+        .eq('store_id', activeStoreId);
+
+      if (!portfolioErr && portfolioRows) {
+        for (const row of portfolioRows as any[]) {
+          await executeQuery(
+            db,
+            `UPDATE customers
+             SET free_plan_selected = ?
+             WHERE server_id = ? OR local_id = ?;`,
+            [
+              row.free_plan_selected ? 1 : 0,
+              row.customer_id,
+              row.customer_id,
+            ],
+          );
+        }
+      }
+    } catch (_portfolioErr) {}
 
     // 2. Descarga incremental de créditos pertenecientes a la tienda activa
     const lastWriteDateCred = await getWriteDate(db, 'credits');

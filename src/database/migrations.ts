@@ -63,6 +63,17 @@ const MIGRATIONS: Migration[] = [
       } catch (_e) {}
     },
   },
+  {
+    version: '1.3',
+    description: 'Cartera activa limitada por plan Free',
+    up: async (db: any) => {
+      try {
+        await db.executeAsync(
+          'ALTER TABLE customers ADD COLUMN free_plan_selected INTEGER NOT NULL DEFAULT 1;',
+        );
+      } catch (_e) {}
+    },
+  },
 ];
 
 /**

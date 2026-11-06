@@ -1,5 +1,5 @@
-import {useQuery} from '@tanstack/react-query';
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   BackHandler,
@@ -13,36 +13,36 @@ import {
   Text,
   View,
 } from 'react-native';
-import {useFocusEffect} from '@react-navigation/native';
-import {Button} from '../components/ui/Button';
-import {Card} from '../components/ui/Card';
-import {Header} from '../components/ui/Header';
-import {Input} from '../components/ui/Input';
-import {showAlert} from '../components/ui/AlertModal';
+import { useFocusEffect } from '@react-navigation/native';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { Header } from '../components/ui/Header';
+import { Input } from '../components/ui/Input';
+import { showAlert } from '../components/ui/AlertModal';
 import Ionicons from '@react-native-vector-icons/ionicons';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  canCreateCustomer,
   createCustomer,
   findCustomerByDocument,
   fetchCustomers,
   linkCustomerToStore,
 } from '../services/customers';
-import {useStore} from '../store/useStore';
-import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
-import {Colors, Radius, formatCOP} from '../theme';
-import {FormatMoney, parseMoney} from '../utils/format';
+import { useStore } from '../store/useStore';
+import { calculateSubscriptionStatus } from '../services/plans';
+import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
+import { Colors, Radius, formatCOP } from '../theme';
+import { FormatMoney, parseMoney } from '../utils/format';
 
 const DOCUMENT_TYPES = [
-  {value: 'CC', label: 'CC · Cédula de ciudadanía'},
-  {value: 'CE', label: 'CE · Cédula de extranjería'},
-  {value: 'NIT', label: 'NIT · Número tributario'},
-  {value: 'PAS', label: 'PAS · Pasaporte'},
-  {value: 'PEP', label: 'PEP · Permiso especial'},
-  {value: 'PPT', label: 'PPT · Permiso protección temporal'},
+  { value: 'CC', label: 'CC · Cédula de ciudadanía' },
+  { value: 'CE', label: 'CE · Cédula de extranjería' },
+  { value: 'NIT', label: 'NIT · Número tributario' },
+  { value: 'PAS', label: 'PAS · Pasaporte' },
+  { value: 'PEP', label: 'PEP · Permiso especial' },
+  { value: 'PPT', label: 'PPT · Permiso protección temporal' },
 ];
 
-export function CustomersScreen({navigation}: any) {
+export function CustomersScreen({ navigation }: any) {
   const [search, setSearch] = useState('');
   const [balanceFilter, setBalanceFilter] = useState<'all' | 'owing' | 'clear'>(
     'all',
@@ -63,8 +63,7 @@ export function CustomersScreen({navigation}: any) {
   const slideAnim = useRef(new Animated.Value(12)).current;
   const insets = useSafeAreaInsets();
   const profile = useStore(s => s.profile);
-  const setShowUpgrade = useStore(s => s.setShowUpgradeModal);
-  const showUpgrade = useStore(s => s.showUpgradeModal);
+  const subStatus = calculateSubscriptionStatus(profile);
 
   // Botón físico "Atrás" en Clientes: si hay un modal abierto lo cierra, de lo contrario vuelve a Inicio
   useFocusEffect(
@@ -78,10 +77,6 @@ export function CustomersScreen({navigation}: any) {
           setModal(false);
           return true;
         }
-        if (showUpgrade) {
-          setShowUpgrade(false);
-          return true;
-        }
         navigation.navigate('Inicio');
         return true;
       };
@@ -91,7 +86,7 @@ export function CustomersScreen({navigation}: any) {
         onBackPress,
       );
       return () => subscription.remove();
-    }, [showTypePicker, modal, showUpgrade, navigation, setShowUpgrade]),
+    }, [showTypePicker, modal, navigation]),
   );
 
   function resetForm() {
@@ -153,7 +148,7 @@ export function CustomersScreen({navigation}: any) {
     }
   }, [verified, fadeAnim, slideAnim]);
 
-  const {data, refetch, isLoading} = useQuery({
+  const { data, refetch, isLoading } = useQuery({
     queryKey: ['customers'],
     queryFn: () => fetchCustomers(),
   });
@@ -199,9 +194,8 @@ export function CustomersScreen({navigation}: any) {
         if (alreadyLinked) {
           showAlert({
             title: 'Cliente ya vinculado',
-            message: `"${
-              customer.alias || customer.name
-            }" ya se encuentra registrado y vinculado a tu tienda.`,
+            message: `"${customer.alias || customer.name
+              }" ya se encuentra registrado y vinculado a tu tienda.`,
             type: 'warning',
             buttons: [
               {
@@ -209,10 +203,10 @@ export function CustomersScreen({navigation}: any) {
                 onPress: () => {
                   setModal(false);
                   resetForm();
-                  navigation.navigate('CustomerDetail', {id: customer.id});
+                  navigation.navigate('CustomerDetail', { id: customer.id });
                 },
               },
-              {text: 'Entendido', style: 'cancel'},
+              { text: 'Entendido', style: 'cancel' },
             ],
           });
         } else {
@@ -260,10 +254,10 @@ export function CustomersScreen({navigation}: any) {
             onPress: () => {
               setModal(false);
               resetForm();
-              navigation.navigate('CustomerDetail', {id: foundCustomer?.id});
+              navigation.navigate('CustomerDetail', { id: foundCustomer?.id });
             },
           },
-          {text: 'Cerrar', style: 'cancel'},
+          { text: 'Cerrar', style: 'cancel' },
         ],
       );
     }
@@ -279,12 +273,6 @@ export function CustomersScreen({navigation}: any) {
       );
     }
     try {
-      const check = await canCreateCustomer(profile);
-      if (!check.allowed) {
-        setModal(false);
-        setShowUpgrade(true);
-        return;
-      }
       if (foundCustomer) {
         await linkCustomerToStore(
           foundCustomer.id,
@@ -313,7 +301,7 @@ export function CustomersScreen({navigation}: any) {
 
   return (
     <View style={styles.wrap}>
-      <DynamicBrandCurves />
+      <DynamicBrandCurves position="top-right" />
       <Header title="Clientes" subtitle="Busca y gestiona tus fiados" />
       <View style={styles.searchWrap}>
         <Input
@@ -328,18 +316,16 @@ export function CustomersScreen({navigation}: any) {
       <View style={styles.filterRow}>
         {(
           [
-            {key: 'all', label: `Todos (${data?.length ?? 0})`},
+            { key: 'all', label: `Todos (${data?.length ?? 0})` },
             {
               key: 'owing',
-              label: `Con deuda (${
-                (data ?? []).filter(c => Number(c.current_balance) > 0).length
-              })`,
+              label: `Con deuda (${(data ?? []).filter(c => Number(c.current_balance) > 0).length
+                })`,
             },
             {
               key: 'clear',
-              label: `Al día (${
-                (data ?? []).filter(c => Number(c.current_balance) === 0).length
-              })`,
+              label: `Al día (${(data ?? []).filter(c => Number(c.current_balance) === 0).length
+                })`,
             },
           ] as const
         ).map(filter => (
@@ -385,13 +371,13 @@ export function CustomersScreen({navigation}: any) {
             </Card>
           ) : null
         }
-        renderItem={({item}) => {
+        renderItem={({ item }) => {
           const balance = Number(item.current_balance || 0);
           const isOwing = balance > 0;
           return (
             <Pressable
               onPress={() =>
-                navigation.navigate('CustomerDetail', {id: item.id})
+                navigation.navigate('CustomerDetail', { id: item.id })
               }>
               <Card style={styles.customerCardItem}>
                 {/* Onda curva decorativa sutil en la esquina superior derecha de la tarjeta */}
@@ -471,16 +457,11 @@ export function CustomersScreen({navigation}: any) {
       />
       <Pressable
         onPress={async () => {
-          const check = await canCreateCustomer(profile);
-          if (!check.allowed) {
-            setShowUpgrade(true);
-            return;
-          }
           resetForm();
           setModal(true);
         }}
         accessibilityLabel="Nuevo cliente"
-        style={({pressed}) => [styles.fab, pressed && styles.fabPressed]}>
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}>
         <Ionicons name="add-circle" size={22} color="#fff" />
         <Text style={styles.fabText}>Nuevo cliente</Text>
       </Pressable>
@@ -490,7 +471,7 @@ export function CustomersScreen({navigation}: any) {
         presentationStyle="pageSheet"
         onRequestClose={() => setModal(false)}>
         <View style={styles.sheet}>
-          <View style={[styles.modalHeader, {paddingTop: insets.top + 8}]}>
+          <View style={[styles.modalHeader, { paddingTop: insets.top + 8 }]}>
             <Pressable
               onPress={() => setModal(false)}
               style={styles.backButton}
@@ -498,20 +479,20 @@ export function CustomersScreen({navigation}: any) {
               <Text style={styles.backText}>‹ Volver</Text>
             </Pressable>
             <Text style={styles.sheetTitle}>Nuevo cliente</Text>
-            <View style={{width: 64}} />
+            <View style={{ width: 64 }} />
           </View>
           <KeyboardAvoidingView
-            style={{flex: 1}}
+            style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
-            <View style={{flex: 1}}>
+            <View style={{ flex: 1 }}>
               <ScrollView
-                style={{flex: 1}}
+                style={{ flex: 1 }}
                 contentContainerStyle={styles.sheetContent}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}>
-                <View style={{flexDirection: 'row', gap: 8}}>
-                  <View style={{width: 110}}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ width: 110 }}>
                     <Text style={styles.label}>Tipo</Text>
                     <Pressable
                       onPress={() => setShowTypePicker(true)}
@@ -520,7 +501,7 @@ export function CustomersScreen({navigation}: any) {
                       <Text style={styles.pickerChevron}>▾</Text>
                     </Pressable>
                   </View>
-                  <View style={{flex: 1}}>
+                  <View style={{ flex: 1 }}>
                     <Input
                       label="Identificación"
                       value={documentNumber}
@@ -546,7 +527,7 @@ export function CustomersScreen({navigation}: any) {
                   <Animated.View
                     style={{
                       opacity: fadeAnim,
-                      transform: [{translateY: slideAnim}],
+                      transform: [{ translateY: slideAnim }],
                       gap: 12,
                     }}>
                     {foundCustomer ? (
@@ -560,7 +541,7 @@ export function CustomersScreen({navigation}: any) {
                                 color="#15803D"
                               />
                             </View>
-                            <View style={{flex: 1}}>
+                            <View style={{ flex: 1 }}>
                               <Text style={styles.alreadyLinkedTitle}>
                                 Cliente ya vinculado a tu tienda
                               </Text>
@@ -611,7 +592,7 @@ export function CustomersScreen({navigation}: any) {
                         </View>
                       ) : (
                         <>
-                          <Card style={{gap: 4}}>
+                          <Card style={{ gap: 4 }}>
                             <Text style={styles.name}>
                               {foundCustomer.name}
                             </Text>
@@ -626,8 +607,7 @@ export function CustomersScreen({navigation}: any) {
                             <Text style={styles.sub}>
                               Cliente registrado en Tenderito
                             </Text>
-                            {(profile?.subscription_plan ?? 'free') !==
-                            'free' ? (
+                            {subStatus.effectivePlan !== 'free' ? (
                               <Button
                                 title="Ver historial"
                                 variant="ghost"
@@ -706,7 +686,7 @@ export function CustomersScreen({navigation}: any) {
               <View
                 style={[
                   styles.modalFooter,
-                  {paddingBottom: insets.bottom + 12},
+                  { paddingBottom: insets.bottom + 12 },
                 ]}>
                 {verified ? (
                   isAlreadyLinked ? (
@@ -764,7 +744,7 @@ export function CustomersScreen({navigation}: any) {
             style={styles.overlay}
             onPress={() => setShowTypePicker(false)}>
             <Pressable onPress={e => e.stopPropagation?.()}>
-              <Card style={{gap: 4, minWidth: 280}}>
+              <Card style={{ gap: 4, minWidth: 280 }}>
                 <Text style={styles.sheetTitle}>Tipo documento</Text>
                 {DOCUMENT_TYPES.map(item => (
                   <Pressable
@@ -778,7 +758,7 @@ export function CustomersScreen({navigation}: any) {
                       style={[
                         styles.typeOptionText,
                         item.value === documentType &&
-                          styles.typeOptionTextSelected,
+                        styles.typeOptionTextSelected,
                       ]}>
                       {item.label}
                     </Text>
@@ -794,44 +774,12 @@ export function CustomersScreen({navigation}: any) {
           </Pressable>
         </Modal>
       </Modal>
-      <Modal
-        visible={showUpgrade}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowUpgrade(false)}>
-        <View style={styles.overlay}>
-          <Card style={styles.upgradeCard}>
-            <View style={styles.upgradeIconWrap}>
-              <Ionicons name="sparkles" size={26} color={Colors.primary} />
-            </View>
-            <Text style={styles.upgradeTitle}>Límite del plan Free</Text>
-            <Text style={styles.upgradeText}>
-              No puedes agregar más clientes porque estás en el plan Free (máximo 10 clientes).
-              {'\n\n'}
-              Tus clientes actuales se mantienen intactos y seguros. Para continuar registrando clientes, suscríbete a uno de nuestros planes.
-            </Text>
-            <Button
-              title="Ver planes"
-              onPress={() => {
-                setShowUpgrade(false);
-                navigation.navigate('Perfil');
-              }}
-              style={styles.upgradeBtn}
-            />
-            <Button
-              title="Cerrar"
-              variant="ghost"
-              onPress={() => setShowUpgrade(false)}
-            />
-          </Card>
-        </View>
-      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {flex: 1, backgroundColor: Colors.background, overflow: 'hidden'},
+  wrap: { flex: 1, backgroundColor: Colors.background, overflow: 'hidden' },
   searchWrap: {
     paddingHorizontal: 20,
     paddingTop: 4,
@@ -870,7 +818,7 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingBottom: 100,
   },
-  flexOne: {flex: 1},
+  flexOne: { flex: 1 },
   customerCardItem: {
     padding: 16,
     borderRadius: 20,
@@ -881,7 +829,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
     shadowColor: '#142033',
-    shadowOffset: {width: 0, height: 4},
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
     shadowRadius: 10,
     elevation: 2,
@@ -1007,7 +955,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-  row: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   sheet: {
     flex: 1,
     backgroundColor: Colors.card,
@@ -1052,7 +1000,7 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
     backgroundColor: Colors.card,
   },
-  label: {fontSize: 14, fontWeight: '600', color: Colors.text, marginBottom: 6},
+  label: { fontSize: 14, fontWeight: '600', color: Colors.text, marginBottom: 6 },
   hint: {
     color: Colors.textSecondary,
     fontSize: 13,
@@ -1070,8 +1018,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  pickerValue: {fontSize: 16, fontWeight: '700', color: Colors.text},
-  pickerChevron: {fontSize: 16, color: Colors.textSecondary},
+  pickerValue: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  pickerChevron: { fontSize: 16, color: Colors.textSecondary },
   typeOption: {
     paddingVertical: 12,
     paddingHorizontal: 12,
@@ -1080,8 +1028,8 @@ const styles = StyleSheet.create({
   typeOptionSelected: {
     backgroundColor: Colors.primaryLight,
   },
-  typeOptionText: {fontSize: 15, color: Colors.text},
-  typeOptionTextSelected: {fontWeight: '700', color: Colors.text},
+  typeOptionText: { fontSize: 15, color: Colors.text },
+  typeOptionTextSelected: { fontWeight: '700', color: Colors.text },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -1100,14 +1048,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 999,
     shadowColor: Colors.primary,
-    shadowOffset: {width: 0, height: 6},
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 8,
   },
   fabPressed: {
     opacity: 0.88,
-    transform: [{scale: 0.96}],
+    transform: [{ scale: 0.96 }],
   },
   fabText: {
     color: '#fff',

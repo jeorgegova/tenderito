@@ -44,7 +44,7 @@ const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: 20,
     paddingBottom: 12,
-    backgroundColor: Colors.background,
+    backgroundColor: 'transparent',
     position: 'relative',
     overflow: 'hidden',
   },

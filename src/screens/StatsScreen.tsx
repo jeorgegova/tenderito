@@ -117,7 +117,7 @@ export function StatsScreen({navigation}: any) {
 
   return (
     <View style={s.wrap}>
-      <DynamicBrandCurves />
+      <DynamicBrandCurves position="bottom-right" />
       <Header title="Estadísticas" subtitle="Deudas, abonos y saldo por cliente" />
 
       <ScrollView

@@ -3,8 +3,10 @@ import NetInfo, {NetInfoState} from '@react-native-community/netinfo';
 import {useQueryClient} from '@tanstack/react-query';
 import {syncAll, clearCachedStoreId} from '../services/sync';
 import {supabase} from '../lib/supabase';
+import {useAuth} from '../context/AuthContext';
 
 export function useSync() {
+  const {isAuthenticated, userType} = useAuth();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean | null>(true);
   const [lastSyncDate, setLastSyncDate] = useState<Date | null>(null);
@@ -12,13 +14,19 @@ export function useSync() {
 
   const runSync = useCallback(
     async (options?: {force?: boolean}) => {
-      if (isSyncing) {
+      // Solo sincronizar SQLite local si el usuario es un tendero autenticado
+      if (isSyncing || !isAuthenticated || userType !== 'store') {
         return;
       }
       try {
         setIsSyncing(true);
         const {pushed, pulled} = await syncAll(options);
         setLastSyncDate(new Date());
+
+        // La expiración de suscripción puede cambiar aunque no haya
+        // movimientos nuevos, así que refrescamos estos estados siempre.
+        await queryClient.invalidateQueries({queryKey: ['free-portfolio']});
+        await queryClient.invalidateQueries({queryKey: ['profile']});
 
         // Solo invalidar si hubo subida o descarga de datos real
         if (pushed || pulled) {
@@ -30,10 +38,14 @@ export function useSync() {
         setIsSyncing(false);
       }
     },
-    [isSyncing, queryClient],
+    [isSyncing, isAuthenticated, userType, queryClient],
   );
 
   useEffect(() => {
+    if (!isAuthenticated || userType !== 'store') {
+      return;
+    }
+
     // Sincronización inicial al montar la app
     runSync();
 
@@ -66,7 +78,7 @@ export function useSync() {
       unsubscribeNet();
       authSub.subscription.unsubscribe();
     };
-  }, [runSync]);
+  }, [runSync, isAuthenticated, userType]);
 
   return {
     sync: runSync,

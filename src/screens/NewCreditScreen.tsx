@@ -1,5 +1,5 @@
 import {useQuery} from '@tanstack/react-query';
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
 import {
   Alert,
   Pressable,
@@ -15,10 +15,13 @@ import {DatePicker} from '../components/ui/DatePicker';
 import {Input} from '../components/ui/Input';
 import {createCredit} from '../services/credits';
 import {fetchCustomers} from '../services/customers';
+import {canCreateCreditForCustomer} from '../services/portfolio';
+import {useStore} from '../store/useStore';
 import {Colors, formatCOP} from '../theme';
 import {FormatMoney, parseMoney} from '../utils/format';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useMutationWithSync} from '../hooks/useMutationWithSync';
+import type {CreditEligibility} from '../types';
 
 export function NewCreditScreen({route, navigation}: any) {
   const initialId = route.params?.customerId as string | undefined;
@@ -27,7 +30,9 @@ export function NewCreditScreen({route, navigation}: any) {
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [eligibility, setEligibility] = useState<CreditEligibility | null>(null);
   const insets = useSafeAreaInsets();
+  const profile = useStore(s => s.profile);
 
   const {data: customers} = useQuery({
     queryKey: ['customers-all'],
@@ -41,6 +46,26 @@ export function NewCreditScreen({route, navigation}: any) {
   const newBalance = currentBalance + numericAmount;
   const exceedsLimit =
     creditLimit > 0 && numericAmount > 0 && newBalance > creditLimit;
+  const creditBlocked = Boolean(eligibility && !eligibility.allowed);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!customer_id) {
+      setEligibility(null);
+      return;
+    }
+
+    canCreateCreditForCustomer(customer_id, profile).then(result => {
+      if (!cancelled) {
+        setEligibility(result);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [customer_id, profile, customers]);
 
   const matchingCustomers = (customers ?? []).filter(c =>
     `${c.alias ?? ''} ${c.name} ${c.document_number ?? ''}`
@@ -61,6 +86,15 @@ export function NewCreditScreen({route, navigation}: any) {
     if (!concept.trim() || !parseMoney(amount)) {
       return Alert.alert('Faltan datos', 'Concepto y monto válidos');
     }
+
+    const check = await canCreateCreditForCustomer(customer_id, profile);
+    if (!check.allowed) {
+      return Alert.alert(
+        'No puedes crear este fiado',
+        check.message ?? 'Tu plan actual no lo permite.',
+      );
+    }
+
     mutation.mutate({
       customer_id,
       concept: concept.trim(),
@@ -166,6 +200,21 @@ export function NewCreditScreen({route, navigation}: any) {
             </ScrollView>
           </View>
         )}
+        {creditBlocked ? (
+          <View style={styles.limitAlertBox}>
+            <Ionicons
+              name="lock-closed-outline"
+              size={18}
+              color={Colors.destructive}
+            />
+            <View style={{flex: 1}}>
+              <Text style={styles.limitAlertTitle}>
+                Solo abonos para este cliente
+              </Text>
+              <Text style={styles.limitAlertDesc}>{eligibility?.message}</Text>
+            </View>
+          </View>
+        ) : null}
         <Input
           label="¿Qué se llevó?"
           value={concept}
@@ -229,7 +278,7 @@ export function NewCreditScreen({route, navigation}: any) {
           title={mutation.isPending ? 'Guardando…' : 'Guardar fiado'}
           icon="check"
           onPress={onSave}
-          disabled={mutation.isPending}
+          disabled={mutation.isPending || creditBlocked}
         />
         <Button
           title="Cancelar"

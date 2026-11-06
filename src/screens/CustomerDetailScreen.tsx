@@ -19,13 +19,17 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import {SyncBadge} from '../components/ui/Badge';
 import {Button} from '../components/ui/Button';
 import {Card} from '../components/ui/Card';
+import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
 import {FooterMenu} from '../components/ui/FooterMenu';
 import {showAlert} from '../utils/alert';
 import {fetchCreditsByCustomer} from '../services/credits';
 import {fetchCustomerById} from '../services/customers';
 import {fetchPaymentsByCustomer} from '../services/payments';
+import {canCreateCreditForCustomer} from '../services/portfolio';
+import {calculateSubscriptionStatus} from '../services/plans';
 import {useStore} from '../store/useStore';
 import {Colors, Radius, formatCOP} from '../theme';
+import type {CreditEligibility} from '../types';
 
 const MONTH_NAMES = [
   'Enero',
@@ -143,6 +147,9 @@ const generateAvailableMonths = (createdAt?: string | null) => {
 export function CustomerDetailScreen({route, navigation}: any) {
   const {id} = route.params as {id: string};
   const profile = useStore(s => s.profile);
+  const subStatus = calculateSubscriptionStatus(profile);
+  const [creditEligibility, setCreditEligibility] =
+    useState<CreditEligibility | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'payment'>(
     'all',
   );
@@ -327,6 +334,28 @@ export function CustomerDetailScreen({route, navigation}: any) {
   const currentBalance = Number(customer.data?.current_balance ?? 0);
   const creditLimit = Number(customer.data?.credit_limit ?? 0);
   const isPaid = currentBalance === 0;
+  const creditBlocked = Boolean(
+    creditEligibility && !creditEligibility.allowed,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!id) {
+      setCreditEligibility(null);
+      return;
+    }
+
+    canCreateCreditForCustomer(id, profile).then(result => {
+      if (!cancelled) {
+        setCreditEligibility(result);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, profile, currentBalance, customer.data?.free_plan_selected]);
 
   const handleCallCustomer = (phone?: string | null) => {
     if (!phone) {
@@ -365,6 +394,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
 
   return (
     <View style={styles.wrap}>
+      <DynamicBrandCurves position="bottom-left" />
       <FlatList
         contentContainerStyle={styles.content}
         data={filteredMovements}
@@ -426,7 +456,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
               ) : null}
 
               {/* Historial en otras tiendas (si aplica plan de pago) */}
-              {(profile?.subscription_plan ?? 'free') !== 'free' ? (
+              {subStatus.effectivePlan !== 'free' ? (
                 <TouchableOpacity
                   style={styles.historyBtn}
                   onPress={() => navigation.navigate('CustomerHistory', {id})}>
@@ -487,9 +517,17 @@ export function CustomerDetailScreen({route, navigation}: any) {
                 <Button
                   title="+ Nuevo fiado"
                   icon="credit"
-                  onPress={() =>
-                    navigation.navigate('NewCredit', {customerId: id})
-                  }
+                  onPress={async () => {
+                    const check = await canCreateCreditForCustomer(id, profile);
+                    if (!check.allowed) {
+                      showAlert(
+                        'Solo abonos',
+                        check.message ?? 'Tu plan actual no permite este fiado.',
+                      );
+                      return;
+                    }
+                    navigation.navigate('NewCredit', {customerId: id});
+                  }}
                 />
               </View>
               <View style={styles.flexOne}>
@@ -503,6 +541,19 @@ export function CustomerDetailScreen({route, navigation}: any) {
                 />
               </View>
             </View>
+
+            {creditBlocked ? (
+              <View style={styles.freePortfolioNotice}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={16}
+                  color={Colors.destructive}
+                />
+                <Text style={styles.freePortfolioNoticeText}>
+                  {creditEligibility?.message}
+                </Text>
+              </View>
+            ) : null}
 
             {/* ── Encabezado de la Libreta de Cuentas ── */}
             <View style={styles.sectionHeading}>
@@ -1141,6 +1192,24 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 14,
     marginBottom: 16,
+  },
+
+  freePortfolioNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderRadius: Radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  freePortfolioNoticeText: {
+    flex: 1,
+    color: Colors.destructive,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
   },
 
   // Título de la sección

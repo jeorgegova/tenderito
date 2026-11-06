@@ -16,6 +16,7 @@ export async function createCustomersTable(db: any) {
       alias TEXT,
       current_balance REAL DEFAULT 0,
       credit_limit REAL DEFAULT 0,
+      free_plan_selected INTEGER NOT NULL DEFAULT 1,
       estadoServidor TEXT NOT NULL DEFAULT 'sincronizado',
       sync_status TEXT NOT NULL DEFAULT 'sincronizado',
       payload TEXT,

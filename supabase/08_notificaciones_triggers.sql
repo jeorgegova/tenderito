@@ -15,8 +15,8 @@ select
   c.id as customer_id,
   c.name as customer_name,
   c.document_number,
-  ca.user_id as portal_user_id,
-  ca.activated_at as fecha_activacion_portal,
+  c.user_id as portal_user_id,
+  c.activated_at as fecha_activacion_portal,
   dv.device_id,
   dv.device_name,
   dv.platform,
@@ -24,8 +24,7 @@ select
   dv.updated_at as ultimo_registro_fcm,
   left(dv.fcm_token, 25) || '...' as token_resumen
 from public.customers c
-left join public.customer_accounts ca on ca.customer_id = c.id
-left join public.dispositivos_vinculados dv on dv.user_id = ca.user_id
+left join public.dispositivos_vinculados dv on dv.user_id = c.user_id
 where c.document_number = '12345678';
 */
 

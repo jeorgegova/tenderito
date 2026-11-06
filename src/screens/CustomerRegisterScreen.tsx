@@ -85,7 +85,7 @@ export function CustomerRegisterScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       {/* ── Curvas abstractas dinámicas de la app ── */}
-      <DynamicBrandCurves />
+      <DynamicBrandCurves position="bottom-left" />
 
       {/* ── Botón superior de retroceso ── */}
       <Pressable

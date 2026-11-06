@@ -41,6 +41,7 @@ export async function fetchCustomers(search?: string): Promise<Customer[]> {
         alias: r.alias,
         credit_limit: Number(r.credit_limit || 0),
         current_balance: Number(r.current_balance || 0),
+        free_plan_selected: Number(r.free_plan_selected ?? 1) === 1,
         estadoServidor: (r.estadoServidor || 'sincronizado') as any,
         created_at: r.created_at,
       }));
@@ -72,6 +73,7 @@ export async function fetchCustomers(search?: string): Promise<Customer[]> {
         alias: r.alias,
         credit_limit: Number(r.credit_limit || 0),
         current_balance: Number(r.current_balance || 0),
+        free_plan_selected: Number(r.free_plan_selected ?? 1) === 1,
         estadoServidor: (r.estadoServidor || 'sincronizado') as any,
         created_at: r.created_at,
       }));
@@ -85,7 +87,7 @@ export async function fetchCustomers(search?: string): Promise<Customer[]> {
       const {data: storeCustomers, error} = await supabase
         .from('customer_stores')
         .select(
-          'store_id, current_balance, credit_limit, alias, joined_at, customers!inner(id, name, document_type, document_number, phone, notes, created_at)',
+          'store_id, current_balance, credit_limit, alias, free_plan_selected, joined_at, customers!inner(id, name, document_type, document_number, phone, notes, created_at)',
         )
         .eq('store_id', activeStoreId)
         .order('current_balance', {ascending: false});
@@ -113,6 +115,7 @@ export async function fetchCustomers(search?: string): Promise<Customer[]> {
             alias: r.alias || '',
             credit_limit: Number(r.credit_limit || 0),
             current_balance: Number(r.current_balance || 0),
+            free_plan_selected: r.free_plan_selected ?? true,
             estadoServidor: 'sincronizado' as any,
             created_at: c?.created_at || r.joined_at,
           };
@@ -147,6 +150,7 @@ export async function fetchCustomerById(id: string): Promise<Customer> {
       alias: r.alias,
       credit_limit: Number(r.credit_limit || 0),
       current_balance: Number(r.current_balance || 0),
+      free_plan_selected: Number(r.free_plan_selected ?? 1) === 1,
       estadoServidor: (r.estadoServidor || 'sincronizado') as any,
       created_at: r.created_at,
     } as Customer;
@@ -156,7 +160,7 @@ export async function fetchCustomerById(id: string): Promise<Customer> {
   try {
     const {data, error} = await supabase
       .from('customer_stores')
-      .select('current_balance, credit_limit, alias, customers!inner(*)')
+      .select('current_balance, credit_limit, alias, free_plan_selected, customers!inner(*)')
       .eq('customer_id', id)
       .single();
 
@@ -167,6 +171,7 @@ export async function fetchCustomerById(id: string): Promise<Customer> {
         alias: (data as any).alias,
         credit_limit: Number((data as any).credit_limit ?? 0),
         current_balance: Number((data as any).current_balance),
+        free_plan_selected: (data as any).free_plan_selected ?? true,
       } as Customer;
     }
   } catch (_netErr) {}

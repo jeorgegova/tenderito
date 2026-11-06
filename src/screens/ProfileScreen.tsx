@@ -1,4 +1,4 @@
-import {useQuery} from '@tanstack/react-query';
+import {useQuery, useQueryClient} from '@tanstack/react-query';
 import {useCallback, useEffect} from 'react';
 import {BackHandler, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
@@ -61,6 +61,7 @@ async function fetchProfile() {
 
 export function ProfileScreen({navigation}: any) {
   const setProfile = useStore(s => s.setProfile);
+  const queryClient = useQueryClient();
   const {data, refetch: refetchProfile} = useQuery({
     queryKey: ['profile'],
     queryFn: fetchProfile,
@@ -119,6 +120,9 @@ export function ProfileScreen({navigation}: any) {
               const res = await downgradeToFreePlan();
               if (res.success) {
                 await refetchProfile();
+                await queryClient.invalidateQueries({
+                  queryKey: ['free-portfolio'],
+                });
                 showAlert('Plan actualizado', 'Ahora estás en el plan Free.');
               } else {
                 showAlert('Error', res.error ?? 'No se pudo actualizar el plan.');
@@ -142,7 +146,7 @@ export function ProfileScreen({navigation}: any) {
 
   return (
     <View style={styles.wrap}>
-      <DynamicBrandCurves />
+      <DynamicBrandCurves position="top-left" />
       <Header title="Mi negocio" subtitle="Perfil y suscripción" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Card style={styles.accountCard}>
@@ -179,7 +183,7 @@ export function ProfileScreen({navigation}: any) {
                   ? {color: '#D97706'}
                   : null,
               ]}>
-              {subStatus.planId === 'free'
+              {subStatus.effectivePlan === 'free'
                 ? 'Plan Free · Vitalicio'
                 : subStatus.expiresToday
                 ? `Plan ${subStatus.planId.toUpperCase()} · ¡Vence hoy!`
@@ -243,7 +247,7 @@ export function ProfileScreen({navigation}: any) {
                         ? {color: '#D97706'}
                         : null,
                     ]}>
-                    {subStatus.planId === 'free'
+                    {subStatus.effectivePlan === 'free'
                       ? '• Suscripción vitalicia'
                       : subStatus.expiresToday
                       ? `• Vence hoy (${subStatus.formattedEndDate})`
@@ -280,6 +284,15 @@ export function ProfileScreen({navigation}: any) {
             </Card>
           );
         })}
+
+        {subStatus.effectivePlan === 'free' ? (
+          <Button
+            title="Gestionar cartera Free"
+            icon="wallet"
+            variant="secondary"
+            onPress={() => navigation.navigate('FreePortfolio')}
+          />
+        ) : null}
 
         <Button title="Cerrar sesión" icon="logout" variant="secondary" onPress={logout} style={styles.logout} />
       </ScrollView>

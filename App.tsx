@@ -16,6 +16,7 @@ import {useSync} from './src/hooks/useSync';
 import {AlertModal} from './src/components/ui/AlertModal';
 import {supabase} from './src/lib/supabase';
 import {register_fcm_token, syncPendingDeviceToken} from './src/services/deviceService';
+import {AuthProvider} from './src/context/AuthContext';
 
 function useFirebaseNotifications() {
   useEffect(() => {
@@ -182,7 +183,9 @@ function App(): React.JSX.Element {
     <SafeAreaProvider>
       <QueryClientProvider client={client}>
         <StatusBar barStyle="dark-content" />
-        <AppContent />
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
       </QueryClientProvider>
     </SafeAreaProvider>
   );

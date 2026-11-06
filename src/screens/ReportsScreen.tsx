@@ -3,6 +3,7 @@ import {useMemo, useState} from 'react';
 import {FlatList, Pressable, StyleSheet, Text, View} from 'react-native';
 import {OverdueBadge} from '../components/ui/Badge';
 import {Card} from '../components/ui/Card';
+import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
 import {Header} from '../components/ui/Header';
 import {Input} from '../components/ui/Input';
 import {MonochromeIcon} from '../components/ui/MonochromeIcon';
@@ -25,6 +26,7 @@ export function ReportsScreen({navigation}: any) {
 
   return (
     <View style={styles.wrap}>
+      <DynamicBrandCurves position="bottom-right" />
       <Header title="Vencidos" subtitle="Fiados que necesitan seguimiento" />
       <View style={styles.summaryWrap}>
         <Card style={styles.summary}>

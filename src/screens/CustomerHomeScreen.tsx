@@ -20,6 +20,7 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import NetInfo from '@react-native-community/netinfo';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { showAlert } from '../utils/alert';
 import { confirmLogout, CUSTOMER_LOGOUT_MESSAGE } from '../lib/session';
 import { fetchCustomerPortal } from '../services/customerPortal';
@@ -441,6 +442,7 @@ export function CustomerHomeScreen() {
 
     return (
       <View style={styles.wrap}>
+        <DynamicBrandCurves position="bottom-left" />
         {/* Barra superior amigable para volver */}
         <View style={styles.topNav}>
           <TouchableOpacity
@@ -1056,6 +1058,7 @@ export function CustomerHomeScreen() {
 
   return (
     <View style={styles.wrap}>
+      <DynamicBrandCurves position="top-right" />
       {/* Cabecera amigable con saludo y botón de salir */}
       <View style={styles.header}>
         <View style={styles.flexOne}>

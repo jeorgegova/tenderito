@@ -4,6 +4,8 @@ import {getDbConnection, getData, executeQuery} from '../database/db';
 import {ESTADO_SINCRONIZACION} from '../database/synchronizationStatus';
 import {generateLocalId} from '../utils/id';
 import {scheduleSync} from './sync';
+import {useStore} from '../store/useStore';
+import {canCreateCreditForCustomer} from './portfolio';
 
 /**
  * Consulta créditos de un cliente con prioridad Offline-First (SQLite local).
@@ -146,6 +148,17 @@ export async function fetchTotalReceivable(): Promise<number> {
  * 4. Retorna el crédito de inmediato para una experiencia de usuario rápida y offline.
  */
 export async function createCredit(input: NewCreditInput): Promise<Credit> {
+  const eligibility = await canCreateCreditForCustomer(
+    input.customer_id,
+    useStore.getState().profile,
+  );
+
+  if (!eligibility.allowed) {
+    throw new Error(
+      eligibility.message ?? 'No puedes registrar este fiado con tu plan actual',
+    );
+  }
+
   const localId = generateLocalId();
   const now = new Date().toISOString();
   const db = await getDbConnection();

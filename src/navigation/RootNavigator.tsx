@@ -1,9 +1,9 @@
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
-import {useEffect, useState} from 'react';
+import React from 'react';
 import {ActivityIndicator, View} from 'react-native';
 import {MagnetTabBar} from '../components/ui/MagnetTabBar';
-import {supabase} from '../lib/supabase';
+import {useAuth} from '../context/AuthContext';
 import {Colors} from '../theme';
 import {CustomerDetailScreen} from '../screens/CustomerDetailScreen';
 import {CustomersScreen} from '../screens/CustomersScreen';
@@ -18,6 +18,7 @@ import {StatsScreen} from '../screens/StatsScreen';
 import {CustomerRegisterScreen} from '../screens/CustomerRegisterScreen';
 import {CustomerHomeScreen} from '../screens/CustomerHomeScreen';
 import {CustomerHistoryScreen} from '../screens/CustomerHistoryScreen';
+import {FreePortfolioScreen} from '../screens/FreePortfolioScreen';
 
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
@@ -39,44 +40,43 @@ function MainTabs() {
 }
 
 export function RootNavigator() {
-  const [loading, setLoading] = useState(true);
-  const [session, setSession] = useState(false);
-  const [userType, setUserType] = useState<'store' | 'customer'>('store');
+  const {isLoading, isAuthenticated, userType} = useAuth();
 
-  function applySession(nextSession: any) {
-    setSession(!!nextSession);
-    setUserType(
-      nextSession?.user?.user_metadata?.user_type === 'customer'
-        ? 'customer'
-        : 'store',
-    );
-  }
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({data}) => {
-      applySession(data.session);
-      setLoading(false);
-    });
-    const {data: sub} = supabase.auth.onAuthStateChange((_e, s) => {
-      applySession(s);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
-        <ActivityIndicator />
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: Colors.background,
+        }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
   }
 
   return (
-    <Stack.Navigator screenOptions={{headerShown: false, animation: 'fade', animationDuration: 200, contentStyle: {backgroundColor: Colors.background}, headerTintColor: Colors.primary, headerTitleStyle: {fontWeight: '700', color: Colors.text}, headerShadowVisible: false}}>
-      {session ? (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: 'fade',
+        animationDuration: 200,
+        contentStyle: {backgroundColor: Colors.background},
+        headerTintColor: Colors.primary,
+        headerTitleStyle: {fontWeight: '700', color: Colors.text},
+        headerShadowVisible: false,
+      }}>
+      {isAuthenticated ? (
         userType === 'customer' ? (
+          /* ========================================================
+             RUTAS PROTEGIDAS: PORTAL DE CLIENTE
+             ======================================================== */
           <Stack.Screen name="CustomerMain" component={CustomerHomeScreen} />
         ) : (
+          /* ========================================================
+             RUTAS PROTEGIDAS: TIENDA / TENDERO
+             ======================================================== */
           <>
             <Stack.Screen name="Main" component={MainTabs} />
             <Stack.Screen
@@ -88,6 +88,11 @@ export function RootNavigator() {
               name="CustomerHistory"
               component={CustomerHistoryScreen}
               options={{headerShown: true, title: 'Historial entre tiendas'}}
+            />
+            <Stack.Screen
+              name="FreePortfolio"
+              component={FreePortfolioScreen}
+              options={{headerShown: true, title: 'Cartera Free'}}
             />
             <Stack.Screen
               name="Alertas"
@@ -117,6 +122,9 @@ export function RootNavigator() {
           </>
         )
       ) : (
+        /* ========================================================
+           RUTAS PÚBLICAS (NO AUTENTICADO)
+           ======================================================== */
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen

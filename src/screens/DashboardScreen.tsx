@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -8,22 +8,23 @@ import {
   Text,
   View,
 } from 'react-native';
-import {useFocusEffect} from '@react-navigation/native';
-import {useQuery} from '@tanstack/react-query';
+import { useFocusEffect } from '@react-navigation/native';
+import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@react-native-vector-icons/ionicons';
-import {Card} from '../components/ui/Card';
-import {Header} from '../components/ui/Header';
-import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
-import {fetchOverdueCredits, fetchTotalReceivable} from '../services/credits';
-import {fetchCustomers} from '../services/customers';
-import {Colors, formatCOP} from '../theme';
-import {AnimatedMoney} from '../components/ui/AnimatedMoney';
-import {useStore} from '../store/useStore';
-import {calculateSubscriptionStatus} from '../services/plans';
-import {showAlert} from '../components/ui/AlertModal';
-import {confirmLogout} from '../lib/session';
+import { Card } from '../components/ui/Card';
+import { Header } from '../components/ui/Header';
+import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
+import { fetchOverdueCredits, fetchTotalReceivable } from '../services/credits';
+import { fetchCustomers } from '../services/customers';
+import { Colors, formatCOP } from '../theme';
+import { AnimatedMoney } from '../components/ui/AnimatedMoney';
+import { useStore } from '../store/useStore';
+import { calculateSubscriptionStatus } from '../services/plans';
+import { fetchFreePortfolioStatus } from '../services/portfolio';
+import { showAlert } from '../components/ui/AlertModal';
+import { confirmLogout } from '../lib/session';
 
-export function DashboardScreen({navigation}: any) {
+export function DashboardScreen({ navigation }: any) {
   const [showBalance, setShowBalance] = useState(true);
   const profile = useStore(s => s.profile);
   const subStatus = calculateSubscriptionStatus(profile);
@@ -61,6 +62,11 @@ export function DashboardScreen({navigation}: any) {
     queryKey: ['customers'],
     queryFn: () => fetchCustomers(),
   });
+  const freePortfolio = useQuery({
+    queryKey: ['free-portfolio'],
+    queryFn: fetchFreePortfolioStatus,
+    enabled: Boolean(profile) && subStatus.effectivePlan === 'free',
+  });
   const debtors = (customers.data ?? []).filter(
     customer => Number(customer.current_balance) > 0,
   );
@@ -93,7 +99,7 @@ export function DashboardScreen({navigation}: any) {
           'Tu suscripción vence el día de hoy. Renueva ahora mismo por WhatsApp para continuar con todas las funciones de tu tienda sin interrupciones.',
         type: 'warning',
         buttons: [
-          {text: 'Más tarde', style: 'cancel'},
+          { text: 'Más tarde', style: 'cancel' },
           {
             text: 'Renovar ahora',
             style: 'default',
@@ -106,11 +112,32 @@ export function DashboardScreen({navigation}: any) {
 
   return (
     <View style={styles.wrap}>
-      <DynamicBrandCurves />
+      <DynamicBrandCurves position="bottom-left" />
       <Header title="Inicio" subtitle="Tu plata, fácil y claro" />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
+        {/* Selección inicial de cartera al bajar al plan Free */}
+        {freePortfolio.data?.selection_pending && (
+          <Pressable
+            onPress={() => navigation.navigate('FreePortfolio')}
+            style={styles.toastBannerAlert}>
+            <View style={styles.toastBannerIconAlert}>
+              <Ionicons name="people" size={22} color="#DC2626" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toastBannerTitleAlert}>
+                Selecciona tu cartera Free
+              </Text>
+              <Text style={styles.toastBannerSubtitle}>
+                Elige hasta {freePortfolio.data.limit} clientes que conservan
+                cartera activa. Los demás solo recibirán abonos.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#DC2626" />
+          </Pressable>
+        )}
+
         {/* Banner de vencimiento el día de hoy */}
         {subStatus.expiresToday && (
           <Pressable
@@ -119,7 +146,7 @@ export function DashboardScreen({navigation}: any) {
             <View style={styles.toastBannerIconAlert}>
               <Ionicons name="alert-circle" size={22} color="#DC2626" />
             </View>
-            <View style={{flex: 1}}>
+            <View style={{ flex: 1 }}>
               <Text style={styles.toastBannerTitleAlert}>
                 Hoy vence tu suscripción
               </Text>
@@ -139,7 +166,7 @@ export function DashboardScreen({navigation}: any) {
             <View style={styles.toastBannerIconWarning}>
               <Ionicons name="time" size={22} color="#D97706" />
             </View>
-            <View style={{flex: 1}}>
+            <View style={{ flex: 1 }}>
               <Text style={styles.toastBannerTitleWarning}>
                 Suscripción vencida ({Math.max(0, 10 - subStatus.daysSinceExpiration)} días de gracia restantes)
               </Text>
@@ -267,7 +294,7 @@ export function DashboardScreen({navigation}: any) {
               <Pressable
                 key={item.id}
                 onPress={() =>
-                  navigation.navigate('CustomerDetail', {id: item.customer_id})
+                  navigation.navigate('CustomerDetail', { id: item.customer_id })
                 }>
                 <Card style={styles.alertRow}>
                   <View style={styles.alertIcon}>
@@ -370,7 +397,7 @@ export function DashboardScreen({navigation}: any) {
               <Pressable
                 key={customer.id}
                 onPress={() =>
-                  navigation.navigate('CustomerDetail', {id: customer.id})
+                  navigation.navigate('CustomerDetail', { id: customer.id })
                 }>
                 <Card style={styles.debtorRow}>
                   <View style={styles.avatar}>
@@ -380,7 +407,7 @@ export function DashboardScreen({navigation}: any) {
                         .toUpperCase()}
                     </Text>
                   </View>
-                  <View style={styles.flex1}>
+                  <View style={[styles.flex1, { maxWidth: 160 }]}>
                     <Text style={styles.customerName} numberOfLines={1}>
                       {customer.alias || customer.name}
                     </Text>
@@ -426,7 +453,7 @@ export function DashboardScreen({navigation}: any) {
       <Pressable
         onPress={() => navigation.navigate('NewCredit')}
         accessibilityLabel="Nuevo fiado"
-        style={({pressed}) => [styles.fab, pressed && styles.fabPressed]}>
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}>
         <Ionicons name="add-circle" size={22} color="#fff" />
         <Text style={styles.fabText}>Nuevo fiado</Text>
       </Pressable>
@@ -435,9 +462,9 @@ export function DashboardScreen({navigation}: any) {
 }
 
 const styles = StyleSheet.create({
-  wrap: {flex: 1, backgroundColor: Colors.background, overflow: 'hidden'},
-  content: {paddingHorizontal: 20, paddingTop: 16, paddingBottom: 96, gap: 12},
-  flex1: {flex: 1},
+  wrap: { flex: 1, backgroundColor: Colors.background, overflow: 'hidden' },
+  content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 96, gap: 12 },
+  flex1: { flex: 1 },
 
   // ── Hero ──
   heroCard: {
@@ -447,7 +474,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     shadowColor: Colors.primary,
-    shadowOffset: {width: 0, height: 6},
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.28,
     shadowRadius: 14,
     elevation: 6,
@@ -460,7 +487,7 @@ const styles = StyleSheet.create({
     height: 160,
     borderBottomLeftRadius: 110,
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    transform: [{rotate: '-8deg'}],
+    transform: [{ rotate: '-8deg' }],
   },
   heroBgCurve2: {
     position: 'absolute',
@@ -507,16 +534,16 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.22)',
     zIndex: 1,
   },
-  heroStat: {flexDirection: 'row', alignItems: 'baseline', gap: 5},
-  heroStatNum: {color: '#FFFFFF', fontSize: 22, fontWeight: '800'},
-  heroStatLabel: {color: 'rgba(255,255,255,0.88)', fontSize: 13, fontWeight: '500'},
+  heroStat: { flexDirection: 'row', alignItems: 'baseline', gap: 5 },
+  heroStatNum: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
+  heroStatLabel: { color: 'rgba(255,255,255,0.88)', fontSize: 13, fontWeight: '500' },
   heroBtn: {
     backgroundColor: 'rgba(255,255,255,0.22)',
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 999,
   },
-  heroBtnText: {color: '#FFFFFF', fontSize: 13, fontWeight: '700'},
+  heroBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 
   // ── Sección headers ──
   sectionRow: {
@@ -531,9 +558,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  sectionTitle: {fontSize: 18, fontWeight: '800', color: Colors.text},
-  sectionHint: {fontSize: 12, color: Colors.textSecondary, marginTop: 1},
-  sectionLink: {fontSize: 13, fontWeight: '700', color: Colors.primary},
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: Colors.text },
+  sectionHint: { fontSize: 12, color: Colors.textSecondary, marginTop: 1 },
+  sectionLink: { fontSize: 13, fontWeight: '700', color: Colors.primary },
 
   // ── Cards de alertas ──
   alertRow: {
@@ -554,22 +581,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  customerName: {fontSize: 16, color: Colors.text, fontWeight: '800'},
-  customerRealName: {fontSize: 12, color: Colors.textSecondary, marginTop: 1},
+  customerName: { fontSize: 16, color: Colors.text, fontWeight: '800' },
+  customerRealName: { fontSize: 12, color: Colors.textSecondary, marginTop: 1 },
   phoneInline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     marginTop: 2,
   },
-  alertAmountWrap: {alignItems: 'flex-end', justifyContent: 'center'},
+  alertAmountWrap: { alignItems: 'flex-end', justifyContent: 'center' },
   alertAmountLabel: {
     fontSize: 11,
     color: Colors.destructive,
     fontWeight: '700',
     marginBottom: 2,
   },
-  alertAmount: {fontSize: 16, color: Colors.destructive, fontWeight: '800'},
+  alertAmount: { fontSize: 16, color: Colors.destructive, fontWeight: '800' },
 
   // ── Cards de deudores ──
   debtorRow: {
@@ -590,10 +617,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: {color: Colors.primary, fontSize: 18, fontWeight: '800'},
-  balanceWrap: {alignItems: 'flex-end', gap: 2},
-  balanceLabel: {fontSize: 11, color: Colors.textSecondary, fontWeight: '700'},
-  balance: {fontSize: 16, color: Colors.destructive, fontWeight: '800'},
+  avatarText: { color: Colors.primary, fontSize: 18, fontWeight: '800' },
+  balanceWrap: { alignItems: 'flex-end', gap: 2 },
+  balanceLabel: { fontSize: 11, color: Colors.textSecondary, fontWeight: '700' },
+  balance: { fontSize: 16, color: Colors.destructive, fontWeight: '800' },
   touchHint: {
     fontSize: 11,
     color: Colors.primary,
@@ -628,8 +655,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyTitle: {fontSize: 15, color: Colors.text, fontWeight: '800'},
-  muted: {fontSize: 12, color: Colors.textSecondary},
+  emptyTitle: { fontSize: 15, color: Colors.text, fontWeight: '800' },
+  muted: { fontSize: 12, color: Colors.textSecondary },
 
   // ── Error & Loading ──
   errorCard: {
@@ -689,14 +716,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 999,
     shadowColor: Colors.primary,
-    shadowOffset: {width: 0, height: 6},
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 8,
   },
   fabPressed: {
     opacity: 0.88,
-    transform: [{scale: 0.96}],
+    transform: [{ scale: 0.96 }],
   },
   fabText: {
     color: '#fff',

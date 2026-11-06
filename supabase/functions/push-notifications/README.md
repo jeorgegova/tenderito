@@ -60,14 +60,13 @@ Ejecuta esta consulta en el **Editor SQL de Supabase** cambiando el documento po
 SELECT 
   c.name AS cliente,
   c.document_number AS documento,
-  ca.user_id AS usuario_portal,
+  c.user_id AS usuario_portal,
   dv.device_name AS celular,
   dv.fcm_token IS NOT NULL AS tiene_token_fcm,
   dv.is_active AS dispositivo_activo,
   dv.updated_at AS ultima_conexion
 FROM public.customers c
-LEFT JOIN public.customer_accounts ca ON ca.customer_id = c.id
-LEFT JOIN public.dispositivos_vinculados dv ON dv.user_id = ca.user_id
+LEFT JOIN public.dispositivos_vinculados dv ON dv.user_id = c.user_id
 WHERE c.document_number = 'NUMERO_DOCUMENTO_DEL_CLIENTE';
 ```
 

@@ -176,8 +176,8 @@ begin
   return query
   select dv.fcm_token, dv.platform, dv.device_name
   from public.dispositivos_vinculados dv
-  join public.customer_accounts ca on ca.user_id = dv.user_id
-  where ca.customer_id = p_customer_id
+  join public.customers c on c.user_id = dv.user_id
+  where c.id = p_customer_id
     and dv.is_active = true;
 end;
 $$;
