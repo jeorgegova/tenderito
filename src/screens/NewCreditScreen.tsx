@@ -1,7 +1,6 @@
 import {useQuery} from '@tanstack/react-query';
 import {useEffect, useState} from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,11 +12,13 @@ import {Card} from '../components/ui/Card';
 import {Button} from '../components/ui/Button';
 import {DatePicker} from '../components/ui/DatePicker';
 import {Input} from '../components/ui/Input';
+import {showAlert} from '../components/ui/AlertModal';
+import {CreateCustomerModal} from '../components/CreateCustomerModal';
 import {createCredit} from '../services/credits';
 import {fetchCustomers} from '../services/customers';
 import {canCreateCreditForCustomer} from '../services/portfolio';
 import {useStore} from '../store/useStore';
-import {Colors, formatCOP} from '../theme';
+import {Colors, Radius, formatCOP} from '../theme';
 import {FormatMoney, parseMoney} from '../utils/format';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useMutationWithSync} from '../hooks/useMutationWithSync';
@@ -30,6 +31,7 @@ export function NewCreditScreen({route, navigation}: any) {
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
   const [eligibility, setEligibility] = useState<CreditEligibility | null>(null);
   const insets = useSafeAreaInsets();
   const profile = useStore(s => s.profile);
@@ -76,23 +78,36 @@ export function NewCreditScreen({route, navigation}: any) {
   const mutation = useMutationWithSync(createCredit, {
     onSuccess: () => navigation.goBack(),
     onError: (error: any) =>
-      Alert.alert('No se pudo registrar', error?.message ?? 'Intenta de nuevo'),
+      showAlert({
+        title: 'No se pudo registrar',
+        message: error?.message ?? 'Intenta de nuevo',
+        type: 'destructive',
+      }),
   });
 
   async function onSave() {
     if (!customer_id) {
-      return Alert.alert('Elige cliente');
+      return showAlert({
+        title: 'Faltan datos',
+        message: 'Elige un cliente para el fiado',
+        type: 'warning',
+      });
     }
     if (!concept.trim() || !parseMoney(amount)) {
-      return Alert.alert('Faltan datos', 'Concepto y monto válidos');
+      return showAlert({
+        title: 'Faltan datos',
+        message: 'Ingresa un concepto y un monto válido',
+        type: 'warning',
+      });
     }
 
     const check = await canCreateCreditForCustomer(customer_id, profile);
     if (!check.allowed) {
-      return Alert.alert(
-        'No puedes crear este fiado',
-        check.message ?? 'Tu plan actual no lo permite.',
-      );
+      return showAlert({
+        title: 'No puedes crear este fiado',
+        message: check.message ?? 'Tu plan actual no lo permite.',
+        type: 'warning',
+      });
     }
 
     mutation.mutate({
@@ -145,8 +160,21 @@ export function NewCreditScreen({route, navigation}: any) {
           </Card>
         ) : (
           <View style={styles.picker}>
+            <View style={styles.pickerHeaderRow}>
+              <Text style={styles.pickerLabel}>Buscar cliente</Text>
+              <Pressable
+                onPress={() => setShowNewCustomerModal(true)}
+                style={styles.newCustomerBtn}
+                hitSlop={8}>
+                <Ionicons
+                  name="person-add-outline"
+                  size={14}
+                  color={Colors.primary}
+                />
+                <Text style={styles.newCustomerBtnText}>Nuevo cliente</Text>
+              </Pressable>
+            </View>
             <Input
-              label="Buscar cliente"
               leadingIcon="search"
               value={customerSearch}
               onChangeText={setCustomerSearch}
@@ -286,6 +314,16 @@ export function NewCreditScreen({route, navigation}: any) {
           onPress={() => navigation.goBack()}
         />
       </View>
+
+      <CreateCustomerModal
+        visible={showNewCustomerModal}
+        onClose={() => setShowNewCustomerModal(false)}
+        existingCustomers={customers}
+        onCustomerCreated={newCust => {
+          setCustomerId(newCust.id);
+          setCustomerSearch('');
+        }}
+      />
     </View>
   );
 }
@@ -331,6 +369,34 @@ const styles = StyleSheet.create({
   muted: {fontSize: 12, color: Colors.textSecondary},
   change: {color: Colors.primary, fontSize: 13, fontWeight: '700'},
   picker: {gap: 8},
+  pickerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+  },
+  pickerLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    letterSpacing: 0.1,
+  },
+  newCustomerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    backgroundColor: '#FFF3E8',
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  newCustomerBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
   options: {
     maxHeight: 240,
     backgroundColor: Colors.card,

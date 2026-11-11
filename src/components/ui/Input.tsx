@@ -1,4 +1,12 @@
-import {StyleSheet, Text, TextInput, View, type TextInputProps} from 'react-native';
+import {useState} from 'react';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type TextInputProps,
+} from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Colors, Radius} from '../../theme';
 
@@ -9,8 +17,18 @@ interface Props extends TextInputProps {
   pill?: boolean;
 }
 
-export function Input({label, error, leadingIcon, pill, ...rest}: Props) {
+export function Input({
+  label,
+  error,
+  leadingIcon,
+  pill,
+  secureTextEntry,
+  ...rest
+}: Props) {
+  const [showPassword, setShowPassword] = useState(false);
   const isPill = pill || leadingIcon === 'search';
+  const isPassword = Boolean(secureTextEntry);
+
   return (
     <View style={styles.wrap}>
       {label && <Text style={styles.label}>{label}</Text>}
@@ -31,8 +49,25 @@ export function Input({label, error, leadingIcon, pill, ...rest}: Props) {
         <TextInput
           placeholderTextColor={Colors.textMuted}
           style={[styles.input, leadingIcon && {paddingLeft: 0}]}
+          secureTextEntry={isPassword ? !showPassword : false}
           {...rest}
         />
+        {isPassword ? (
+          <Pressable
+            onPress={() => setShowPassword(prev => !prev)}
+            hitSlop={12}
+            style={styles.eyeBtn}
+            accessibilityRole="button"
+            accessibilityLabel={
+              showPassword ? 'Ocultar contraseña' : 'Ver contraseña'
+            }>
+            <Ionicons
+              name={showPassword ? 'eye' : 'eye-off'}
+              size={22}
+              color="grey"
+            />
+          </Pressable>
+        ) : null}
       </View>
       {error && <Text style={styles.error}>{error}</Text>}
     </View>
@@ -80,6 +115,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.text,
     fontWeight: '500',
+  },
+  eyeBtn: {
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   error: {fontSize: 12, color: Colors.destructive, fontWeight: '600'},
 });

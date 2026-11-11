@@ -4,6 +4,7 @@ import {getDbConnection, getData, executeQuery} from '../database/db';
 import {getConfigParam, saveConfigParam} from '../database/tables/metadata';
 import {getLocalSubscriptionPlans} from '../database/tables/plans';
 import {calculateSubscriptionStatus} from './plans';
+import {getActiveStoreId} from './storeContext';
 
 const FREE_LIMIT_FALLBACK = 10;
 const SELECTION_DONE_KEY = 'free_portfolio_selection_done';
@@ -31,30 +32,52 @@ export async function refreshSubscriptionLifecycle(): Promise<number> {
 export async function fetchFreePortfolioStatus(): Promise<FreePortfolioStatus | null> {
   try {
     const {data, error} = await supabase.rpc('get_free_portfolio_status');
-    if (error || !data) {
-      return null;
+    if (!error && data) {
+      const status = data as FreePortfolioStatus;
+      try {
+        const db = await getDbConnection();
+        const activeStoreId = await getActiveStoreId();
+        await saveConfigParam(
+          db,
+          SELECTION_DONE_KEY,
+          status.selection_done ? '1' : '0',
+        );
+        await saveConfigParam(db, 'free_portfolio_limit', String(status.limit));
+
+        if (status.selection_pending) {
+          await executeQuery(
+            db,
+            'UPDATE customers SET free_plan_selected = 0 WHERE store_id = ? OR store_id IS NULL;',
+            [activeStoreId || ''],
+          );
+        }
+      } catch (_localErr) {}
+      return status;
     }
+  } catch (_e) {}
 
-    const status = data as FreePortfolioStatus;
+  // Fallback Offline: Leer estado persistido en SQLite local
+  try {
+    const db = await getDbConnection();
+    const done = await getConfigParam(db, SELECTION_DONE_KEY);
+    const limitStr = await getConfigParam(db, 'free_portfolio_limit');
+    if (done !== null) {
+      const limit = limitStr ? Number(limitStr) : FREE_LIMIT_FALLBACK;
+      return {
+        plan: 'free',
+        effective_plan: 'free',
+        selection_pending: done === '0',
+        selection_done: done === '1',
+        limit,
+        active_count: 0,
+        portfolio_count: 0,
+        portfolio_enforced: true,
+        remaining_slots: limit,
+      };
+    }
+  } catch (_offlineErr) {}
 
-    try {
-      const db = await getDbConnection();
-      await saveConfigParam(
-        db,
-        SELECTION_DONE_KEY,
-        status.selection_done ? '1' : '0',
-      );
-      await saveConfigParam(db, 'free_portfolio_limit', String(status.limit));
-
-      if (status.selection_pending) {
-        await executeQuery(db, 'UPDATE customers SET free_plan_selected = 0;');
-      }
-    } catch (_localErr) {}
-
-    return status;
-  } catch (_e) {
-    return null;
-  }
+  return null;
 }
 
 /**
@@ -74,16 +97,21 @@ export async function setFreePortfolioSelection(
   }
 
   try {
+    const activeStoreId = await getActiveStoreId();
     const db = await getDbConnection();
-    await executeQuery(db, 'UPDATE customers SET free_plan_selected = 0;');
+    await executeQuery(
+      db,
+      'UPDATE customers SET free_plan_selected = 0 WHERE store_id = ? OR store_id IS NULL;',
+      [activeStoreId || ''],
+    );
 
     for (const id of customerIds) {
       await executeQuery(
         db,
         `UPDATE customers
          SET free_plan_selected = 1
-         WHERE local_id = ? OR server_id = ?;`,
-        [id, id],
+         WHERE (local_id = ? OR server_id = ?) AND (store_id = ? OR store_id IS NULL);`,
+        [id, id, activeStoreId || ''],
       );
     }
 
@@ -161,15 +189,18 @@ export async function canCreateCreditForCustomer(
   }
 
   try {
+    const activeStoreId = await getActiveStoreId();
     const db = await getDbConnection();
-    const rows = await getData(
-      db,
-      `SELECT current_balance, free_plan_selected
+    let query = `SELECT current_balance, free_plan_selected
        FROM customers
-       WHERE local_id = ? OR server_id = ?
-       LIMIT 1;`,
-      [customerId, customerId],
-    );
+       WHERE (local_id = ? OR server_id = ?)`;
+    const params: any[] = [customerId, customerId];
+    if (activeStoreId) {
+      query += ` AND (store_id = ? OR store_id IS NULL OR store_id = "" OR store_id = "null")`;
+      params.push(activeStoreId);
+    }
+    query += ` LIMIT 1;`;
+    const rows = await getData(db, query, params);
 
     if (rows.length === 0) {
       return {
@@ -186,16 +217,19 @@ export async function canCreateCreditForCustomer(
     const balance = Number(row.current_balance || 0);
     const isSelected = Number(row.free_plan_selected ?? 1) === 1;
 
-    const counts = await getData(
-      db,
-      `SELECT
+    let countQuery = `SELECT
          SUM(CASE WHEN current_balance > 0 THEN 1 ELSE 0 END) AS active_count,
          SUM(CASE
            WHEN current_balance > 0 AND free_plan_selected = 1 THEN 1
            ELSE 0
          END) AS portfolio_count
-       FROM customers;`,
-    );
+       FROM customers`;
+    const countParams: any[] = [];
+    if (activeStoreId) {
+      countQuery += ` WHERE store_id = ? OR store_id IS NULL OR store_id = "" OR store_id = "null";`;
+      countParams.push(activeStoreId);
+    }
+    const counts = await getData(db, countQuery, countParams);
 
     const activeCount = Number(counts[0]?.active_count || 0);
     const portfolioCount = Number(counts[0]?.portfolio_count || 0);

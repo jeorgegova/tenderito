@@ -1,6 +1,6 @@
 import {useQuery, useQueryClient} from '@tanstack/react-query';
 import {useCallback, useEffect} from 'react';
-import {BackHandler, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {Button} from '../components/ui/Button';
 import {Card} from '../components/ui/Card';
@@ -18,6 +18,12 @@ import {
   fetchSubscriptionPlans,
   openWhatsAppPlanRequest,
 } from '../services/plans';
+import {
+  getActiveStoreId,
+  setActiveStoreId,
+  fetchUserStores,
+} from '../services/storeContext';
+import {syncAll} from '../services/sync';
 import type {SubscriptionPlanItem} from '../types';
 
 async function fetchProfile() {
@@ -36,18 +42,25 @@ async function fetchProfile() {
     throw error;
   }
 
-  // Integrar datos de suscripción si están en la tienda del usuario
+  // Integrar datos de la tienda activa actual
   try {
-    const {data: storeData} = await supabase
+    const activeStoreId = await getActiveStoreId();
+    let storeQuery = supabase
       .from('stores')
-      .select('subscription_plan, subscription_start_date, subscription_end_date, subscription_status')
-      .eq('owner_id', user.id)
-      .limit(1)
-      .maybeSingle();
+      .select('store_name, subscription_plan, subscription_start_date, subscription_end_date, subscription_status');
+
+    if (activeStoreId) {
+      storeQuery = storeQuery.eq('id', activeStoreId);
+    } else {
+      storeQuery = storeQuery.eq('owner_id', user.id).limit(1);
+    }
+
+    const {data: storeData} = await storeQuery.maybeSingle();
 
     if (storeData) {
       return {
         ...data,
+        store_name: storeData.store_name || data.store_name,
         subscription_plan: data.subscription_plan || storeData.subscription_plan || 'free',
         subscription_start_date: data.subscription_start_date || storeData.subscription_start_date,
         subscription_end_date: data.subscription_end_date || storeData.subscription_end_date,
@@ -71,6 +84,35 @@ export function ProfileScreen({navigation}: any) {
     queryKey: ['subscription-plans'],
     queryFn: fetchSubscriptionPlans,
   });
+
+  const {data: userStores = [], refetch: refetchStores} = useQuery({
+    queryKey: ['user-stores'],
+    queryFn: fetchUserStores,
+  });
+
+  const {data: currentStoreId, refetch: refetchActiveStore} = useQuery({
+    queryKey: ['active-store-id'],
+    queryFn: getActiveStoreId,
+  });
+
+  async function handleSwitchStore(storeId: string) {
+    if (storeId === currentStoreId) return;
+    try {
+      await setActiveStoreId(storeId);
+      queryClient.clear();
+      await syncAll({force: true});
+      await refetchProfile();
+      await refetchStores();
+      await refetchActiveStore();
+      showAlert({
+        title: 'Tienda cambiada',
+        message: 'Has cambiado a la tienda seleccionada.',
+        type: 'success',
+      });
+    } catch (e: any) {
+      showAlert('Error cambiando de tienda', e?.message);
+    }
+  }
 
   useEffect(() => {
     if (data) {
@@ -198,6 +240,59 @@ export function ProfileScreen({navigation}: any) {
             </Text>
           </View>
         </Card>
+
+        {userStores.length > 1 && (
+          <View style={{marginTop: 8}}>
+            <Text style={styles.section}>Tus tiendas</Text>
+            <Text style={styles.sectionHint}>
+              Toca para cambiar de tienda activa
+            </Text>
+            <View style={{gap: 8, marginTop: 8}}>
+              {userStores.map(st => {
+                const isActive = st.store_id === currentStoreId;
+                return (
+                  <TouchableOpacity
+                    key={st.store_id}
+                    onPress={() => handleSwitchStore(st.store_id)}
+                    activeOpacity={0.7}>
+                    <Card
+                      style={[
+                        styles.storeSwitchCard,
+                        isActive && styles.activeStoreCard,
+                      ]}>
+                      <View style={{flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1}}>
+                        <View
+                          style={[
+                            styles.storeIconSmall,
+                            isActive && {backgroundColor: Colors.primaryLight},
+                          ]}>
+                          <MonochromeIcon
+                            name="store"
+                            size={16}
+                            color={isActive ? Colors.primary : Colors.textSecondary}
+                          />
+                        </View>
+                        <View style={{flex: 1}}>
+                          <Text style={[styles.storeSwitchName, isActive && {color: Colors.primary}]}>
+                            {st.store_name}
+                          </Text>
+                          <Text style={styles.storeSwitchRole}>
+                            {st.role === 'owner' ? 'Propietario' : 'Administrador'} · {st.subscription_plan.toUpperCase()}
+                          </Text>
+                        </View>
+                      </View>
+                      {isActive && (
+                        <View style={styles.activePill}>
+                          <Text style={styles.activePillText}>ACTIVA</Text>
+                        </View>
+                      )}
+                    </Card>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         <View style={styles.sectionHeader}>
           <View>
@@ -379,6 +474,50 @@ const styles = StyleSheet.create({
     minHeight: 36,
     borderRadius: 12,
     backgroundColor: '#D97706',
+  },
+  storeSwitchCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: '#FFFFFF',
+  },
+  activeStoreCard: {
+    borderColor: Colors.primary,
+    borderWidth: 1.5,
+  },
+  storeIconSmall: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.cardAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storeSwitchName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  storeSwitchRole: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  activePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: Colors.primaryLight,
+  },
+  activePillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: Colors.primary,
+    letterSpacing: 0.5,
   },
   logout: {marginTop: 8, backgroundColor: Colors.card, borderColor: Colors.border},
 });

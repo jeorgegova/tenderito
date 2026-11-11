@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -14,6 +13,7 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { Input } from '../components/ui/Input';
+import { showAlert } from '../components/ui/AlertModal';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../theme';
 
@@ -27,7 +27,11 @@ export function RegisterScreen({ navigation }: any) {
 
   async function onRegister() {
     if (!storeName || !merchantName || !email || !password) {
-      return Alert.alert('Faltan datos', 'Completa todos los campos');
+      return showAlert({
+        title: 'Faltan datos',
+        message: 'Completa todos los campos',
+        type: 'warning',
+      });
     }
     setLoading(true);
     const { data, error } = await supabase.auth.signUp({
@@ -43,24 +47,34 @@ export function RegisterScreen({ navigation }: any) {
     });
     if (error || !data.user) {
       setLoading(false);
-      return Alert.alert('Error', error?.message ?? 'No se pudo registrar');
+      return showAlert({
+        title: 'Error',
+        message: error?.message ?? 'No se pudo registrar',
+        type: 'destructive',
+      });
     }
     setLoading(false);
 
     if (!data.session) {
-      return Alert.alert(
-        'Revisa tu correo',
-        'Te enviamos un correo de comprobación. Valida tu cuenta para poder iniciar sesión.',
-        [
+      return showAlert({
+        title: 'Revisa tu correo',
+        message:
+          'Te enviamos un correo de comprobación. Valida tu cuenta para poder iniciar sesión.',
+        type: 'info',
+        buttons: [
           {
             text: 'Ir al inicio de sesión',
             onPress: () => navigation.replace('Login'),
           },
         ],
-      );
+      });
     }
 
-    Alert.alert('Cuenta creada', 'Tu cuenta ya está lista para usar.');
+    showAlert({
+      title: 'Cuenta creada',
+      message: 'Tu cuenta ya está lista para usar.',
+      type: 'success',
+    });
   }
 
   return (

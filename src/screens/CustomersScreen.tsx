@@ -19,6 +19,9 @@ import { Card } from '../components/ui/Card';
 import { Header } from '../components/ui/Header';
 import { Input } from '../components/ui/Input';
 import { showAlert } from '../components/ui/AlertModal';
+import { SyncBadge } from '../components/ui/Badge';
+import { StoreHistoryLockNotice } from '../components/ui/StoreHistoryLockNotice';
+import { MagnetFilterBar } from '../components/ui/MagnetFilterBar';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -275,9 +278,13 @@ export function CustomersScreen({ navigation }: any) {
     try {
       if (foundCustomer) {
         await linkCustomerToStore(
-          foundCustomer.id,
+          foundCustomer,
           parseMoney(creditLimit),
           alias,
+        );
+        showAlert(
+          'Cliente vinculado',
+          `"${alias?.trim() || foundCustomer.name}" ha sido vinculado a tu tienda exitosamente.`,
         );
       } else {
         await createCustomer({
@@ -314,37 +321,25 @@ export function CustomersScreen({ navigation }: any) {
         />
       </View>
       <View style={styles.filterRow}>
-        {(
-          [
+        <MagnetFilterBar
+          options={[
             { key: 'all', label: `Todos (${data?.length ?? 0})` },
             {
               key: 'owing',
-              label: `Con deuda (${(data ?? []).filter(c => Number(c.current_balance) > 0).length
-                })`,
+              label: `Con deuda (${
+                (data ?? []).filter(c => Number(c.current_balance) > 0).length
+              })`,
             },
             {
               key: 'clear',
-              label: `Al día (${(data ?? []).filter(c => Number(c.current_balance) === 0).length
-                })`,
+              label: `Al día (${
+                (data ?? []).filter(c => Number(c.current_balance) === 0).length
+              })`,
             },
-          ] as const
-        ).map(filter => (
-          <Pressable
-            key={filter.key}
-            onPress={() => setBalanceFilter(filter.key)}
-            style={[
-              styles.filterChip,
-              balanceFilter === filter.key && styles.filterChipActive,
-            ]}>
-            <Text
-              style={[
-                styles.filterText,
-                balanceFilter === filter.key && styles.filterTextActive,
-              ]}>
-              {filter.label}
-            </Text>
-          </Pressable>
-        ))}
+          ]}
+          selectedKey={balanceFilter}
+          onSelect={key => setBalanceFilter(key as 'all' | 'owing' | 'clear')}
+        />
       </View>
       <FlatList
         contentContainerStyle={styles.listContent}
@@ -400,9 +395,12 @@ export function CustomersScreen({ navigation }: any) {
                     </Text>
                   </View>
                   <View style={styles.flexOne}>
-                    <Text style={styles.name} numberOfLines={1}>
-                      {item.alias || item.name}
-                    </Text>
+                    <View style={styles.nameHeaderRow}>
+                      <Text style={styles.name} numberOfLines={1}>
+                        {item.alias || item.name}
+                      </Text>
+                      <SyncBadge estadoServidor={item.estadoServidor} />
+                    </View>
                     {item.alias ? (
                       <Text style={styles.sub} numberOfLines={1}>
                         {item.name}
@@ -619,10 +617,7 @@ export function CustomersScreen({ navigation }: any) {
                                 }}
                               />
                             ) : (
-                              <Text style={styles.sub}>
-                                El historial entre tiendas está disponible en
-                                planes pagos.
-                              </Text>
+                              <StoreHistoryLockNotice />
                             )}
                           </Card>
                           <Input
@@ -870,6 +865,12 @@ const styles = StyleSheet.create({
   },
   avatarTextPaid: {
     color: Colors.success,
+  },
+  nameHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
   },
   name: {
     fontSize: 17,

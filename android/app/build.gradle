@@ -85,13 +85,13 @@ android {
         applicationId 'com.tenderito'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName '1.0.1'
+        versionCode 3
+        versionName '1.0.3'
         multiDexEnabled true
 
         externalNativeBuild {
             cmake {
-                arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+                arguments '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
             }
         }
     }

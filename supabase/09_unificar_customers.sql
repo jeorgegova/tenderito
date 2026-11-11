@@ -44,37 +44,43 @@ begin
   end if;
 end $$;
 
--- 2. Funciones auxiliares SECURITY DEFINER (evitan recursión infinita en PostgreSQL)
+-- 2. Funciones auxiliares SECURITY DEFINER en PL/pgSQL (evitan inlining y recursión infinita en PostgreSQL)
 
 -- Verifica si el usuario actual es dueño/empleado de la tienda indicada
 create or replace function public.is_store_member(p_store_id uuid)
-returns boolean language sql stable security definer set search_path = public
+returns boolean language plpgsql stable security definer set search_path = public
 as $$
-  select exists (
+begin
+  return exists (
     select 1 from public.store_memberships
     where store_id = p_store_id and user_id = auth.uid()
   );
+end;
 $$;
 
 -- Verifica si un cliente pertenece a alguna de las tiendas del usuario actual
 create or replace function public.is_customer_of_my_stores(p_customer_id uuid)
-returns boolean language sql stable security definer set search_path = public
+returns boolean language plpgsql stable security definer set search_path = public
 as $$
-  select exists (
+begin
+  return exists (
     select 1 from public.customer_stores cs
     join public.store_memberships m on m.store_id = cs.store_id
     where cs.customer_id = p_customer_id and m.user_id = auth.uid()
   );
+end;
 $$;
 
 -- Verifica si el usuario actual es el cliente (portal)
 create or replace function public.is_portal_customer(p_customer_id uuid)
-returns boolean language sql stable security definer set search_path = public
+returns boolean language plpgsql stable security definer set search_path = public
 as $$
-  select exists (
+begin
+  return exists (
     select 1 from public.customers c
     where c.id = p_customer_id and c.user_id = auth.uid()
   );
+end;
 $$;
 
 -- 3. Habilitar RLS en las tablas principales

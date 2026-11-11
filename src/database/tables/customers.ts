@@ -6,7 +6,7 @@ export async function createCustomersTable(db: any) {
   await db.executeAsync(`
     CREATE TABLE IF NOT EXISTS customers (
       local_id TEXT PRIMARY KEY,
-      server_id TEXT UNIQUE,
+      server_id TEXT,
       store_id TEXT,
       name TEXT NOT NULL,
       document_type TEXT,
@@ -34,6 +34,9 @@ export async function createCustomersTable(db: any) {
     'CREATE INDEX IF NOT EXISTS idx_customers_sync_status ON customers(sync_status);',
   );
   await db.executeAsync(
-    'CREATE INDEX IF NOT EXISTS idx_customers_server_id ON customers(server_id);',
+    'CREATE INDEX IF NOT EXISTS idx_customers_store_id ON customers(store_id);',
+  );
+  await db.executeAsync(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_server_store ON customers(server_id, store_id);',
   );
 }

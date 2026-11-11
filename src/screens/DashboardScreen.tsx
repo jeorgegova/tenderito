@@ -12,6 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { Card } from '../components/ui/Card';
+import { SyncBadge } from '../components/ui/Badge';
 import { Header } from '../components/ui/Header';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { fetchOverdueCredits, fetchTotalReceivable } from '../services/credits';
@@ -305,9 +306,12 @@ export function DashboardScreen({ navigation }: any) {
                     />
                   </View>
                   <View style={styles.flex1}>
-                    <Text style={styles.customerName} numberOfLines={1}>
-                      {displayName}
-                    </Text>
+                    <View style={styles.nameHeaderRow}>
+                      <Text style={styles.customerName} numberOfLines={1}>
+                        {displayName}
+                      </Text>
+                      <SyncBadge estadoServidor={item.estadoServidor} />
+                    </View>
                     {realName ? (
                       <Text style={styles.customerRealName} numberOfLines={1}>
                         {realName}
@@ -580,6 +584,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.destructiveAlt,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  nameHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
   },
   customerName: { fontSize: 16, color: Colors.text, fontWeight: '800' },
   customerRealName: { fontSize: 12, color: Colors.textSecondary, marginTop: 1 },

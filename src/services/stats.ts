@@ -1,5 +1,6 @@
 import {getDbConnection, getData} from '../database/db';
 import {supabase} from '../lib/supabase';
+import {getActiveStoreId} from './storeContext';
 
 export interface StatsFilters {
   from?: string; // YYYY-MM-DD
@@ -28,14 +29,20 @@ export interface StatsResult {
  * Cálculo offline de estadísticas a partir de la base de datos local SQLite.
  */
 async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
+  const activeStoreId = await getActiveStoreId();
   const db = await getDbConnection();
   const {from, to, customerIds} = filters;
 
   // Clientes para mapear balances y nombres
-  const custRows = await getData(
-    db,
-    'SELECT local_id, server_id, name, alias, current_balance FROM customers;',
-  );
+  let custSql =
+    'SELECT local_id, server_id, name, alias, current_balance FROM customers';
+  const custParams: any[] = [];
+  if (activeStoreId) {
+    custSql +=
+      ' WHERE store_id = ? OR store_id IS NULL OR store_id = "" OR store_id = "null"';
+    custParams.push(activeStoreId);
+  }
+  const custRows = await getData(db, custSql, custParams);
   const custMap = new Map<string, any>();
   for (const c of custRows) {
     if (c.local_id) custMap.set(c.local_id, c);
@@ -45,6 +52,11 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
   // 1. Créditos locales
   let credSql = 'SELECT customer_id, amount, created_at FROM credits WHERE 1=1';
   const credParams: any[] = [];
+  if (activeStoreId) {
+    credSql +=
+      ' AND (store_id = ? OR store_id IS NULL OR store_id = "" OR store_id = "null")';
+    credParams.push(activeStoreId);
+  }
   if (from) {
     credSql += ' AND created_at >= ?';
     credParams.push(`${from}T00:00:00`);
@@ -56,8 +68,14 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
   const creditsData = await getData(db, credSql, credParams);
 
   // 2. Abonos locales
-  let paySql = 'SELECT customer_id, amount, payment_date FROM payments WHERE 1=1';
+  let paySql =
+    'SELECT customer_id, amount, payment_date FROM payments WHERE 1=1';
   const payParams: any[] = [];
+  if (activeStoreId) {
+    paySql +=
+      ' AND (store_id = ? OR store_id IS NULL OR store_id = "" OR store_id = "null")';
+    payParams.push(activeStoreId);
+  }
   if (from) {
     paySql += ' AND payment_date >= ?';
     payParams.push(`${from}T00:00:00`);
@@ -124,100 +142,11 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
   };
 }
 
+/**
+ * Consulta de estadísticas: SQLite como fuente única de verdad.
+ * Se calcula instantáneamente de manera local, garantizando disponibilidad 100% offline
+ * y cero consumo innecesario de peticiones o egress en Supabase.
+ */
 export async function fetchStats(filters: StatsFilters = {}): Promise<StatsResult> {
-  const {from, to, customerIds} = filters;
-
-  try {
-    // --- Créditos ---
-    let creditsQuery = supabase
-      .from('credits')
-      .select('customer_id, amount, customers!inner(id, name)');
-
-    if (from) creditsQuery = creditsQuery.gte('created_at', `${from}T00:00:00`);
-    if (to) creditsQuery = creditsQuery.lte('created_at', `${to}T23:59:59`);
-    if (customerIds?.length) creditsQuery = creditsQuery.in('customer_id', customerIds);
-
-    const {data: creditsData, error: creditsError} = await creditsQuery;
-    if (creditsError) throw creditsError;
-
-    // --- Abonos ---
-    let paymentsQuery = supabase
-      .from('payments')
-      .select('customer_id, amount, customers!inner(id, name)');
-
-    if (from) paymentsQuery = paymentsQuery.gte('payment_date', `${from}T00:00:00`);
-    if (to) paymentsQuery = paymentsQuery.lte('payment_date', `${to}T23:59:59`);
-    if (customerIds?.length) paymentsQuery = paymentsQuery.in('customer_id', customerIds);
-
-    const {data: paymentsData, error: paymentsError} = await paymentsQuery;
-    if (paymentsError) throw paymentsError;
-
-    // --- Saldo actual de customer_stores ---
-    let balanceQuery = supabase
-      .from('customer_stores')
-      .select('customer_id, current_balance, alias, customers!inner(id, name)');
-
-    if (customerIds?.length) balanceQuery = balanceQuery.in('customer_id', customerIds);
-
-    const {data: balanceData, error: balanceError} = await balanceQuery;
-    if (balanceError) throw balanceError;
-
-    // --- Agregar por cliente ---
-    const map: Record<string, CustomerStatRow> = {};
-
-    for (const row of creditsData ?? []) {
-      const cid = row.customer_id;
-      if (!map[cid]) {
-        map[cid] = {
-          customer_id: cid,
-          name: (row as any).customers?.name ?? cid,
-          alias: null,
-          total_credits: 0,
-          total_payments: 0,
-          balance: 0,
-        };
-      }
-      map[cid].total_credits += Number(row.amount);
-    }
-
-    for (const row of paymentsData ?? []) {
-      const cid = row.customer_id;
-      if (!map[cid]) {
-        map[cid] = {
-          customer_id: cid,
-          name: (row as any).customers?.name ?? cid,
-          alias: null,
-          total_credits: 0,
-          total_payments: 0,
-          balance: 0,
-        };
-      }
-      map[cid].total_payments += Number(row.amount);
-    }
-
-    // Enriquecer con alias y balance actual
-    for (const row of balanceData ?? []) {
-      const cid = row.customer_id;
-      if (map[cid]) {
-        map[cid].alias = (row as any).alias ?? null;
-        map[cid].balance = Number(row.current_balance);
-      }
-    }
-
-    const rows = Object.values(map).sort((a, b) => b.balance - a.balance);
-    const totalCredits = rows.reduce((s, r) => s + r.total_credits, 0);
-    const totalPayments = rows.reduce((s, r) => s + r.total_payments, 0);
-    const netBalance = rows.reduce((s, r) => s + r.balance, 0);
-
-    return {
-      totalCredits,
-      totalPayments,
-      netBalance,
-      customerCount: rows.length,
-      rows,
-    };
-  } catch (_netOrRemoteError) {
-    // Fallback Offline: Calcular estadísticas desde la base de datos SQLite local
-    return fetchStatsOffline(filters);
-  }
+  return fetchStatsOffline(filters);
 }

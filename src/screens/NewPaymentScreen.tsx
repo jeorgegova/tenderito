@@ -1,7 +1,6 @@
 import {useQuery} from '@tanstack/react-query';
 import {useState} from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +11,7 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
 import {Button} from '../components/ui/Button';
 import {Input} from '../components/ui/Input';
+import {showAlert} from '../components/ui/AlertModal';
 import {fetchCustomers} from '../services/customers';
 import {createPayment} from '../services/payments';
 import {Colors, formatCOP} from '../theme';
@@ -51,7 +51,11 @@ export function NewPaymentScreen({route, navigation}: any) {
     customerId: customer_id,
     onSuccess: () => navigation.goBack(),
     onError: (error: any) =>
-      Alert.alert('No se pudo guardar', error?.message ?? 'Intenta de nuevo'),
+      showAlert({
+        title: 'No se pudo guardar',
+        message: error?.message ?? 'Intenta de nuevo',
+        type: 'destructive',
+      }),
   });
 
   // Tocar para pagar toda la deuda de una sola vez
@@ -68,21 +72,27 @@ export function NewPaymentScreen({route, navigation}: any) {
 
   async function onSave() {
     if (!customer_id) {
-      return Alert.alert('Selecciona un cliente');
+      return showAlert({
+        title: 'Faltan datos',
+        message: 'Selecciona un cliente',
+        type: 'warning',
+      });
     }
     if (!numericAmount || numericAmount <= 0) {
-      return Alert.alert(
-        'Ingresa el valor',
-        'Escribe cuánto te entregó o abonó el cliente.',
-      );
+      return showAlert({
+        title: 'Ingresa el valor',
+        message: 'Escribe cuánto te entregó o abonó el cliente.',
+        type: 'warning',
+      });
     }
     if (exceedsBalance) {
-      return Alert.alert(
-        'Supera lo que debe',
-        `El cliente solo debe ${formatCOP(
+      return showAlert({
+        title: 'Supera lo que debe',
+        message: `El cliente solo debe ${formatCOP(
           currentBalance,
         )}. No puedes ingresar un valor mayor.`,
-      );
+        type: 'warning',
+      });
     }
     mutation.mutate({
       customer_id,

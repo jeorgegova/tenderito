@@ -1,5 +1,5 @@
-import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import React, {useEffect, useState} from 'react';
+import {QueryClientProvider} from '@tanstack/react-query';
+import React, {useEffect} from 'react';
 import {StatusBar} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {NavigationContainer} from '@react-navigation/native';
@@ -17,6 +17,7 @@ import {AlertModal} from './src/components/ui/AlertModal';
 import {supabase} from './src/lib/supabase';
 import {register_fcm_token, syncPendingDeviceToken} from './src/services/deviceService';
 import {AuthProvider} from './src/context/AuthContext';
+import {queryClient} from './src/lib/queryClient';
 
 function useFirebaseNotifications() {
   useEffect(() => {
@@ -164,24 +165,10 @@ function AppContent() {
 }
 
 function App(): React.JSX.Element {
-  const [client] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 1000 * 60 * 5,
-            gcTime: 1000 * 60 * 30,
-            refetchOnWindowFocus: false,
-            refetchOnReconnect: false,
-            retry: 1,
-          },
-        },
-      }),
-  );
   useFirebaseNotifications();
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={client}>
+      <QueryClientProvider client={queryClient}>
         <StatusBar barStyle="dark-content" />
         <AuthProvider>
           <AppContent />

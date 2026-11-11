@@ -63,6 +63,26 @@ export async function executeQuery(
 }
 
 /**
+ * Ejecuta un bloque de operaciones dentro de una transacción atómica SQLite.
+ * Si alguna sentencia falla, revierte (ROLLBACK) automáticamente todos los cambios.
+ */
+export async function executeInTransaction(
+  db: QuickSQLiteConnection,
+  fn: () => Promise<void>,
+): Promise<void> {
+  await db.executeAsync('BEGIN TRANSACTION;');
+  try {
+    await fn();
+    await db.executeAsync('COMMIT;');
+  } catch (err) {
+    try {
+      await db.executeAsync('ROLLBACK;');
+    } catch (_rbErr) {}
+    throw err;
+  }
+}
+
+/**
  * Limpia las tablas locales de datos de negocio al cerrar sesión
  * para asegurar el aislamiento estricto entre tiendas en el mismo dispositivo.
  */
@@ -72,7 +92,8 @@ export async function clearLocalDatabase() {
     await executeQuery(db, 'DELETE FROM payments;');
     await executeQuery(db, 'DELETE FROM credits;');
     await executeQuery(db, 'DELETE FROM customers;');
-    await executeQuery(db, 'DELETE FROM parametrizacion;');
+    // Limpiar cursores de sincronización y parámetros de usuario, pero preservar schema_version
+    await executeQuery(db, "DELETE FROM parametrizacion WHERE nombre != 'schema_version';");
   } catch (e: any) {
     console.warn('[DB] Error limpiando base de datos local:', e?.message);
   }

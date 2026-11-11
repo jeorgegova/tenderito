@@ -9,6 +9,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { performLogout } from '../lib/session';
+import { handleUserSessionSwitch } from '../services/accountSync';
 
 export type UserType = 'store' | 'customer';
 
@@ -43,6 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const currentUser = nextSession?.user ?? null;
     setUser(currentUser);
     setUserType(currentUser ? resolveUserType(currentUser) : null);
+    if (currentUser?.id) {
+      handleUserSessionSwitch(currentUser.id).catch(err => {
+        console.warn('[AuthContext] Error verificando usuario asociado:', err);
+      });
+    }
   }, []);
 
   const refreshSession = useCallback(async () => {

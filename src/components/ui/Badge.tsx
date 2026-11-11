@@ -26,12 +26,44 @@ export function OverdueBadge({ text }: { text: string }) {
   );
 }
 
-export function SyncBadge({ estadoServidor }: { estadoServidor?: string }) {
-  if (estadoServidor !== 'pendiente') return null;
+export function SyncBadge({
+  estadoServidor,
+  compact = false,
+}: {
+  estadoServidor?: string;
+  compact?: boolean;
+}) {
+  if (!estadoServidor) return null;
+  const s = estadoServidor.toLowerCase();
+  if (s === 'synced' || s === 'sincronizado') return null;
+
+  const isSyncing = s === 'syncing';
+  const isError = s === 'error';
+
+  const label = isSyncing ? 'Subiendo' : isError ? 'Error' : 'Pendiente';
+  const iconName = isSyncing
+    ? 'sync-outline'
+    : isError
+    ? 'alert-circle-outline'
+    : 'cloud-offline-outline';
+
+  const color = isSyncing ? '#2563EB' : isError ? '#DC2626' : '#B45309';
+  const bg = isSyncing ? '#EFF6FF' : isError ? '#FEE2E2' : '#FEF3C7';
+
+  if (compact) {
+    return (
+      <View
+        style={[styles.syncBadgeCompact, { backgroundColor: bg }]}
+        accessibilityLabel={`Estado de sincronización: ${label}`}>
+        <Ionicons name={iconName} size={11} color={color} />
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.badge, styles.syncBadge]}>
-      <Ionicons name="time-outline" size={11} color="#B45309" />
-      <Text style={styles.syncText}>Pendiente</Text>
+    <View style={[styles.badge, styles.syncBadge, { backgroundColor: bg }]}>
+      <Ionicons name={iconName} size={11} color={color} />
+      <Text style={[styles.syncText, { color }]}>{label}</Text>
     </View>
   );
 }
@@ -46,6 +78,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
+    alignSelf: 'flex-start',
   },
-  syncText: { fontSize: 11, fontWeight: '700', color: '#B45309' },
+  syncBadgeCompact: {
+    borderRadius: Radius.full,
+    padding: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncText: { fontSize: 10, fontWeight: '700', color: '#B45309' },
 });

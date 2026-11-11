@@ -1,5 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
-import {getDbConnection, getData, executeQuery} from '../database/db';
+import {getDbConnection, getData, executeQuery, executeInTransaction} from '../database/db';
 import {ESTADO_SINCRONIZACION} from '../database/synchronizationStatus';
 import {getWriteDate, saveWriteDate, saveConfigParam} from '../database/tables/metadata';
 import {insertOrReplaceSubscriptionPlan} from '../database/tables/plans';
@@ -7,10 +7,17 @@ import {supabase} from '../lib/supabase';
 import {useStore} from '../store/useStore';
 import {notifyCustomerMovement} from './deviceService';
 import {refreshSubscriptionLifecycle} from './portfolio';
+import {getActiveStoreId, clearStoreContext} from './storeContext';
+
+export {getActiveStoreId, clearStoreContext};
 
 let syncInProgress: Promise<any> | null = null;
 let lastPullTimestamp = 0;
 let debounceTimer: NodeJS.Timeout | null = null;
+
+// Reintentos con backoff exponencial
+let consecutiveFailures = 0;
+let nextAllowedRetryTime = 0;
 
 // Parámetros de optimización de cuota y tráfico Supabase
 const MIN_PULL_INTERVAL_MS = 60_000; // Mínimo 1 minuto entre descargas completas automáticas
@@ -18,40 +25,35 @@ const DEBOUNCE_DELAY_MS = 2_500; // 2.5 segundos para agrupar múltiples escritu
 const MAX_CONCURRENT_PUSH = 3; // Límite estricto de peticiones simultáneas hacia Supabase
 const PULL_PAGE_LIMIT = 150; // Limitar tamaño de lote para minimizar egress
 
-let cachedStoreId: string | null = null;
-
-/**
- * Obtiene el ID de la tienda activa del usuario actual para garantizar
- * aislamiento estricto de datos en todas las consultas y almacenamiento.
- */
-export async function getActiveStoreId(): Promise<string | null> {
-  if (cachedStoreId) {
-    return cachedStoreId;
-  }
-  try {
-    const {
-      data: {user},
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return null;
-    }
-    const {data, error} = await supabase
-      .from('store_memberships')
-      .select('store_id')
-      .eq('user_id', user.id)
-      .limit(1)
-      .maybeSingle();
-    if (!error && data?.store_id) {
-      cachedStoreId = data.store_id;
-      return cachedStoreId;
-    }
-  } catch (_e) {}
-  return null;
+export function clearCachedStoreId() {
+  clearStoreContext();
+  lastPullTimestamp = 0;
+  consecutiveFailures = 0;
+  nextAllowedRetryTime = 0;
 }
 
-export function clearCachedStoreId() {
-  cachedStoreId = null;
-  lastPullTimestamp = 0;
+/**
+ * Recupera cualquier operación local que haya quedado en estado 'syncing'
+ * debido a un cierre inesperado o caída de la aplicación, regresándola a 'pending'.
+ */
+export async function recoverInterruptedSync(db: any): Promise<void> {
+  try {
+    await executeQuery(
+      db,
+      `UPDATE customers SET sync_status = 'pending', estadoServidor = 'pending'
+       WHERE sync_status = 'syncing' OR estadoServidor = 'syncing';`,
+    );
+    await executeQuery(
+      db,
+      `UPDATE credits SET sync_status = 'pending', estadoServidor = 'pending'
+       WHERE sync_status = 'syncing' OR estadoServidor = 'syncing';`,
+    );
+    await executeQuery(
+      db,
+      `UPDATE payments SET sync_status = 'pending', estadoServidor = 'pending'
+       WHERE sync_status = 'syncing' OR estadoServidor = 'syncing';`,
+    );
+  } catch (_e) {}
 }
 
 /**
@@ -103,9 +105,9 @@ export async function countPendingLocalItems(db: any): Promise<number> {
     const rows = await getData(
       db,
       `SELECT (
-         (SELECT COUNT(*) FROM customers WHERE estadoServidor = 'pendiente' OR sync_status = 'pendiente' OR sync_status = 'pendiente_creacion') +
-         (SELECT COUNT(*) FROM credits WHERE estadoServidor = 'pendiente' OR sync_status = 'pendiente' OR sync_status = 'pendiente_creacion') +
-         (SELECT COUNT(*) FROM payments WHERE estadoServidor = 'pendiente' OR sync_status = 'pendiente' OR sync_status = 'pendiente_creacion')
+         (SELECT COUNT(*) FROM customers WHERE estadoServidor IN ('pending', 'pendiente', 'syncing', 'error') OR sync_status IN ('pending', 'pendiente', 'syncing', 'error')) +
+         (SELECT COUNT(*) FROM credits WHERE estadoServidor IN ('pending', 'pendiente', 'syncing', 'error') OR sync_status IN ('pending', 'pendiente', 'syncing', 'error')) +
+         (SELECT COUNT(*) FROM payments WHERE estadoServidor IN ('pending', 'pendiente', 'syncing', 'error') OR sync_status IN ('pending', 'pendiente', 'syncing', 'error'))
        ) AS total;`,
     );
     return Number(rows[0]?.total || 0);
@@ -116,15 +118,17 @@ export async function countPendingLocalItems(db: any): Promise<number> {
 
 /**
  * Empuja a Supabase todos los clientes creados localmente que están pendientes.
- * Controla concurrencia y actualiza estado a 'sincronizado'.
+ * Controla dependencias, marca estado 'syncing' y confirma a 'synced'.
  */
 async function pushPendingCustomers(db: any) {
+  const activeStoreId = await getActiveStoreId();
   const pending = await getData(
     db,
     `SELECT * FROM customers
-     WHERE estadoServidor = ? OR sync_status = 'pendiente' OR sync_status = 'pendiente_creacion'
+     WHERE (estadoServidor IN ('pending', 'pendiente', 'error') OR sync_status IN ('pending', 'pendiente', 'error'))
+       AND (store_id = ? OR store_id IS NULL OR store_id = '')
      LIMIT 50;`,
-    [ESTADO_SINCRONIZACION.PENDIENTE],
+    [activeStoreId || ''],
   );
 
   if (pending.length === 0) {
@@ -132,6 +136,13 @@ async function pushPendingCustomers(db: any) {
   }
 
   await processInChunks(pending, MAX_CONCURRENT_PUSH, async item => {
+    // 1. Marcar como syncing
+    await executeQuery(
+      db,
+      `UPDATE customers SET sync_status = 'syncing', estadoServidor = 'syncing' WHERE local_id = ?;`,
+      [item.local_id],
+    );
+
     try {
       const {data, error} = await supabase.rpc('create_customer', {
         p_name: item.name,
@@ -150,42 +161,46 @@ async function pushPendingCustomers(db: any) {
       const serverId = data?.id || data;
       const now = new Date().toISOString();
 
+      // 2. Marcar como sincronizado y registrar server_id
       await executeQuery(
         db,
         `UPDATE customers
-         SET server_id = ?, estadoServidor = ?, sync_status = ?, last_synced_at = ?, updated_at = ?
+         SET server_id = ?, store_id = COALESCE(NULLIF(store_id, ''), ?),
+             estadoServidor = 'synced', sync_status = 'synced', last_synced_at = ?, updated_at = ?
          WHERE local_id = ?;`,
-        [
-          serverId,
-          ESTADO_SINCRONIZACION.SINCRONIZADO,
-          ESTADO_SINCRONIZACION.SINCRONIZADO,
-          now,
-          now,
-          item.local_id,
-        ],
+        [serverId, activeStoreId || '', now, now, item.local_id],
       );
     } catch (e: any) {
       console.warn(
         `[Sync] Error sincronizando cliente local ${item.local_id}:`,
         e?.message,
       );
+      // Revertir a pending para reintento posterior
+      await executeQuery(
+        db,
+        `UPDATE customers SET sync_status = 'pending', estadoServidor = 'pending' WHERE local_id = ?;`,
+        [item.local_id],
+      );
+      throw e;
     }
   });
 }
 
 /**
  * Empuja a Supabase todos los créditos creados localmente que están pendientes.
- * Controla concurrencia para minimizar peticiones HTTP simultáneas.
+ * Respeta dependencias con clientes y aplica idempotencia enviando p_id: item.local_id.
  */
 async function pushPendingCredits(db: any) {
+  const activeStoreId = await getActiveStoreId();
   const pending = await getData(
     db,
     `SELECT c.*, cust.server_id AS customer_server_id
      FROM credits c
      LEFT JOIN customers cust ON (c.customer_id = cust.local_id OR c.customer_id = cust.server_id)
-     WHERE c.estadoServidor = ? OR c.sync_status = 'pendiente' OR c.sync_status = 'pendiente_creacion'
+     WHERE (c.estadoServidor IN ('pending', 'pendiente', 'error') OR c.sync_status IN ('pending', 'pendiente', 'error'))
+       AND (c.store_id = ? OR c.store_id IS NULL OR c.store_id = '')
      LIMIT 50;`,
-    [ESTADO_SINCRONIZACION.PENDIENTE],
+    [activeStoreId || ''],
   );
 
   if (pending.length === 0) {
@@ -193,45 +208,74 @@ async function pushPendingCredits(db: any) {
   }
 
   await processInChunks(pending, MAX_CONCURRENT_PUSH, async item => {
-    try {
-      const targetCustomerId = item.customer_server_id || item.customer_id;
-      if (!targetCustomerId) {
+    let targetCustomerId = item.customer_server_id || item.customer_id;
+
+    // Si el cliente no tiene server_id aún, consultar SQLite por si acaba de sincronizarse
+    if (!item.customer_server_id) {
+      const custRow = await getData(
+        db,
+        'SELECT server_id FROM customers WHERE local_id = ? LIMIT 1;',
+        [item.customer_id],
+      );
+      if (custRow.length > 0 && custRow[0].server_id) {
+        targetCustomerId = custRow[0].server_id;
+      } else {
+        // El cliente aún no se ha sincronizado en Supabase; posponer este crédito
         return;
       }
+    }
 
-      const {data, error} = await supabase.rpc('create_credit', {
-        p_customer_id: targetCustomerId,
-        p_concept: item.concept,
-        p_amount: Number(item.amount),
-        p_due_date: item.due_date || null,
-      });
+    // 1. Marcar como syncing
+    await executeQuery(
+      db,
+      `UPDATE credits SET sync_status = 'syncing', estadoServidor = 'syncing' WHERE local_id = ?;`,
+      [item.local_id],
+    );
 
-      if (error) {
-        throw error;
+    try {
+      let serverId: string | null = null;
+      try {
+        // Intento con p_id para garantizar idempotencia estricta en el servidor
+        const {data, error} = await supabase.rpc('create_credit', {
+          p_customer_id: targetCustomerId,
+          p_concept: item.concept,
+          p_amount: Number(item.amount),
+          p_due_date: item.due_date || null,
+          p_id: item.local_id,
+        });
+        if (error) throw error;
+        serverId = data?.id || data;
+      } catch (rpcErr: any) {
+        // Fallback si la función RPC aún no recibe el parámetro p_id
+        if (rpcErr?.message?.includes('p_id') || rpcErr?.code === 'PGRST202') {
+          const {data, error} = await supabase.rpc('create_credit', {
+            p_customer_id: targetCustomerId,
+            p_concept: item.concept,
+            p_amount: Number(item.amount),
+            p_due_date: item.due_date || null,
+          });
+          if (error) throw error;
+          serverId = data?.id || data;
+        } else {
+          throw rpcErr;
+        }
       }
 
-      const serverId = data?.id || data;
       const now = new Date().toISOString();
 
       await executeQuery(
         db,
         `UPDATE credits
-         SET server_id = ?, estadoServidor = ?, sync_status = ?, last_synced_at = ?, updated_at = ?
+         SET server_id = ?, store_id = COALESCE(NULLIF(store_id, ''), ?),
+             estadoServidor = 'synced', sync_status = 'synced', last_synced_at = ?, updated_at = ?
          WHERE local_id = ?;`,
-        [
-          serverId,
-          ESTADO_SINCRONIZACION.SINCRONIZADO,
-          ESTADO_SINCRONIZACION.SINCRONIZADO,
-          now,
-          now,
-          item.local_id,
-        ],
+        [serverId, activeStoreId || '', now, now, item.local_id],
       );
 
-      // Notificar al cliente si tiene celular vinculado (sin webhooks)
+      // Notificar al cliente si tiene celular vinculado
       notifyCustomerMovement({
         customerId: targetCustomerId,
-        storeId: item.store_id || (await getActiveStoreId()),
+        storeId: item.store_id || activeStoreId,
         type: 'credit',
         amount: Number(item.amount),
         concept: item.concept,
@@ -244,14 +288,22 @@ async function pushPendingCredits(db: any) {
         `[Sync] Error sincronizando crédito local ${item.local_id}:`,
         e?.message,
       );
+      await executeQuery(
+        db,
+        `UPDATE credits SET sync_status = 'pending', estadoServidor = 'pending' WHERE local_id = ?;`,
+        [item.local_id],
+      );
+      throw e;
     }
   });
 }
 
 /**
  * Empuja a Supabase todos los abonos creados localmente que están pendientes.
+ * Respeta dependencias con clientes y créditos, y aplica idempotencia enviando p_id.
  */
 async function pushPendingPayments(db: any) {
+  const activeStoreId = await getActiveStoreId();
   const pending = await getData(
     db,
     `SELECT p.*,
@@ -260,9 +312,10 @@ async function pushPendingPayments(db: any) {
      FROM payments p
      LEFT JOIN customers cust ON (p.customer_id = cust.local_id OR p.customer_id = cust.server_id)
      LEFT JOIN credits cred ON (p.credit_id = cred.local_id OR p.credit_id = cred.server_id)
-     WHERE p.estadoServidor = ? OR p.sync_status = 'pendiente' OR p.sync_status = 'pendiente_creacion'
+     WHERE (p.estadoServidor IN ('pending', 'pendiente', 'error') OR p.sync_status IN ('pending', 'pendiente', 'error'))
+       AND (p.store_id = ? OR p.store_id IS NULL OR p.store_id = '')
      LIMIT 50;`,
-    [ESTADO_SINCRONIZACION.PENDIENTE],
+    [activeStoreId || ''],
   );
 
   if (pending.length === 0) {
@@ -270,47 +323,82 @@ async function pushPendingPayments(db: any) {
   }
 
   await processInChunks(pending, MAX_CONCURRENT_PUSH, async item => {
+    let targetCustomerId = item.customer_server_id || item.customer_id;
+
+    if (!item.customer_server_id) {
+      const custRow = await getData(
+        db,
+        'SELECT server_id FROM customers WHERE local_id = ? LIMIT 1;',
+        [item.customer_id],
+      );
+      if (custRow.length > 0 && custRow[0].server_id) {
+        targetCustomerId = custRow[0].server_id;
+      } else {
+        return; // Esperar a que el cliente se sincronice
+      }
+    }
+
+    let targetCreditId = item.credit_server_id || item.credit_id || null;
+    if (item.credit_id && !item.credit_server_id) {
+      const credRow = await getData(
+        db,
+        'SELECT server_id FROM credits WHERE local_id = ? LIMIT 1;',
+        [item.credit_id],
+      );
+      if (credRow.length > 0 && credRow[0].server_id) {
+        targetCreditId = credRow[0].server_id;
+      }
+    }
+
+    // 1. Marcar como syncing
+    await executeQuery(
+      db,
+      `UPDATE payments SET sync_status = 'syncing', estadoServidor = 'syncing' WHERE local_id = ?;`,
+      [item.local_id],
+    );
+
     try {
-      const targetCustomerId = item.customer_server_id || item.customer_id;
-      if (!targetCustomerId) {
-        return;
+      let serverId: string | null = null;
+      try {
+        const {data, error} = await supabase.rpc('create_payment', {
+          p_customer_id: targetCustomerId,
+          p_credit_id: targetCreditId,
+          p_amount: Number(item.amount),
+          p_notes: item.notes || null,
+          p_id: item.local_id,
+        });
+        if (error) throw error;
+        serverId = data?.id || data;
+      } catch (rpcErr: any) {
+        if (rpcErr?.message?.includes('p_id') || rpcErr?.code === 'PGRST202') {
+          const {data, error} = await supabase.rpc('create_payment', {
+            p_customer_id: targetCustomerId,
+            p_credit_id: targetCreditId,
+            p_amount: Number(item.amount),
+            p_notes: item.notes || null,
+          });
+          if (error) throw error;
+          serverId = data?.id || data;
+        } else {
+          throw rpcErr;
+        }
       }
 
-      const targetCreditId = item.credit_server_id || item.credit_id || null;
-
-      const {data, error} = await supabase.rpc('create_payment', {
-        p_customer_id: targetCustomerId,
-        p_credit_id: targetCreditId,
-        p_amount: Number(item.amount),
-        p_notes: item.notes || null,
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      const serverId = data?.id || data;
       const now = new Date().toISOString();
 
       await executeQuery(
         db,
         `UPDATE payments
-         SET server_id = ?, estadoServidor = ?, sync_status = ?, last_synced_at = ?, updated_at = ?
+         SET server_id = ?, store_id = COALESCE(NULLIF(store_id, ''), ?),
+             estadoServidor = 'synced', sync_status = 'synced', last_synced_at = ?, updated_at = ?
          WHERE local_id = ?;`,
-        [
-          serverId,
-          ESTADO_SINCRONIZACION.SINCRONIZADO,
-          ESTADO_SINCRONIZACION.SINCRONIZADO,
-          now,
-          now,
-          item.local_id,
-        ],
+        [serverId, activeStoreId || '', now, now, item.local_id],
       );
 
-      // Notificar al cliente si tiene celular vinculado (sin webhooks)
+      // Notificar al cliente si tiene celular vinculado
       notifyCustomerMovement({
         customerId: targetCustomerId,
-        storeId: item.store_id || (await getActiveStoreId()),
+        storeId: item.store_id || activeStoreId,
         type: 'payment',
         amount: Number(item.amount),
         notes: item.notes,
@@ -323,12 +411,19 @@ async function pushPendingPayments(db: any) {
         `[Sync] Error sincronizando abono local ${item.local_id}:`,
         e?.message,
       );
+      await executeQuery(
+        db,
+        `UPDATE payments SET sync_status = 'pending', estadoServidor = 'pending' WHERE local_id = ?;`,
+        [item.local_id],
+      );
+      throw e;
     }
   });
 }
 
 /**
  * Guarda o reemplaza un cliente descargado desde Supabase en la tabla local customers.
+ * Protege cambios locales pendientes de sincronizar para no ser sobreescritos.
  */
 export async function insertOrReplaceCustomer(db: any, row: any) {
   const now = new Date().toISOString();
@@ -340,22 +435,32 @@ export async function insertOrReplaceCustomer(db: any, row: any) {
   const freePlanSelected =
     row.free_plan_selected ?? c.free_plan_selected ?? true;
 
+  const storeId = row.store_id || c.store_id || '';
+
   const existing = await getData(
     db,
-    'SELECT local_id, estadoServidor FROM customers WHERE server_id = ? OR local_id = ? LIMIT 1;',
-    [customerId, customerId],
+    'SELECT local_id, sync_status, estadoServidor FROM customers WHERE (server_id = ? OR local_id = ?) AND store_id = ? LIMIT 1;',
+    [customerId, customerId, storeId],
   );
 
+  // Si hay cambios locales pendientes o en vuelo, protegerlos
   if (
     existing.length > 0 &&
-    existing[0].estadoServidor === ESTADO_SINCRONIZACION.PENDIENTE
+    (existing[0].sync_status === 'pending' ||
+      existing[0].sync_status === 'syncing' ||
+      existing[0].estadoServidor === 'pending' ||
+      existing[0].estadoServidor === 'pendiente' ||
+      existing[0].estadoServidor === 'syncing')
   ) {
     return;
   }
 
-  const localId = existing.length > 0 ? existing[0].local_id : customerId;
-
-  const storeId = row.store_id || c.store_id || '';
+  const localId =
+    existing.length > 0
+      ? existing[0].local_id
+      : storeId
+      ? `${customerId}_${storeId}`
+      : customerId;
 
   await executeQuery(
     db,
@@ -377,8 +482,8 @@ export async function insertOrReplaceCustomer(db: any, row: any) {
       currentBalance,
       creditLimit,
       freePlanSelected ? 1 : 0,
-      ESTADO_SINCRONIZACION.SINCRONIZADO,
-      ESTADO_SINCRONIZACION.SINCRONIZADO,
+      'synced',
+      'synced',
       now,
       c.created_at || now,
       c.updated_at || now,
@@ -391,15 +496,20 @@ export async function insertOrReplaceCustomer(db: any, row: any) {
  */
 export async function insertOrReplaceCredit(db: any, cr: any) {
   const now = new Date().toISOString();
+  const storeId = cr.store_id || '';
   const existing = await getData(
     db,
-    'SELECT local_id, estadoServidor FROM credits WHERE server_id = ? OR local_id = ? LIMIT 1;',
-    [cr.id, cr.id],
+    'SELECT local_id, sync_status, estadoServidor FROM credits WHERE (server_id = ? OR local_id = ?) AND (store_id = ? OR store_id = "") LIMIT 1;',
+    [cr.id, cr.id, storeId],
   );
 
   if (
     existing.length > 0 &&
-    existing[0].estadoServidor === ESTADO_SINCRONIZACION.PENDIENTE
+    (existing[0].sync_status === 'pending' ||
+      existing[0].sync_status === 'syncing' ||
+      existing[0].estadoServidor === 'pending' ||
+      existing[0].estadoServidor === 'pendiente' ||
+      existing[0].estadoServidor === 'syncing')
   ) {
     return;
   }
@@ -417,13 +527,13 @@ export async function insertOrReplaceCredit(db: any, cr: any) {
       localId,
       cr.id,
       cr.customer_id,
-      cr.store_id || '',
+      storeId,
       cr.concept,
       Number(cr.amount),
       cr.due_date || null,
       cr.status || 'pending',
-      ESTADO_SINCRONIZACION.SINCRONIZADO,
-      ESTADO_SINCRONIZACION.SINCRONIZADO,
+      'synced',
+      'synced',
       now,
       cr.created_at || now,
       now,
@@ -436,15 +546,20 @@ export async function insertOrReplaceCredit(db: any, cr: any) {
  */
 export async function insertOrReplacePayment(db: any, p: any) {
   const now = new Date().toISOString();
+  const storeId = p.store_id || '';
   const existing = await getData(
     db,
-    'SELECT local_id, estadoServidor FROM payments WHERE server_id = ? OR local_id = ? LIMIT 1;',
-    [p.id, p.id],
+    'SELECT local_id, sync_status, estadoServidor FROM payments WHERE (server_id = ? OR local_id = ?) AND (store_id = ? OR store_id = "") LIMIT 1;',
+    [p.id, p.id, storeId],
   );
 
   if (
     existing.length > 0 &&
-    existing[0].estadoServidor === ESTADO_SINCRONIZACION.PENDIENTE
+    (existing[0].sync_status === 'pending' ||
+      existing[0].sync_status === 'syncing' ||
+      existing[0].estadoServidor === 'pending' ||
+      existing[0].estadoServidor === 'pendiente' ||
+      existing[0].estadoServidor === 'syncing')
   ) {
     return;
   }
@@ -467,8 +582,8 @@ export async function insertOrReplacePayment(db: any, p: any) {
       Number(p.amount),
       p.notes || null,
       p.payment_date || now,
-      ESTADO_SINCRONIZACION.SINCRONIZADO,
-      ESTADO_SINCRONIZACION.SINCRONIZADO,
+      'synced',
+      'synced',
       now,
       p.created_at || now,
       now,
@@ -481,22 +596,19 @@ export async function insertOrReplacePayment(db: any, p: any) {
  * - Solicita únicamente las columnas estrictamente necesarias (evita select * para ahorrar egress).
  * - Utiliza writeDate para descargar solo los deltas modificados.
  * - Limita el tamaño de respuesta por página para no saturar memoria ni ancho de banda.
+ * - Ejecuta todas las inserciones por lotes dentro de transacciones atómicas SQLite.
  */
 async function pullRemoteData(db: any): Promise<boolean> {
   try {
-    // Primero expira suscripciones vencidas y prepara cartera Free.
-    // Si falla (sin red), la app sigue con el estado local.
     await refreshSubscriptionLifecycle();
 
     const activeStoreId = await getActiveStoreId();
     if (!activeStoreId) {
-      // Si el usuario no tiene tienda asignada aún, omitir descarga sin bloquear cooldown
       return false;
     }
 
-    // 1. Descarga incremental de clientes pertenecientes a la tienda activa
-    const lastWriteDateCust = await getWriteDate(db, 'customers');
-    let custQuery = supabase
+    // 1. Descarga autoritativa de clientes y cartera vinculada a la tienda activa
+    const {data: storeCustomers, error: custErr} = await supabase
       .from('customer_stores')
       .select(
         'store_id, current_balance, credit_limit, alias, free_plan_selected, joined_at, customers!inner(id, name, document_type, document_number, phone, notes, created_at)',
@@ -504,51 +616,16 @@ async function pullRemoteData(db: any): Promise<boolean> {
       .eq('store_id', activeStoreId)
       .limit(PULL_PAGE_LIMIT);
 
-    if (lastWriteDateCust) {
-      custQuery = custQuery.gt('customers.created_at', lastWriteDateCust);
-    }
-
-    const {data: storeCustomers, error: custErr} = await custQuery;
     if (!custErr && storeCustomers && storeCustomers.length > 0) {
-      let maxCustDate = lastWriteDateCust || new Date(0).toISOString();
-      for (const row of storeCustomers as any[]) {
-        await insertOrReplaceCustomer(db, {...row, store_id: activeStoreId});
-        const cDate = row.customers?.created_at || row.joined_at;
-        if (cDate && cDate > maxCustDate) {
-          maxCustDate = cDate;
+      await executeInTransaction(db, async () => {
+        for (const row of storeCustomers as any[]) {
+          await insertOrReplaceCustomer(db, {...row, store_id: activeStoreId});
         }
-      }
-      await saveWriteDate(db, 'customers', maxCustDate);
+      });
     }
-
-    // 1.b Sincronizar la selección de cartera Free de TODOS los clientes.
-    // No depende de created_at, porque free_plan_selected cambia sin que
-    // cambie el cliente.
-    try {
-      const {data: portfolioRows, error: portfolioErr} = await supabase
-        .from('customer_stores')
-        .select('customer_id, free_plan_selected')
-        .eq('store_id', activeStoreId);
-
-      if (!portfolioErr && portfolioRows) {
-        for (const row of portfolioRows as any[]) {
-          await executeQuery(
-            db,
-            `UPDATE customers
-             SET free_plan_selected = ?
-             WHERE server_id = ? OR local_id = ?;`,
-            [
-              row.free_plan_selected ? 1 : 0,
-              row.customer_id,
-              row.customer_id,
-            ],
-          );
-        }
-      }
-    } catch (_portfolioErr) {}
 
     // 2. Descarga incremental de créditos pertenecientes a la tienda activa
-    const lastWriteDateCred = await getWriteDate(db, 'credits');
+    const lastWriteDateCred = await getWriteDate(db, 'credits', activeStoreId);
     let credQuery = supabase
       .from('credits')
       .select(
@@ -565,17 +642,19 @@ async function pullRemoteData(db: any): Promise<boolean> {
     const {data: remoteCredits, error: credErr} = await credQuery;
     if (!credErr && remoteCredits && remoteCredits.length > 0) {
       let maxCredDate = lastWriteDateCred || new Date(0).toISOString();
-      for (const cr of remoteCredits as any[]) {
-        await insertOrReplaceCredit(db, {...cr, store_id: activeStoreId});
-        if (cr.created_at && cr.created_at > maxCredDate) {
-          maxCredDate = cr.created_at;
+      await executeInTransaction(db, async () => {
+        for (const cr of remoteCredits as any[]) {
+          await insertOrReplaceCredit(db, {...cr, store_id: activeStoreId});
+          if (cr.created_at && cr.created_at > maxCredDate) {
+            maxCredDate = cr.created_at;
+          }
         }
-      }
-      await saveWriteDate(db, 'credits', maxCredDate);
+      });
+      await saveWriteDate(db, 'credits', maxCredDate, activeStoreId);
     }
 
     // 3. Descarga incremental de pagos pertenecientes a la tienda activa
-    const lastWriteDatePay = await getWriteDate(db, 'payments');
+    const lastWriteDatePay = await getWriteDate(db, 'payments', activeStoreId);
     let payQuery = supabase
       .from('payments')
       .select(
@@ -592,14 +671,16 @@ async function pullRemoteData(db: any): Promise<boolean> {
     const {data: remotePayments, error: payErr} = await payQuery;
     if (!payErr && remotePayments && remotePayments.length > 0) {
       let maxPayDate = lastWriteDatePay || new Date(0).toISOString();
-      for (const p of remotePayments as any[]) {
-        await insertOrReplacePayment(db, {...p, store_id: activeStoreId});
-        const pDate = p.created_at || p.payment_date;
-        if (pDate && pDate > maxPayDate) {
-          maxPayDate = pDate;
+      await executeInTransaction(db, async () => {
+        for (const p of remotePayments as any[]) {
+          await insertOrReplacePayment(db, {...p, store_id: activeStoreId});
+          const pDate = p.created_at || p.payment_date;
+          if (pDate && pDate > maxPayDate) {
+            maxPayDate = pDate;
+          }
         }
-      }
-      await saveWriteDate(db, 'payments', maxPayDate);
+      });
+      await saveWriteDate(db, 'payments', maxPayDate, activeStoreId);
     }
 
     // 4. Descarga de planes de suscripción parametrizables
@@ -616,7 +697,7 @@ async function pullRemoteData(db: any): Promise<boolean> {
       }
     } catch (_plansErr) {}
 
-    // 5. Descarga de configuración de plataforma (soporte WhatsApp, días de gracia)
+    // 5. Descarga de configuración de plataforma
     try {
       const {data: configData} = await supabase
         .from('app_config')
@@ -628,7 +709,7 @@ async function pullRemoteData(db: any): Promise<boolean> {
       }
     } catch (_cfgErr) {}
 
-    // 6. Actualización de perfil del usuario (fechas de suscripción, plan actual)
+    // 6. Actualización de perfil del usuario
     try {
       const {
         data: {user},
@@ -644,6 +725,9 @@ async function pullRemoteData(db: any): Promise<boolean> {
         }
       }
     } catch (_profErr) {}
+
+    // Marcar descarga inicial completada con éxito
+    await saveConfigParam(db, `initial_sync_${activeStoreId}`, 'completed');
   } catch (e: any) {
     console.warn(
       '[Sync] Error descargando datos incrementales remotos:',
@@ -662,14 +746,21 @@ export interface SyncOptions {
  * Método principal de sincronización (Offline-First y optimizado para tráfico):
  * 1. Verifica conectividad antes de intentar llamadas de red.
  * 2. Verifica si hay pendientes en SQLite local antes de consultar al servidor.
- * 3. Ejecuta Push solo si hay pendientes reales.
- * 4. Aplica cooldown de 1 minuto a las descargas para no quemar cuota en llamadas seguidas.
+ * 3. Ejecuta Push solo si hay pendientes reales (con orden de dependencias e idempotencia).
+ * 4. Aplica cooldown a las descargas para no quemar cuota ni egress de Supabase.
  */
 export async function sincronizar(
   options?: SyncOptions,
 ): Promise<{pushed: boolean; pulled: boolean}> {
   return withSyncLock(async () => {
     try {
+      const now = Date.now();
+
+      // Control de backoff progresivo si hubo fallas consecutivas previas
+      if (now < nextAllowedRetryTime && !options?.force) {
+        return {pushed: false, pulled: false};
+      }
+
       const netState = await NetInfo.fetch();
       const isOnline = Boolean(
         netState.isConnected && netState.isInternetReachable !== false,
@@ -679,11 +770,15 @@ export async function sincronizar(
       }
 
       const db = await getDbConnection();
+
+      // Recuperar cualquier operación interrumpida
+      await recoverInterruptedSync(db);
+
       const pendingCount = await countPendingLocalItems(db);
       let didPush = false;
       let didPull = false;
 
-      // Fase 1: Subida únicamente si hay elementos pendientes
+      // Fase 1: Subida ordenada según dependencias
       if (pendingCount > 0) {
         await pushPendingCustomers(db);
         await pushPendingCredits(db);
@@ -692,7 +787,6 @@ export async function sincronizar(
       }
 
       // Fase 2: Descarga incremental con Cooldown para ahorrar peticiones
-      const now = Date.now();
       const shouldPull =
         options?.force ||
         didPush ||
@@ -706,9 +800,19 @@ export async function sincronizar(
         }
       }
 
+      // Éxito: restablecer contadores de fallo
+      consecutiveFailures = 0;
+      nextAllowedRetryTime = 0;
+
       return {pushed: didPush, pulled: didPull};
     } catch (error: any) {
-      console.warn('[Sync] Error en ciclo de sincronización:', error?.message);
+      consecutiveFailures++;
+      const backoffMs = Math.min(30_000, 2000 * Math.pow(2, consecutiveFailures - 1));
+      nextAllowedRetryTime = Date.now() + backoffMs;
+      console.warn(
+        `[Sync] Error en ciclo de sincronización (reintento en ${backoffMs / 1000}s):`,
+        error?.message,
+      );
       return {pushed: false, pulled: false};
     }
   });

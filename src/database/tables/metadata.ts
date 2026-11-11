@@ -13,13 +13,19 @@ export async function createMetadataTable(db: any) {
 }
 
 /**
- * Obtiene la última fecha de sincronización (writeDate) registrada para una tabla dada.
+ * Obtiene la última fecha de sincronización (writeDate) registrada para una tabla dada,
+ * opcionalmente aislada por tienda.
  */
-export async function getWriteDate(db: any, tableName: string): Promise<string | null> {
+export async function getWriteDate(
+  db: any,
+  tableName: string,
+  storeId?: string | null,
+): Promise<string | null> {
+  const key = storeId ? `writeDate_${storeId}_${tableName}` : `writeDate_${tableName}`;
   try {
     const res = await db.executeAsync(
-      "SELECT valor FROM parametrizacion WHERE nombre = ? LIMIT 1;",
-      [`writeDate_${tableName}`],
+      'SELECT valor FROM parametrizacion WHERE nombre = ? LIMIT 1;',
+      [key],
     );
     if (res?.rows?.length > 0) {
       return res.rows.item(0).valor;
@@ -31,15 +37,22 @@ export async function getWriteDate(db: any, tableName: string): Promise<string |
 }
 
 /**
- * Guarda o actualiza la última fecha de sincronización (writeDate) para una tabla dada.
+ * Guarda o actualiza la última fecha de sincronización (writeDate) para una tabla dada,
+ * opcionalmente aislada por tienda.
  */
-export async function saveWriteDate(db: any, tableName: string, writeDate: string): Promise<void> {
+export async function saveWriteDate(
+  db: any,
+  tableName: string,
+  writeDate: string,
+  storeId?: string | null,
+): Promise<void> {
+  const key = storeId ? `writeDate_${storeId}_${tableName}` : `writeDate_${tableName}`;
   const now = new Date().toISOString();
   await db.executeAsync(
     `INSERT INTO parametrizacion (nombre, valor, updated_at)
      VALUES (?, ?, ?)
      ON CONFLICT(nombre) DO UPDATE SET valor = excluded.valor, updated_at = excluded.updated_at;`,
-    [`writeDate_${tableName}`, writeDate, now],
+    [key, writeDate, now],
   );
 }
 

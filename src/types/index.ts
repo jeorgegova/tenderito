@@ -2,7 +2,13 @@
 
 export type SubscriptionPlan = 'free' | 'basic' | 'pro';
 export type CreditStatus = 'pending' | 'partially_paid' | 'paid';
-export type EstadoServidor = 'pendiente' | 'sincronizado';
+export type EstadoServidor =
+  | 'pendiente'
+  | 'sincronizado'
+  | 'pending'
+  | 'syncing'
+  | 'synced'
+  | 'error';
 
 export interface Profile {
   id: string;
@@ -77,6 +83,15 @@ export interface CustomerStore {
   free_plan_selected?: boolean;
   active: boolean;
   stores?: {store_name: string; phone: string | null; address: string | null};
+}
+
+export interface UserStore {
+  store_id: string;
+  role: 'owner' | 'manager' | 'cashier' | string;
+  store_name: string;
+  phone: string | null;
+  address: string | null;
+  subscription_plan: string;
 }
 
 export interface Credit {

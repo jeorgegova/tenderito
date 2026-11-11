@@ -1,19 +1,21 @@
 import React, { useState } from 'react';
 import {
-  Alert,
   Image,
+  Keyboard,
+  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { Input } from '../components/ui/Input';
+import { showAlert } from '../components/ui/AlertModal';
 import { customerAuthEmail } from '../lib/customerAuth';
 import { supabase } from '../lib/supabase';
 import { findCustomerForActivation } from '../services/customerPortal';
@@ -28,32 +30,44 @@ export function CustomerRegisterScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
 
   async function checkDocument() {
+    Keyboard.dismiss();
     if (!document.trim()) {
-      return Alert.alert('Faltan datos', 'Ingresa tu cédula');
+      return showAlert({
+        title: 'Faltan datos',
+        message: 'Ingresa tu cédula',
+        type: 'warning',
+      });
     }
     setLoading(true);
     try {
       const result = await findCustomerForActivation(document);
       if (!result) {
-        return Alert.alert(
-          'No te encontramos',
-          'Pídele al tendero que te registre primero.',
-        );
+        return showAlert({
+          title: 'No te encontramos',
+          message: 'Pídele al tendero que te registre primero.',
+          type: 'warning',
+        });
       }
       setCustomer(result);
     } catch (error: any) {
-      Alert.alert('No se pudo consultar', error?.message ?? 'Intenta de nuevo');
+      showAlert({
+        title: 'No se pudo consultar',
+        message: error?.message ?? 'Intenta de nuevo',
+        type: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
   }
 
   async function activate() {
+    Keyboard.dismiss();
     if (!customer || !phone.trim() || password.length < 6) {
-      return Alert.alert(
-        'Faltan datos',
-        'Confirma tu teléfono y crea una contraseña de mínimo 6 caracteres.',
-      );
+      return showAlert({
+        title: 'Faltan datos',
+        message: 'Confirma tu teléfono y crea una contraseña de mínimo 6 caracteres.',
+        type: 'warning',
+      });
     }
     setLoading(true);
     const { data, error } = await supabase.auth.signUp({
@@ -65,21 +79,35 @@ export function CustomerRegisterScreen({ navigation }: any) {
     });
     setLoading(false);
     if (error || !data.user) {
-      return Alert.alert(
-        'No se pudo activar',
-        error?.message ?? 'Intenta de nuevo',
-      );
+      return showAlert({
+        title: 'No se pudo activar',
+        message: error?.message ?? 'Intenta de nuevo',
+        type: 'destructive',
+      });
     }
     if (!data.session) {
-      return Alert.alert(
-        'Cuenta pendiente',
-        'Desactiva la confirmación de correo en Supabase para activar inmediatamente.',
-      );
+      return showAlert({
+        title: 'Cuenta pendiente',
+        message: 'Desactiva la confirmación de correo en Supabase para activar inmediatamente.',
+        type: 'info',
+      });
     }
     await supabase.auth.signOut();
-    Alert.alert('Cuenta activada', 'Ya puedes ingresar como cliente.', [
-      { text: 'Ir al inicio', onPress: () => navigation.replace('Login') },
-    ]);
+    showAlert({
+      title: 'Cuenta activada',
+      message: 'Ya puedes ingresar como cliente.',
+      type: 'success',
+      buttons: [
+        {
+          text: 'Ir al inicio',
+          onPress: () =>
+            navigation.replace('Login', {
+              role: 'customer',
+              document: document.trim(),
+            }),
+        },
+      ],
+    });
   }
 
   return (
@@ -95,14 +123,20 @@ export function CustomerRegisterScreen({ navigation }: any) {
         <Ionicons name="arrow-back" size={22} color={Colors.text} />
       </Pressable>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.wrap,
-          { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 32 },
+          { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 32, flexGrow: 1 },
         ]}
+        enableOnAndroid={true}
+        enableAutomaticScroll={true}
+        extraScrollHeight={Platform.OS === 'ios' ? 24 : 48}
+        extraHeight={Platform.OS === 'ios' ? 24 : 48}
+        keyboardOpeningTime={0}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        bounces={false}>
         {/* ── Logo nuevo ── */}
         <View style={styles.logoContainer}>
           <Image
@@ -177,7 +211,13 @@ export function CustomerRegisterScreen({ navigation }: any) {
 
           <View style={styles.loginRow}>
             <Text style={styles.loginPrompt}>¿Ya tienes cuenta activa? </Text>
-            <Pressable onPress={() => navigation.replace('Login')}>
+            <Pressable
+              onPress={() =>
+                navigation.replace('Login', {
+                  role: 'customer',
+                  document: document.trim() || undefined,
+                })
+              }>
               <Text style={styles.loginLink}>Inicia sesión</Text>
             </Pressable>
           </View>
@@ -202,7 +242,7 @@ export function CustomerRegisterScreen({ navigation }: any) {
             <Text style={styles.trustText}>Funciona sin internet</Text>
           </View>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }

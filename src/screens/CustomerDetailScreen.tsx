@@ -21,6 +21,8 @@ import {Button} from '../components/ui/Button';
 import {Card} from '../components/ui/Card';
 import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
 import {FooterMenu} from '../components/ui/FooterMenu';
+import {StoreHistoryLockNotice} from '../components/ui/StoreHistoryLockNotice';
+import {MagnetFilterBar} from '../components/ui/MagnetFilterBar';
 import {showAlert} from '../utils/alert';
 import {fetchCreditsByCustomer} from '../services/credits';
 import {fetchCustomerById} from '../services/customers';
@@ -426,11 +428,14 @@ export function CustomerDetailScreen({route, navigation}: any) {
                   </Text>
                 </View>
                 <View style={styles.flexOne}>
-                  <Text style={styles.customerName}>
-                    {customer.data?.alias ||
-                      customer.data?.name ||
-                      'Cargando...'}
-                  </Text>
+                  <View style={styles.customerNameRow}>
+                    <Text style={styles.customerName}>
+                      {customer.data?.alias ||
+                        customer.data?.name ||
+                        'Cargando...'}
+                    </Text>
+                    <SyncBadge estadoServidor={customer.data?.estadoServidor} />
+                  </View>
                   {customer.data?.alias ? (
                     <Text style={styles.customerRealName}>
                       Nombre real: {customer.data.name}
@@ -474,7 +479,9 @@ export function CustomerDetailScreen({route, navigation}: any) {
                     color={Colors.textMuted}
                   />
                 </TouchableOpacity>
-              ) : null}
+              ) : (
+                <StoreHistoryLockNotice style={{ marginTop: 8 }} />
+              )}
 
               {/* Caja de Deuda / Saldo en Grande y Claro */}
               <View
@@ -565,50 +572,17 @@ export function CustomerDetailScreen({route, navigation}: any) {
               </Text>
             </View>
 
-            {/* ── Filtros Rápidos y Comprensibles ── */}
+            {/* ── Filtros Rápidos con animación Magnet ── */}
             <View style={styles.filterBar}>
-              <Pressable
-                onPress={() => setFilterType('all')}
-                style={[
-                  styles.filterChip,
-                  filterType === 'all' && styles.filterChipActive,
-                ]}>
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    filterType === 'all' && styles.filterChipTextActive,
-                  ]}>
-                  Todo ({monthMovements.length})
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setFilterType('credit')}
-                style={[
-                  styles.filterChip,
-                  filterType === 'credit' && styles.filterChipActive,
-                ]}>
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    filterType === 'credit' && styles.filterChipTextActive,
-                  ]}>
-                  Solo compras ({creditCount})
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setFilterType('payment')}
-                style={[
-                  styles.filterChip,
-                  filterType === 'payment' && styles.filterChipActive,
-                ]}>
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    filterType === 'payment' && styles.filterChipTextActive,
-                  ]}>
-                  Solo abonos ({paymentCount})
-                </Text>
-              </Pressable>
+              <MagnetFilterBar
+                options={[
+                  { key: 'all', label: `Todos (${monthMovements.length})` },
+                  { key: 'credit', label: `Solo compras (${creditCount})` },
+                  { key: 'payment', label: `Solo abonos (${paymentCount})` },
+                ]}
+                selectedKey={filterType}
+                onSelect={key => setFilterType(key as 'all' | 'credit' | 'payment')}
+              />
             </View>
 
             {/* ── Cabecera de la Tabla Libreta con Filtro Mes y Buscador Animado ── */}
@@ -1097,6 +1071,12 @@ const styles = StyleSheet.create({
   avatarTextPaid: {
     color: Colors.success,
   },
+  customerNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   customerName: {
     fontSize: 19,
     fontWeight: '800',
@@ -1231,34 +1211,7 @@ const styles = StyleSheet.create({
 
   // Barra de filtros
   filterBar: {
-    flexDirection: 'row',
-    gap: 8,
     marginBottom: 10,
-  },
-  filterChip: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterChipActive: {
-    backgroundColor: Colors.primaryLight,
-    borderColor: Colors.primaryMid,
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-  filterChipTextActive: {
-    color: Colors.primary,
-    fontWeight: '800',
   },
 
   // Tabla Libreta de Cuentas

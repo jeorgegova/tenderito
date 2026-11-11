@@ -1,31 +1,43 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   BackHandler,
   Image,
+  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
+import { showAlert } from '../components/ui/AlertModal';
 import { supabase } from '../lib/supabase';
 import { customerAuthEmail } from '../lib/customerAuth';
 import { Colors } from '../theme';
 
-export function LoginScreen({ navigation }: any) {
+export function LoginScreen({ route, navigation }: any) {
+  const initialRole = route?.params?.role || 'store';
+  const initialDocument = route?.params?.document || '';
   const [email, setEmail] = useState('');
-  const [document, setDocument] = useState('');
+  const [document, setDocument] = useState(initialDocument);
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'store' | 'customer'>('store');
+  const [role, setRole] = useState<'store' | 'customer'>(initialRole);
   const [loading, setLoading] = useState(false);
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (route?.params?.role) {
+      setRole(route.params.role);
+    }
+    if (route?.params?.document !== undefined) {
+      setDocument(route.params.document);
+    }
+  }, [route?.params?.role, route?.params?.document]);
 
   // En el login, presionar atrás no debe hacer nada para mantener la app abierta
   useFocusEffect(
@@ -48,7 +60,11 @@ export function LoginScreen({ navigation }: any) {
       (!document && role === 'customer') ||
       !password
     ) {
-      return Alert.alert('Faltan datos', 'Completa tus datos para ingresar');
+      return showAlert({
+        title: 'Faltan datos',
+        message: 'Completa tus datos para ingresar',
+        type: 'warning',
+      });
     }
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({
@@ -57,10 +73,11 @@ export function LoginScreen({ navigation }: any) {
     });
     setLoading(false);
     if (error) {
-      return Alert.alert(
-        'No pudimos entrar',
-        'Verifica tu correo y contraseña.',
-      );
+      return showAlert({
+        title: 'No pudimos entrar',
+        message: 'Verifica tu correo y contraseña.',
+        type: 'destructive',
+      });
     }
   }
 
@@ -73,14 +90,20 @@ export function LoginScreen({ navigation }: any) {
         resizeMode="cover"
       />
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.wrap,
-          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32 },
+          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32, flexGrow: 1 },
         ]}
+        enableOnAndroid={true}
+        enableAutomaticScroll={true}
+        extraScrollHeight={Platform.OS === 'ios' ? 24 : 48}
+        extraHeight={Platform.OS === 'ios' ? 24 : 48}
+        keyboardOpeningTime={0}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        bounces={false}>
         {/* ── Logo nuevo limpio sin contornos ni textos duplicados ── */}
         <View style={styles.logoContainer}>
           <Image
@@ -195,7 +218,7 @@ export function LoginScreen({ navigation }: any) {
             <Text style={styles.trustText}>Funciona sin internet</Text>
           </View>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }

@@ -1,16 +1,30 @@
 /**
- * Estados de sincronización para soporte offline-first.
- * Manejo de estados de sincronización: 'pendiente' y 'sincronizado'.
+ * Estados de sincronización estandarizados para arquitectura Offline-First.
+ * - pending: operación guardada en SQLite local y pendiente de enviar a Supabase.
+ * - syncing: operación actualmente en proceso de transmisión.
+ * - synced: operación confirmada y respaldada en Supabase.
+ * - error: operación con error de transmisión pendiente de reintento.
  */
 export const ESTADO_SINCRONIZACION = Object.freeze({
-  PENDIENTE: 'pendiente',
-  SINCRONIZADO: 'sincronizado',
+  PENDING: 'pending',
+  SYNCING: 'syncing',
+  SYNCED: 'synced',
   ERROR: 'error',
-  // Retrocompatibilidad con código existente
-  PENDIENTE_CREACION: 'pendiente',
-  PENDIENTE_ACTUALIZACION: 'pendiente',
+
+  // Compatibilidad con registros existentes en español
+  PENDIENTE: 'pending',
+  SINCRONIZADO: 'synced',
+  PENDIENTE_CREACION: 'pending',
+  PENDIENTE_ACTUALIZACION: 'pending',
 } as const);
 
-export type EstadoServidor = 'pendiente' | 'sincronizado' | 'error';
+export type EstadoServidor =
+  | 'pending'
+  | 'syncing'
+  | 'synced'
+  | 'error'
+  | 'pendiente'
+  | 'sincronizado';
+
 export type EstadoSincronizacion = EstadoServidor;
 
