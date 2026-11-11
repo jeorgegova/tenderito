@@ -3,6 +3,7 @@ import {ESTADO_SINCRONIZACION} from '../database/synchronizationStatus';
 import {generateLocalId} from '../utils/id';
 import {scheduleSync} from './sync';
 import {getActiveStoreId} from './storeContext';
+import {getBogotaTodayYMD} from '../utils/format';
 import {useStore} from '../store/useStore';
 import {canCreateCreditForCustomer} from './portfolio';
 import type {Credit, NewCreditInput} from '../types';
@@ -49,7 +50,7 @@ export async function fetchCreditsByCustomer(
  * Créditos vencidos (due_date < hoy y no pagados) consultados exclusivamente desde SQLite local.
  */
 export async function fetchOverdueCredits(): Promise<Credit[]> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getBogotaTodayYMD();
   const activeStoreId = await getActiveStoreId();
 
   try {

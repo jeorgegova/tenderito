@@ -36,6 +36,8 @@ export interface SubscriptionPlanItem {
 
 export interface Customer {
   id: string;
+  local_id?: string;
+  server_id?: string | null;
   merchant_id?: string;
   user_id?: string | null;
   activated_at?: string | null;

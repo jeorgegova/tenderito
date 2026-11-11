@@ -28,6 +28,7 @@ import { useStore } from '../store/useStore';
 import { calculateSubscriptionStatus } from '../services/plans';
 import { Colors, formatCOP } from '../theme';
 import { FormatMoney, parseMoney } from '../utils/format';
+import { useResponsive } from '../hooks/useResponsive';
 import type { Customer } from '../types';
 
 export const DOCUMENT_TYPES = [
@@ -53,6 +54,7 @@ export function CreateCustomerModal({
   existingCustomers = [],
 }: CreateCustomerModalProps) {
   const insets = useSafeAreaInsets();
+  const { isSmall, isTablet } = useResponsive();
   const queryClient = useQueryClient();
   const profile = useStore(s => s.profile);
   const subStatus = calculateSubscriptionStatus(profile);
@@ -258,7 +260,11 @@ export function CreateCustomerModal({
         resetForm();
         onClose();
       }}>
-      <View style={styles.sheet}>
+      <View
+        style={[
+          styles.sheet,
+          isTablet && { maxWidth: 560, width: '100%', alignSelf: 'center', borderRadius: 24, marginVertical: 32 },
+        ]}>
         <View style={[styles.modalHeader, { paddingTop: insets.top + 8 }]}>
           <Pressable
             onPress={() => {
@@ -283,7 +289,7 @@ export function CreateCustomerModal({
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <View style={{ width: 110 }}>
+                <View style={{ width: isSmall ? 85 : 110 }}>
                   <Text style={styles.label}>Tipo</Text>
                   <Pressable
                     onPress={() => setShowTypePicker(true)}

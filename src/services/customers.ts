@@ -43,6 +43,8 @@ export async function fetchCustomers(search?: string): Promise<Customer[]> {
 
     return rows.map((r: any) => ({
       id: r.server_id || r.local_id,
+      local_id: r.local_id,
+      server_id: r.server_id,
       name: r.name,
       document_type: r.document_type,
       document_number: r.document_number,
@@ -86,6 +88,8 @@ export async function fetchCustomerById(id: string): Promise<Customer> {
     const r = rows[0];
     return {
       id: r.server_id || r.local_id,
+      local_id: r.local_id,
+      server_id: r.server_id,
       name: r.name,
       document_type: r.document_type,
       document_number: r.document_number,
@@ -388,7 +392,17 @@ export async function fetchGlobalCustomerHistory(customerId: string) {
       p_customer_id: customerId,
     });
     if (!error && data) {
-      return data as {stores: any[]; credits: any[]; payments: any[]};
+      const sanitizedStores = (data.stores || []).map((s: any) => ({
+        ...s,
+        last_movement:
+          s.last_movement && !String(s.last_movement).includes('infinity')
+            ? s.last_movement
+            : null,
+      }));
+      return {
+        ...data,
+        stores: sanitizedStores,
+      } as {stores: any[]; credits: any[]; payments: any[]};
     }
   } catch (_e) {}
 

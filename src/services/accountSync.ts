@@ -29,6 +29,7 @@ import {sincronizar} from './sync';
  */
 export async function handleUserSessionSwitch(
   currentUserId: string,
+  userType?: string | null,
 ): Promise<{switched: boolean}> {
   try {
     const lastUserId = await getLastAuthUserId();
@@ -36,9 +37,11 @@ export async function handleUserSessionSwitch(
     if (!lastUserId) {
       // Primer inicio de sesión registrado en el dispositivo
       await setLastAuthUserId(currentUserId);
-      const stores = await fetchUserStores();
-      if (stores.length > 0) {
-        await setActiveStoreId(stores[0].store_id);
+      if (userType !== 'customer') {
+        const stores = await fetchUserStores();
+        if (stores.length > 0) {
+          await setActiveStoreId(stores[0].store_id);
+        }
       }
       return {switched: false};
     }
@@ -56,7 +59,7 @@ export async function handleUserSessionSwitch(
     // 1. Limpiar datos locales SQLite del usuario anterior
     await clearLocalDatabase();
 
-    // 2. Limpiar caché de React Query
+    // 2. Limpiar caché de React Query antes de activar el nuevo usuario
     queryClient.clear();
 
     // 3. Limpiar Zustand store
@@ -69,13 +72,18 @@ export async function handleUserSessionSwitch(
     // 5. Actualizar la identidad asociada al almacenamiento local
     await setLastAuthUserId(currentUserId);
 
-    // 6. Consultar tiendas del nuevo usuario y fijar la primera activa
+    // Si es cliente, no administra tiendas locales en SQLite
+    if (userType === 'customer') {
+      return {switched: true};
+    }
+
+    // 6. Consultar tiendas del nuevo tendero y fijar la primera activa
     const stores = await fetchUserStores();
     if (stores.length > 0) {
       await setActiveStoreId(stores[0].store_id);
     }
 
-    // 7. Descargar datos frescos del nuevo usuario para funcionamiento offline
+    // 7. Descargar datos frescos del nuevo tendero para funcionamiento offline
     await sincronizar({force: true});
 
     return {switched: true};

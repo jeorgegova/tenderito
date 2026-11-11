@@ -19,8 +19,10 @@ import { showAlert } from '../components/ui/AlertModal';
 import { supabase } from '../lib/supabase';
 import { customerAuthEmail } from '../lib/customerAuth';
 import { Colors } from '../theme';
+import { useResponsive } from '../hooks/useResponsive';
 
 export function LoginScreen({ route, navigation }: any) {
+  const { isSmall, isCompact, isTablet } = useResponsive();
   const initialRole = route?.params?.role || 'store';
   const initialDocument = route?.params?.document || '';
   const [email, setEmail] = useState('');
@@ -105,99 +107,116 @@ export function LoginScreen({ route, navigation }: any) {
         showsVerticalScrollIndicator={false}
         bounces={false}>
         {/* ── Logo nuevo limpio sin contornos ni textos duplicados ── */}
-        <View style={styles.logoContainer}>
+        <View style={[styles.logoContainer, isSmall && styles.logoContainerSmall]}>
           <Image
             source={require('../assets/NuevoLogo.png')}
-            style={styles.logoImage}
+            style={[
+              styles.logoImage,
+              isSmall ? styles.logoImageSmall : isCompact ? styles.logoImageCompact : null,
+            ]}
             resizeMode="contain"
           />
         </View>
 
-        {/* ── Selector de rol ── */}
-        <View style={styles.roleRow}>
-          {[
-            { id: 'store', label: 'Soy tendero', icon: 'storefront-outline' },
-            { id: 'customer', label: 'Soy cliente', icon: 'person-outline' },
-          ].map(r => (
-            <Pressable
-              key={r.id}
-              onPress={() => setRole(r.id as 'store' | 'customer')}
-              style={[styles.roleBtn, role === r.id && styles.roleBtnActive]}>
-              <Ionicons
-                name={r.icon as any}
-                size={18}
-                color={role === r.id ? Colors.primary : Colors.textSecondary}
-              />
-              <Text
-                style={[styles.roleTxt, role === r.id && styles.roleTxtActive]}>
-                {r.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {/* ── Formulario ── */}
-        <Card style={styles.form}>
-          <Text style={styles.formTitle}>
-            {role === 'store' ? 'Entra a tu tienda' : 'Entra a tu cuenta'}
-          </Text>
-          {role === 'store' ? (
-            <Input
-              label="Correo electrónico"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="tutienda@mail.com"
-            />
-          ) : (
-            <Input
-              label="Número de identificación"
-              value={document}
-              onChangeText={setDocument}
-              keyboardType="number-pad"
-              placeholder="Tu cédula"
-            />
-          )}
-          <Input
-            label="Contraseña"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholder="••••••••"
-          />
-          <Button
-            title={
-              loading
-                ? 'Entrando…'
-                : role === 'store'
-                  ? 'Entrar a mi tienda'
-                  : 'Ver mis fiados'
-            }
-            onPress={onLogin}
-            disabled={loading}
-          />
-
-          {/* ── Registro dentro del mismo recuadro ── */}
-          <View style={styles.registerWrap}>
-            <View style={styles.divider} />
-            <Text style={styles.dividerText}>¿Primera vez?</Text>
-            <View style={styles.divider} />
+        {/* ── Contenedor centralizado para tablets ── */}
+        <View style={[styles.innerContent, isTablet && styles.innerContentTablet]}>
+          {/* ── Selector de rol ── */}
+          <View style={[styles.roleRow, isSmall && styles.roleRowSmall]}>
+            {[
+              { id: 'store', label: 'Soy tendero', icon: 'storefront-outline' },
+              { id: 'customer', label: 'Soy cliente', icon: 'person-outline' },
+            ].map(r => (
+              <Pressable
+                key={r.id}
+                onPress={() => setRole(r.id as 'store' | 'customer')}
+                style={[
+                  styles.roleBtn,
+                  isSmall && styles.roleBtnSmall,
+                  role === r.id && styles.roleBtnActive,
+                ]}>
+                <Ionicons
+                  name={r.icon as any}
+                  size={isSmall ? 16 : 18}
+                  color={role === r.id ? Colors.primary : Colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.roleTxt,
+                    isSmall && styles.roleTxtSmall,
+                    role === r.id && styles.roleTxtActive,
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}>
+                  {r.label}
+                </Text>
+              </Pressable>
+            ))}
           </View>
-          <Button
-            title={
-              role === 'store'
-                ? 'Crear mi tienda gratis'
-                : 'Activar mi cuenta de cliente'
-            }
-            variant="secondary"
-            onPress={() =>
-              navigation.navigate(
-                role === 'store' ? 'Register' : 'CustomerRegister',
-              )
-            }
-          />
-        </Card>
+
+          {/* ── Formulario ── */}
+          <Card style={[styles.form, isSmall && styles.formSmall]}>
+            <Text style={[styles.formTitle, isSmall && styles.formTitleSmall]}>
+              {role === 'store' ? 'Entra a tu tienda' : 'Entra a tu cuenta'}
+            </Text>
+            {role === 'store' ? (
+              <Input
+                label="Correo electrónico"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="tutienda@mail.com"
+              />
+            ) : (
+              <Input
+                label="Número de identificación"
+                value={document}
+                onChangeText={setDocument}
+                keyboardType="number-pad"
+                placeholder="Tu cédula"
+              />
+            )}
+            <Input
+              label="Contraseña"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="••••••••"
+            />
+            <Button
+              title={
+                loading
+                  ? 'Entrando…'
+                  : role === 'store'
+                    ? 'Entrar a mi tienda'
+                    : 'Ver mis fiados'
+              }
+              onPress={onLogin}
+              disabled={loading}
+            />
+
+            {/* ── Registro dentro del mismo recuadro ── */}
+            <View style={styles.registerWrap}>
+              <View style={styles.divider} />
+              <Text style={styles.dividerText}>¿Primera vez?</Text>
+              <View style={styles.divider} />
+            </View>
+            <Button
+              title={
+                role === 'store'
+                  ? 'Crear mi tienda gratis'
+                  : 'Activar mi cuenta de cliente'
+              }
+              variant="secondary"
+              onPress={() =>
+                navigation.navigate(
+                  role === 'store' ? 'Register' : 'CustomerRegister',
+                )
+              }
+            />
+          </Card>
+        </View>
 
         {/* ── Confianza ── */}
         <View style={styles.trust}>
@@ -248,20 +267,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 14,
   },
+  logoContainerSmall: {
+    paddingVertical: 6,
+  },
   logoImage: {
     width: 250,
-    height: 160,
+    height: 155,
+  },
+  logoImageCompact: {
+    width: 210,
+    height: 130,
+  },
+  logoImageSmall: {
+    width: 175,
+    height: 105,
+  },
+  innerContent: {
+    width: '100%',
+    gap: 16,
+  },
+  innerContentTablet: {
+    maxWidth: 460,
+    alignSelf: 'center',
   },
   // Roles
   roleRow: {
     flexDirection: 'row',
     gap: 10,
   },
+  roleRowSmall: {
+    gap: 6,
+  },
   roleBtn: {
     flex: 1,
     flexDirection: 'row',
     gap: 8,
     paddingVertical: 13,
+    paddingHorizontal: 8,
     borderRadius: 16,
     backgroundColor: Colors.card,
     borderWidth: 1.5,
@@ -273,6 +315,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 2,
+    minHeight: 46,
+  },
+  roleBtnSmall: {
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    minHeight: 42,
+    gap: 4,
   },
   roleBtnActive: {
     backgroundColor: '#FFF1E5',
@@ -282,6 +331,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.textSecondary,
+  },
+  roleTxtSmall: {
+    fontSize: 12.5,
   },
   roleTxtActive: {
     color: Colors.primary,
@@ -300,11 +352,18 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 3,
   },
+  formSmall: {
+    padding: 16,
+    gap: 11,
+  },
   formTitle: {
     fontSize: 20,
     fontWeight: '800',
     color: Colors.text,
     marginBottom: 2,
+  },
+  formTitleSmall: {
+    fontSize: 17,
   },
   // Registro
   registerWrap: {
@@ -323,14 +382,16 @@ const styles = StyleSheet.create({
   // Confianza
   trust: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 14,
+    gap: 12,
     marginTop: 4,
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: 999,
     backgroundColor: 'rgba(255, 255, 255, 0.75)',
     alignSelf: 'center',
+    maxWidth: '100%',
   },
   trustItem: {
     flexDirection: 'row',

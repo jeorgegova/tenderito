@@ -8,6 +8,7 @@ import {
 import {supabase} from '../lib/supabase';
 import type {Profile, SubscriptionPlanItem} from '../types';
 import {showAlert} from '../components/ui/AlertModal';
+import {formatDateDisplay, getBogotaTodayYMD, toBogotaDate, BOGOTA_TZ} from '../utils/format';
 
 export const DEFAULT_PLANS: SubscriptionPlanItem[] = [
   {
@@ -137,16 +138,8 @@ export function calculateSubscriptionStatus(
   const planId = (profile?.subscription_plan ?? 'free').toLowerCase();
   const isFreePlan = planId === 'free';
 
-  const startDate = profile?.subscription_start_date
-    ? new Date(profile.subscription_start_date)
-    : null;
-  const formattedStartDate = startDate
-    ? startDate.toLocaleDateString('es-CO', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      })
-    : null;
+  const startDate = toBogotaDate(profile?.subscription_start_date);
+  const formattedStartDate = startDate ? formatDateDisplay(startDate) : null;
 
   // 1. El plan Free es el único vitalicio
   if (isFreePlan) {
@@ -188,21 +181,48 @@ export function calculateSubscriptionStatus(
     };
   }
 
-  const now = new Date();
-  const endDate = new Date(profile.subscription_end_date);
+  const endDate = toBogotaDate(profile.subscription_end_date);
+  if (!endDate) {
+    return {
+      planId,
+      effectivePlan: planId,
+      isLifetime: false,
+      startDate,
+      endDate: null,
+      expiresToday: false,
+      isExpired: false,
+      daysSinceExpiration: 0,
+      remainingDays: 0,
+      inGracePeriod: false,
+      isDowngradedToFree: false,
+      needsRenewal: false,
+      formattedStartDate,
+      formattedEndDate: null,
+    };
+  }
 
-  // Comparación a nivel de fecha (YYYY-MM-DD local)
-  const isSameDay =
-    now.getFullYear() === endDate.getFullYear() &&
-    now.getMonth() === endDate.getMonth() &&
-    now.getDate() === endDate.getDate();
+  const todayYMD = getBogotaTodayYMD();
+  let endYMD = '';
+  try {
+    endYMD = new Intl.DateTimeFormat('en-CA', {
+      timeZone: BOGOTA_TZ,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(endDate);
+  } catch (_e) {
+    endYMD = endDate.toISOString().slice(0, 10);
+  }
 
-  // Diferencia en milisegundos y días
-  const diffMs = now.getTime() - endDate.getTime();
-  const daysDiff = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  const isExpired = now.getTime() > endDate.getTime() && !isSameDay;
+  // Comparación a nivel de fecha en Colombia
+  const isSameDay = todayYMD === endYMD;
+  const isExpired = todayYMD > endYMD;
   const expiresToday = isSameDay;
+
+  // Diferencia en días calculada con base en medianoche Colombia
+  const tToday = new Date(`${todayYMD}T12:00:00-05:00`).getTime();
+  const tEnd = new Date(`${endYMD}T12:00:00-05:00`).getTime();
+  const daysDiff = Math.round((tToday - tEnd) / (1000 * 60 * 60 * 24));
 
   // Si pasaron más de los días de gracia (10 días), vuelve automáticamente al plan Free
   const isDowngradedToFree = isExpired && daysDiff > gracePeriodDays;
@@ -211,12 +231,8 @@ export function calculateSubscriptionStatus(
   // El plan efectivo es el contratado a menos que ya hayan pasado los 10 días de gracia
   const effectivePlan = isDowngradedToFree ? 'free' : planId;
 
-  // Formato legible de fecha de fin
-  const formattedEndDate = endDate.toLocaleDateString('es-CO', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  // Formato legible de fecha de fin en Colombia
+  const formattedEndDate = formatDateDisplay(endDate);
 
   return {
     planId,

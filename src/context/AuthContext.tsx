@@ -39,23 +39,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userType, setUserType] = useState<UserType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const applySession = useCallback((nextSession: Session | null) => {
-    setSession(nextSession);
+  const applySession = useCallback(async (nextSession: Session | null) => {
     const currentUser = nextSession?.user ?? null;
-    setUser(currentUser);
-    setUserType(currentUser ? resolveUserType(currentUser) : null);
+    const type = currentUser ? resolveUserType(currentUser) : null;
+
     if (currentUser?.id) {
-      handleUserSessionSwitch(currentUser.id).catch(err => {
+      try {
+        await handleUserSessionSwitch(currentUser.id, type);
+      } catch (err) {
         console.warn('[AuthContext] Error verificando usuario asociado:', err);
-      });
+      }
     }
+
+    setSession(nextSession);
+    setUser(currentUser);
+    setUserType(type);
   }, []);
 
   const refreshSession = useCallback(async () => {
     try {
       const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
-      applySession(data.session);
+      await applySession(data.session);
 
       // Verificación en segundo plano con el servidor de Supabase
       if (data.session) {
@@ -64,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (userError) {
           const status = (userError as any)?.status;
           if (status === 401 || status === 403) {
-            applySession(null);
+            await applySession(null);
           }
         } else if (userData.user) {
           setUser(userData.user);
@@ -80,14 +85,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
 
     // 1. Obtener la sesión almacenada en AsyncStorage (funciona 100% offline)
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+    supabase.auth.getSession().then(async ({ data: { session: initialSession } }) => {
       if (!mounted) return;
-      applySession(initialSession);
+      await applySession(initialSession);
       setIsLoading(false);
 
       // Verificación con el servidor en segundo plano
       if (initialSession) {
-        supabase.auth.getUser().then(({ data: { user: verifiedUser }, error }) => {
+        supabase.auth.getUser().then(async ({ data: { user: verifiedUser }, error }) => {
           if (!mounted) return;
           if (error) {
             // Solo invalidar si el servidor rechazó las credenciales (401 / 403).
@@ -95,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // persistida en AsyncStorage para continuar trabajando sin conexión.
             const status = (error as any)?.status;
             if (status === 401 || status === 403) {
-              applySession(null);
+              await applySession(null);
             }
             return;
           }
@@ -110,9 +115,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // 2. Suscribirse a cambios de estado de autenticación de Supabase
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+    } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
       if (!mounted) return;
-      applySession(currentSession);
+      await applySession(currentSession);
       setIsLoading(false);
     });
 
@@ -139,7 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     await performLogout();
-    applySession(null);
+    await applySession(null);
   }, [applySession]);
 
   const value: AuthContextType = {

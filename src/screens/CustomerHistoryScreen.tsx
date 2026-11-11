@@ -1,17 +1,37 @@
-import {useQuery} from '@tanstack/react-query';
-import {FlatList, StyleSheet, Text, View} from 'react-native';
-import {Card} from '../components/ui/Card';
-import {FooterMenu} from '../components/ui/FooterMenu';
-import {MonochromeIcon} from '../components/ui/MonochromeIcon';
+import { useQuery } from '@tanstack/react-query';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { Card } from '../components/ui/Card';
+import { FooterMenu } from '../components/ui/FooterMenu';
+import { MonochromeIcon } from '../components/ui/MonochromeIcon';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {
   fetchGlobalCustomerHistory,
   fetchCustomerById,
 } from '../services/customers';
-import {Colors, formatCOP} from '../theme';
+import { Colors, formatCOP } from '../theme';
+import { useResponsive } from '../hooks/useResponsive';
+import { formatDateDisplay } from '../utils/format';
 
-export function CustomerHistoryScreen({route}: any) {
-  const {id} = route.params as {id: string};
+function formatLastMovement(lastMovement?: string | null): string {
+  if (!lastMovement) {
+    return 'Sin movimientos';
+  }
+  const str = String(lastMovement).trim().toLowerCase();
+  if (
+    str.includes('infinity') ||
+    str === 'null' ||
+    str === 'undefined' ||
+    str === ''
+  ) {
+    return 'Sin movimientos';
+  }
+  const formatted = formatDateDisplay(lastMovement);
+  return formatted && formatted !== 'Sin fecha' ? formatted : 'Sin movimientos';
+}
+
+export function CustomerHistoryScreen({ route }: any) {
+  const { isTablet, tabletContainerStyle } = useResponsive();
+  const { id } = route.params as { id: string };
   const customer = useQuery({
     queryKey: ['customer', id],
     queryFn: () => fetchCustomerById(id),
@@ -29,7 +49,7 @@ export function CustomerHistoryScreen({route}: any) {
   return (
     <View style={styles.wrap}>
       <FlatList
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, tabletContainerStyle(640)]}
         data={stores}
         keyExtractor={(item: any) => item.store_id}
         ListHeaderComponent={
@@ -60,7 +80,7 @@ export function CustomerHistoryScreen({route}: any) {
                 <View style={styles.totalIcon}>
                   <MonochromeIcon name="wallet" color={Colors.primary} size={18} />
                 </View>
-                <View style={{flex: 1}}>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.totalLabel}>
                     DEUDA TOTAL EN TODAS LAS TIENDAS
                   </Text>
@@ -85,22 +105,15 @@ export function CustomerHistoryScreen({route}: any) {
             ) : null}
           </>
         }
-        renderItem={({item}: any) => (
+        renderItem={({ item }: any) => (
           <Card style={styles.storeCard}>
             <View style={styles.storeIconWrap}>
               <MonochromeIcon name="store" color={Colors.primary} size={20} />
             </View>
-            <View style={{flex: 1}}>
+            <View style={{ flex: 1 }}>
               <Text style={styles.storeName}>{item.store_name}</Text>
               <Text style={styles.storeMeta}>
-                Último mov.:{' '}
-                {item.last_movement
-                  ? new Date(item.last_movement).toLocaleDateString('es-CO', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric',
-                    })
-                  : 'Sin movimientos'}
+                Último mov.: {formatLastMovement(item.last_movement)}
               </Text>
             </View>
             <View style={styles.balanceCol}>
@@ -111,7 +124,7 @@ export function CustomerHistoryScreen({route}: any) {
                 ]}>
                 {formatCOP(Number(item.current_balance))}
               </Text>
-              <View style={{flexDirection: 'row', alignItems: 'center', gap: 3}}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                 {Number(item.current_balance) === 0 ? (
                   <>
                     <Ionicons name="checkmark-circle" size={12} color="#15803D" />
@@ -124,7 +137,7 @@ export function CustomerHistoryScreen({route}: any) {
             </View>
           </Card>
         )}
-        ListFooterComponent={<View style={{height: 32}} />}
+        ListFooterComponent={<View style={{ height: 32 }} />}
       />
       <FooterMenu active="Clientes" />
     </View>
@@ -132,9 +145,9 @@ export function CustomerHistoryScreen({route}: any) {
 }
 
 const styles = StyleSheet.create({
-  wrap: {flex: 1, backgroundColor: Colors.background},
-  content: {padding: 20, gap: 12},
-  headerWrap: {alignItems: 'center', paddingVertical: 8, gap: 4},
+  wrap: { flex: 1, backgroundColor: Colors.background },
+  content: { padding: 20, gap: 12 },
+  headerWrap: { alignItems: 'center', paddingVertical: 8, gap: 4 },
   avatarLg: {
     width: 64,
     height: 64,
@@ -144,15 +157,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 4,
   },
-  avatarLgText: {fontSize: 26, fontWeight: '800', color: Colors.primary},
-  title: {fontSize: 22, fontWeight: '800', color: Colors.text},
-  subtitle: {fontSize: 13, color: Colors.textSecondary},
+  avatarLgText: { fontSize: 26, fontWeight: '800', color: Colors.primary },
+  title: { fontSize: 22, fontWeight: '800', color: Colors.text },
+  subtitle: { fontSize: 13, color: Colors.textSecondary },
   totalCard: {
     backgroundColor: Colors.card,
     borderColor: '#F1F5F9',
     borderWidth: 1,
   },
-  totalRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  totalRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   totalIcon: {
     width: 38,
     height: 38,
@@ -167,14 +180,14 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     letterSpacing: 0.8,
   },
-  totalValue: {fontSize: 22, fontWeight: '800', color: Colors.text, marginTop: 2},
+  totalValue: { fontSize: 22, fontWeight: '800', color: Colors.text, marginTop: 2 },
   sectionTitle: {
     fontSize: 17,
     fontWeight: '800',
     color: Colors.text,
     marginTop: 4,
   },
-  storeCard: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  storeCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   storeIconWrap: {
     width: 40,
     height: 40,
@@ -183,13 +196,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  storeName: {fontWeight: '700', color: Colors.text, fontSize: 14},
-  storeMeta: {fontSize: 11, color: Colors.textSecondary, marginTop: 2},
-  balanceCol: {alignItems: 'flex-end', gap: 2},
-  balance: {fontWeight: '800', color: Colors.destructive, fontSize: 14},
-  balancePaid: {color: '#15803D'},
-  balanceLabel: {fontSize: 10, color: Colors.textSecondary},
-  emptyCard: {alignItems: 'center', flexDirection: 'row', gap: 10},
-  emptyText: {color: Colors.textSecondary, fontSize: 13},
-  muted: {color: Colors.textSecondary, fontSize: 13},
+  storeName: { fontWeight: '700', color: Colors.text, fontSize: 14 },
+  storeMeta: { fontSize: 11, color: Colors.textSecondary, marginTop: 2 },
+  balanceCol: { alignItems: 'flex-end', gap: 2, flexShrink: 0 },
+  balance: { fontWeight: '800', color: Colors.destructive, fontSize: 14 },
+  balancePaid: { color: '#15803D' },
+  balanceLabel: { fontSize: 10, color: Colors.textSecondary },
+  emptyCard: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  emptyText: { color: Colors.textSecondary, fontSize: 13 },
+  muted: { color: Colors.textSecondary, fontSize: 13 },
 });

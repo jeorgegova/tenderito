@@ -21,11 +21,18 @@ import NetInfo from '@react-native-community/netinfo';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
+import { MagnetFilterBar } from '../components/ui/MagnetFilterBar';
 import { showAlert } from '../utils/alert';
 import { confirmLogout, CUSTOMER_LOGOUT_MESSAGE } from '../lib/session';
 import { fetchCustomerPortal } from '../services/customerPortal';
 import { Colors, Radius, formatCOP } from '../theme';
 import { useFocusEffect } from '@react-navigation/native';
+import { useResponsive } from '../hooks/useResponsive';
+import {
+  formatDateDisplay,
+  getBogotaCurrentMonthKey,
+  getBogotaMonthKey,
+} from '../utils/format';
 
 const MONTH_NAMES = [
   'Enero',
@@ -57,27 +64,8 @@ const MONTH_SHORT_NAMES = [
   'Dic',
 ];
 
-const getCurrentMonthKey = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
-};
-
-const getMonthKeyFromDate = (dateStr?: string | null) => {
-  if (!dateStr) {
-    return '';
-  }
-  try {
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      return `${year}-${month}`;
-    }
-  } catch (_e) {}
-  return String(dateStr).slice(0, 7);
-};
+const getCurrentMonthKey = getBogotaCurrentMonthKey;
+const getMonthKeyFromDate = getBogotaMonthKey;
 
 const formatMonthLabel = (monthKey: string) => {
   if (monthKey === 'all') {
@@ -141,6 +129,7 @@ const generateAvailableMonths = (createdAt?: string | null) => {
 };
 
 export function CustomerHomeScreen() {
+  const { isSmall, isTablet, tabletContainerStyle } = useResponsive();
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'payment'>(
     'all',
@@ -400,19 +389,6 @@ export function CustomerHomeScreen() {
     });
   };
 
-  const formatDateDisplay = (dateStr: string) => {
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString('es-CO', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      });
-    } catch (_e) {
-      return dateStr;
-    }
-  };
-
   if (isLoading) {
     return (
       <View style={styles.centerWrap}>
@@ -420,6 +396,36 @@ export function CustomerHomeScreen() {
         <Text style={styles.loadingText}>
           Cargando tus cuentas y tiendas...
         </Text>
+      </View>
+    );
+  }
+
+  if (isError && !data) {
+    return (
+      <View style={styles.centerWrap}>
+        <Ionicons name="alert-circle-outline" size={48} color={Colors.destructive} />
+        <Text style={[styles.loadingText, {marginTop: 8, fontWeight: '800', color: Colors.text}]}>
+          No se pudieron cargar tus cuentas
+        </Text>
+        <Text style={[styles.emptyCardText, {textAlign: 'center', marginHorizontal: 24, marginTop: 2}]}>
+          Revisa tu conexión a internet e intenta nuevamente.
+        </Text>
+        <TouchableOpacity
+          onPress={() => refetch()}
+          style={{
+            marginTop: 16,
+            backgroundColor: Colors.primary,
+            paddingVertical: 10,
+            paddingHorizontal: 24,
+            borderRadius: Radius.md,
+          }}>
+          <Text style={{color: '#fff', fontWeight: '800', fontSize: 14}}>Reintentar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleLogout}
+          style={{marginTop: 10, paddingVertical: 8}}>
+          <Text style={{color: Colors.textSecondary, fontWeight: '600', fontSize: 13}}>Cerrar sesión</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -455,7 +461,7 @@ export function CustomerHomeScreen() {
         </View>
 
         <ScrollView
-          contentContainerStyle={styles.detailScroll}
+          contentContainerStyle={[styles.detailScroll, tabletContainerStyle(720)]}
           showsVerticalScrollIndicator={false}>
           {/* Tarjeta de la tienda */}
           <Card style={styles.storeDetailCard}>
@@ -544,50 +550,17 @@ export function CustomerHomeScreen() {
             </View>
           </View>
 
-          {/* Filtros grandes y comprensibles */}
+          {/* Filtros animados con estilo imán */}
           <View style={styles.filterBar}>
-            <Pressable
-              onPress={() => setFilterType('all')}
-              style={[
-                styles.filterChip,
-                filterType === 'all' && styles.filterChipActive,
-              ]}>
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filterType === 'all' && styles.filterChipTextActive,
-                ]}>
-                Todo ({storeMovements.length})
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setFilterType('credit')}
-              style={[
-                styles.filterChip,
-                filterType === 'credit' && styles.filterChipActive,
-              ]}>
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filterType === 'credit' && styles.filterChipTextActive,
-                ]}>
-                Solo compras ({creditCount})
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setFilterType('payment')}
-              style={[
-                styles.filterChip,
-                filterType === 'payment' && styles.filterChipActive,
-              ]}>
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filterType === 'payment' && styles.filterChipTextActive,
-                ]}>
-                Solo abonos ({paymentCount})
-              </Text>
-            </Pressable>
+            <MagnetFilterBar
+              options={[
+                { key: 'all', label: `Todos (${storeMovements.length})` },
+                { key: 'credit', label: `Solo compras (${creditCount})` },
+                { key: 'payment', label: `Solo abonos (${paymentCount})` },
+              ]}
+              selectedKey={filterType}
+              onSelect={key => setFilterType(key as 'all' | 'credit' | 'payment')}
+            />
           </View>
 
           {/* Tabla / Libreta de apuntes */}
@@ -595,7 +568,7 @@ export function CustomerHomeScreen() {
             {/* Encabezado de la tabla con filtro Mes y Buscador "Qué fue" */}
             <View style={styles.tableHeaderRow}>
               {/* Filtro Mes (reemplaza FECHA con el mes actual y abre modal de selección) */}
-              <View style={styles.colDate}>
+              <View style={[styles.colDate, isSmall && styles.colDateSmall]}>
                 <TouchableOpacity
                   style={styles.headerMonthBtn}
                   onPress={handleOpenMonthPicker}
@@ -620,7 +593,12 @@ export function CustomerHomeScreen() {
                       transform: [{ translateX: conceptRowTranslateX }],
                     },
                   ]}>
-                  <Text style={styles.tableColHeader}>QUÉ FUE</Text>
+                  <Text
+                    style={styles.tableColHeader}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit>
+                    QUÉ FUE
+                  </Text>
                   <TouchableOpacity
                     style={[
                       styles.headerSearchIconBtn,
@@ -679,8 +657,13 @@ export function CustomerHomeScreen() {
               </View>
 
               {/* Columna Valor */}
-              <View style={styles.colAmount}>
-                <Text style={styles.tableColHeader}>VALOR</Text>
+              <View style={[styles.colAmount, isSmall && styles.colAmountSmall]}>
+                <Text
+                  style={styles.tableColHeader}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit>
+                  VALOR
+                </Text>
               </View>
             </View>
 
@@ -765,7 +748,7 @@ export function CustomerHomeScreen() {
                       styles.tableRowLast,
                     ]}>
                     {/* Columna Fecha */}
-                    <View style={styles.colDate}>
+                    <View style={[styles.colDate, isSmall && styles.colDateSmall]}>
                       <Text style={styles.rowDateText}>
                         {formatDateDisplay(item.date)}
                       </Text>
@@ -807,7 +790,7 @@ export function CustomerHomeScreen() {
                     </View>
 
                     {/* Columna Monto */}
-                    <View style={styles.colAmount}>
+                    <View style={[styles.colAmount, isSmall && styles.colAmountSmall]}>
                       <Text
                         style={[
                           styles.rowAmountText,
@@ -1060,7 +1043,11 @@ export function CustomerHomeScreen() {
     <View style={styles.wrap}>
       <DynamicBrandCurves position="top-right" />
       {/* Cabecera amigable con saludo y botón de salir */}
-      <View style={styles.header}>
+      <View
+        style={[
+          styles.header,
+          isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' },
+        ]}>
         <View style={styles.flexOne}>
           <Text style={styles.headerGreeting}>¡Hola, {customerName}!</Text>
           <Text style={styles.headerSubtitle}>
@@ -1081,7 +1068,7 @@ export function CustomerHomeScreen() {
       </View>
 
       <FlatList
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, tabletContainerStyle(720)]}
         data={stores}
         keyExtractor={(item: any) => item.store_id}
         refreshing={isLoading}
@@ -1600,32 +1587,7 @@ const styles = StyleSheet.create({
 
   // Filtros de la libreta
   filterBar: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  filterChip: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.card,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterChipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
+    marginBottom: 2,
   },
 
   // Tabla estilo Libreta
@@ -1655,6 +1617,9 @@ const styles = StyleSheet.create({
   colDate: {
     width: 90,
   },
+  colDateSmall: {
+    width: 72,
+  },
   colConcept: {
     flex: 1,
     paddingHorizontal: 6,
@@ -1668,6 +1633,9 @@ const styles = StyleSheet.create({
   colAmount: {
     width: 90,
     alignItems: 'flex-end',
+  },
+  colAmountSmall: {
+    width: 82,
   },
 
   // Filtro de mes en cabecera

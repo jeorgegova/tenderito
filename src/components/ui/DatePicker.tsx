@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Colors, Radius} from '../../theme';
+import {getBogotaTodayYMD} from '../../utils/format';
 import {Button} from './Button';
 
 export interface DatePickerProps {
@@ -69,10 +70,9 @@ function parseYMD(
   return {year, month, day};
 }
 
-/** Obtiene la fecha de hoy en formato local YYYY-MM-DD */
+/** Obtiene la fecha de hoy en formato Colombia YYYY-MM-DD */
 function getTodayYMD(): string {
-  const now = new Date();
-  return formatYMD(now.getFullYear(), now.getMonth(), now.getDate());
+  return getBogotaTodayYMD();
 }
 
 /** Formatea YYYY-MM-DD a texto legible en español */
@@ -201,7 +201,8 @@ export function DatePicker({
 
   // Generador de atajos de fecha prácticos
   const shortcuts = useMemo(() => {
-    const today = new Date();
+    const todayParts = parseYMD(getBogotaTodayYMD())!;
+    const today = new Date(todayParts.year, todayParts.month, todayParts.day);
 
     // +8 días
     const in8 = new Date(today);

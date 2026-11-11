@@ -18,41 +18,36 @@ import {Card} from '../components/ui/Card';
 import {Header} from '../components/ui/Header';
 import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
 import {MonochromeIcon} from '../components/ui/MonochromeIcon';
+import {MagnetFilterBar, type MagnetFilterOption} from '../components/ui/MagnetFilterBar';
 import {fetchCustomers} from '../services/customers';
 import {fetchStats, type StatsFilters} from '../services/stats';
 import {Colors, formatCOP} from '../theme';
+import {getBogotaDaysAgoYMD, getBogotaTodayYMD} from '../utils/format';
+import {useResponsive} from '../hooks/useResponsive';
 
 // ──────────────── Helpers ────────────────
 
-function today() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function daysAgo(n: number) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 const DATE_PRESETS = [
-  {label: 'Hoy', from: today(), to: today()},
-  {label: 'Últ. 7 días', from: daysAgo(7), to: today()},
-  {label: 'Últ. 30 días', from: daysAgo(30), to: today()},
-  {label: 'Este mes', from: today().slice(0, 7) + '-01', to: today()},
-  {label: 'Todo', from: undefined, to: undefined},
-] as const;
+  {label: 'Hoy', getDates: () => ({from: getBogotaTodayYMD(), to: getBogotaTodayYMD()})},
+  {label: 'Últ. 7 días', getDates: () => ({from: getBogotaDaysAgoYMD(7), to: getBogotaTodayYMD()})},
+  {label: 'Últ. 30 días', getDates: () => ({from: getBogotaDaysAgoYMD(30), to: getBogotaTodayYMD()})},
+  {label: 'Este mes', getDates: () => ({from: getBogotaTodayYMD().slice(0, 7) + '-01', to: getBogotaTodayYMD()})},
+  {label: 'Todo', getDates: () => ({from: undefined, to: undefined})},
+];
+
+const STATS_PRESET_OPTIONS: MagnetFilterOption[] = [
+  {key: '0', label: 'Hoy'},
+  {key: '1', label: 'Últ. 7 días'},
+  {key: '2', label: 'Últ. 30 días'},
+  {key: '3', label: 'Este mes'},
+  {key: '4', label: 'Todo'},
+];
 
 // ──────────────── Main screen ────────────────
 
 export function StatsScreen({navigation}: any) {
   const insets = useSafeAreaInsets();
+  const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
 
   // Filtros activos
   const [preset, setPreset] = useState<number>(2); // default "Últ. 30 días"
@@ -80,9 +75,10 @@ export function StatsScreen({navigation}: any) {
   );
 
   const activePreset = DATE_PRESETS[preset];
+  const {from, to} = useMemo(() => activePreset.getDates(), [activePreset]);
   const filters: StatsFilters = {
-    from: activePreset.from,
-    to: activePreset.to,
+    from,
+    to,
     customerIds: selectedIds.length > 0 ? selectedIds : undefined,
   };
 
@@ -121,29 +117,20 @@ export function StatsScreen({navigation}: any) {
       <Header title="Estadísticas" subtitle="Deudas, abonos y saldo por cliente" />
 
       <ScrollView
-        contentContainerStyle={[s.content, {paddingBottom: insets.bottom + 24}]}
+        contentContainerStyle={[
+          s.content,
+          {paddingBottom: insets.bottom + 24},
+          tabletContainerStyle(720),
+        ]}
         showsVerticalScrollIndicator={false}>
 
-        {/* ── Selector de periodo ── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.presetRow}>
-          {DATE_PRESETS.map((p, i) => (
-            <Pressable
-              key={p.label}
-              onPress={() => setPreset(i)}
-              style={[s.presetChip, i === preset && s.presetChipActive]}>
-              <Text
-                style={[
-                  s.presetText,
-                  i === preset && s.presetTextActive,
-                ]}>
-                {p.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        {/* ── Selector de periodo (barra magnética) ── */}
+        <MagnetFilterBar
+          scrollable
+          options={STATS_PRESET_OPTIONS}
+          selectedKey={String(preset)}
+          onSelect={key => setPreset(Number(key))}
+        />
 
         {/* ── Selector de clientes ── */}
         <Pressable
@@ -165,7 +152,7 @@ export function StatsScreen({navigation}: any) {
           </Card>
         ) : (
           <>
-            <View style={s.summaryGrid}>
+            <View style={[s.summaryGrid, isSmall && { flexDirection: 'column' }]}>
               <View style={[s.summaryCard, s.summaryDebt]}>
                 <View style={s.summaryTopRow}>
                   <View style={[s.summaryIconCircle, {backgroundColor: Colors.destructiveAlt}]}>
@@ -471,22 +458,6 @@ export function StatsScreen({navigation}: any) {
 const s = StyleSheet.create({
   wrap: {flex: 1, backgroundColor: Colors.background, overflow: 'hidden'},
   content: {paddingHorizontal: 20, paddingTop: 4, gap: 14},
-  // Presets
-  presetRow: {gap: 8, paddingRight: 4},
-  presetChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  presetChipActive: {
-    backgroundColor: Colors.primaryLight,
-    borderColor: Colors.primaryMid,
-  },
-  presetText: {fontSize: 13, fontWeight: '600', color: Colors.textSecondary},
-  presetTextActive: {color: Colors.primaryDark, fontWeight: '800'},
   // Customer selector
   customerBtn: {
     flexDirection: 'row',

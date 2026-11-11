@@ -18,8 +18,10 @@ import {
   setFreePortfolioSelection,
 } from '../services/portfolio';
 import {Colors, Radius, formatCOP} from '../theme';
+import {useResponsive} from '../hooks/useResponsive';
 
 export function FreePortfolioScreen({navigation}: any) {
+  const {isTablet, tabletContainerStyle} = useResponsive();
   const queryClient = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -124,7 +126,7 @@ export function FreePortfolioScreen({navigation}: any) {
   return (
     <View style={styles.wrap}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, tabletContainerStyle(640)]}
         showsVerticalScrollIndicator={false}>
         <Card style={styles.summaryCard}>
           <View style={styles.summaryRow}>

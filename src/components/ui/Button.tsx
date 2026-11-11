@@ -1,6 +1,7 @@
 import {Pressable, StyleSheet, Text, type StyleProp, type ViewStyle} from 'react-native';
 import {Colors, Radius} from '../../theme';
 import {MonochromeIcon, type IconName} from './MonochromeIcon';
+import {useResponsive} from '../../hooks/useResponsive';
 
 interface Props {
   title: string;
@@ -21,6 +22,7 @@ export function Button({
   icon,
   leftElement,
 }: Props) {
+  const {isSmall} = useResponsive();
   const iconColor =
     variant === 'primary' || variant === 'destructive'
       ? '#fff'
@@ -35,6 +37,7 @@ export function Button({
       android_ripple={{color: 'rgba(0,0,0,0.08)'}}
       style={({pressed}) => [
         styles.base,
+        isSmall && styles.baseSmall,
         variant === 'primary' && styles.primary,
         variant === 'secondary' && styles.secondary,
         variant === 'destructive' && styles.destructive,
@@ -46,15 +49,19 @@ export function Button({
       {leftElement ? (
         leftElement
       ) : icon ? (
-        <MonochromeIcon name={icon} color={iconColor} size={18} />
+        <MonochromeIcon name={icon} color={iconColor} size={isSmall ? 16 : 18} />
       ) : null}
       <Text
         style={[
           styles.text,
+          isSmall && styles.textSmall,
           variant === 'secondary' && styles.darkText,
           variant === 'ghost' && styles.ghostText,
           variant === 'destructive' && styles.text,
-        ]}>
+        ]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.82}>
         {title}
       </Text>
     </Pressable>
@@ -64,13 +71,19 @@ export function Button({
 const styles = StyleSheet.create({
   base: {
     borderRadius: Radius.md,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
-    minHeight: 50,
+    minHeight: 48,
+  },
+  baseSmall: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    minHeight: 44,
+    gap: 6,
   },
   primary: {
     backgroundColor: Colors.primary,
@@ -95,7 +108,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   ghost: {backgroundColor: 'transparent'},
-  text: {color: '#fff', fontSize: 15, fontWeight: '700'},
+  text: {color: '#fff', fontSize: 15, fontWeight: '700', flexShrink: 1, textAlign: 'center'},
+  textSmall: {fontSize: 13.5},
   darkText: {color: Colors.primary, fontWeight: '700'},
   ghostText: {color: Colors.primary, fontWeight: '700'},
 });

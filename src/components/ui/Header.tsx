@@ -1,6 +1,7 @@
 import {StyleSheet, Text, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Colors} from '../../theme';
+import {useResponsive} from '../../hooks/useResponsive';
 
 export function Header({
   title,
@@ -14,8 +15,20 @@ export function Header({
   rightElement?: React.ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const {isSmall, isTablet, maxContentWidth} = useResponsive();
+
   return (
-    <View style={[styles.wrap, {paddingTop: insets.top + 8}]}>
+    <View
+      style={[
+        styles.wrap,
+        {
+          paddingTop: insets.top + (isSmall ? 4 : 8),
+          paddingHorizontal: isSmall ? 16 : isTablet ? 28 : 20,
+          maxWidth: maxContentWidth,
+          width: '100%',
+          alignSelf: 'center',
+        },
+      ]}>
       {/* Formas curvas decorativas de la marca en la esquina superior derecha */}
       {showCurve && (
         <View pointerEvents="none" style={styles.curveContainer}>
@@ -31,8 +44,23 @@ export function Header({
             <View style={styles.brandDot} />
             <Text style={styles.eyebrow}>TENDERITO</Text>
           </View>
-          <Text style={styles.title}>{title}</Text>
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+          <Text
+            style={[
+              styles.title,
+              isSmall && styles.titleSmall,
+            ]}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}>
+            {title}
+          </Text>
+          {subtitle ? (
+            <Text
+              style={[styles.subtitle, isSmall && styles.subtitleSmall]}
+              numberOfLines={2}>
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
         {rightElement ? <View style={styles.rightWrap}>{rightElement}</View> : null}
       </View>
@@ -86,10 +114,13 @@ const styles = StyleSheet.create({
   },
   textCol: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   rightWrap: {
     marginLeft: 12,
     alignSelf: 'center',
+    flexShrink: 0,
   },
   brandRow: {
     flexDirection: 'row',
@@ -116,12 +147,20 @@ const styles = StyleSheet.create({
     letterSpacing: -0.8,
     lineHeight: 38,
   },
+  titleSmall: {
+    fontSize: 25,
+    lineHeight: 31,
+  },
   subtitle: {
     fontSize: 14,
     color: Colors.textSecondary,
     marginTop: 4,
     fontWeight: '500',
     letterSpacing: -0.1,
+  },
+  subtitleSmall: {
+    fontSize: 12.5,
+    marginTop: 2,
   },
 });
 

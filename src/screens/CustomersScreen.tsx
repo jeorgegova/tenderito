@@ -35,6 +35,7 @@ import { calculateSubscriptionStatus } from '../services/plans';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { Colors, Radius, formatCOP } from '../theme';
 import { FormatMoney, parseMoney } from '../utils/format';
+import { useResponsive } from '../hooks/useResponsive';
 
 const DOCUMENT_TYPES = [
   { value: 'CC', label: 'CC · Cédula de ciudadanía' },
@@ -46,6 +47,7 @@ const DOCUMENT_TYPES = [
 ];
 
 export function CustomersScreen({ navigation }: any) {
+  const { isSmall, isTablet, tabletContainerStyle } = useResponsive();
   const [search, setSearch] = useState('');
   const [balanceFilter, setBalanceFilter] = useState<'all' | 'owing' | 'clear'>(
     'all',
@@ -310,7 +312,11 @@ export function CustomersScreen({ navigation }: any) {
     <View style={styles.wrap}>
       <DynamicBrandCurves position="top-right" />
       <Header title="Clientes" subtitle="Busca y gestiona tus fiados" />
-      <View style={styles.searchWrap}>
+      <View
+        style={[
+          styles.searchWrap,
+          isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' },
+        ]}>
         <Input
           placeholder="Buscar nombre o teléfono"
           value={search}
@@ -320,7 +326,11 @@ export function CustomersScreen({ navigation }: any) {
           pill
         />
       </View>
-      <View style={styles.filterRow}>
+      <View
+        style={[
+          styles.filterRow,
+          isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' },
+        ]}>
         <MagnetFilterBar
           options={[
             { key: 'all', label: `Todos (${data?.length ?? 0})` },
@@ -342,7 +352,7 @@ export function CustomersScreen({ navigation }: any) {
         />
       </View>
       <FlatList
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, tabletContainerStyle(720)]}
         data={visibleCustomers}
         keyExtractor={i => i.id}
         refreshing={isLoading}
@@ -468,7 +478,11 @@ export function CustomersScreen({ navigation }: any) {
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={() => setModal(false)}>
-        <View style={styles.sheet}>
+        <View
+          style={[
+            styles.sheet,
+            isTablet && { maxWidth: 560, width: '100%', alignSelf: 'center', borderRadius: 24, marginVertical: 32 },
+          ]}>
           <View style={[styles.modalHeader, { paddingTop: insets.top + 8 }]}>
             <Pressable
               onPress={() => setModal(false)}
@@ -490,7 +504,7 @@ export function CustomersScreen({ navigation }: any) {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View style={{ width: 110 }}>
+                  <View style={{ width: isSmall ? 85 : 110 }}>
                     <Text style={styles.label}>Tipo</Text>
                     <Pressable
                       onPress={() => setShowTypePicker(true)}
@@ -813,7 +827,7 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingBottom: 100,
   },
-  flexOne: { flex: 1 },
+  flexOne: { flex: 1, minWidth: 0, flexShrink: 1 },
   customerCardItem: {
     padding: 16,
     borderRadius: 20,
@@ -898,6 +912,7 @@ const styles = StyleSheet.create({
   customerCardBalanceCol: {
     alignItems: 'flex-end',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   balanceLabel: {
     fontSize: 11,

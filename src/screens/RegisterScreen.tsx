@@ -14,16 +14,21 @@ import { Card } from '../components/ui/Card';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { Input } from '../components/ui/Input';
 import { showAlert } from '../components/ui/AlertModal';
+import { useResponsive } from '../hooks/useResponsive';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../theme';
 
 export function RegisterScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const { isSmall, isCompact, isTablet } = useResponsive();
   const [storeName, setStoreName] = useState('');
   const [merchantName, setMerchantName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const logoW = isSmall ? 175 : isCompact ? 200 : 220;
+  const logoH = Math.round(logoW * (120 / 220));
 
   async function onRegister() {
     if (!storeName || !merchantName || !email || !password) {
@@ -95,6 +100,7 @@ export function RegisterScreen({ navigation }: any) {
         contentContainerStyle={[
           styles.wrap,
           { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 32 },
+          isTablet ? { maxWidth: 480, width: '100%', alignSelf: 'center' } : null,
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
@@ -102,7 +108,7 @@ export function RegisterScreen({ navigation }: any) {
         <View style={styles.logoContainer}>
           <Image
             source={require('../assets/NuevoLogo.png')}
-            style={styles.logoImage}
+            style={{ width: logoW, height: logoH }}
             resizeMode="contain"
           />
         </View>
@@ -265,6 +271,7 @@ const styles = StyleSheet.create({
   },
   trust: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 14,
     marginTop: 8,
@@ -273,6 +280,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(255, 255, 255, 0.75)',
     alignSelf: 'center',
+    maxWidth: '100%',
   },
   trustItem: {
     flexDirection: 'row',

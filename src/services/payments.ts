@@ -56,6 +56,39 @@ export async function createPayment(input: NewPaymentInput): Promise<Payment> {
   const now = new Date().toISOString();
   const db = await getDbConnection();
 
+  if (!input.amount || input.amount <= 0) {
+    throw new Error('El valor del abono debe ser mayor a cero.');
+  }
+
+  // 1. Validar cliente y saldo pendiente en SQLite local como fuente única de verdad
+  let custRows: any[] = [];
+  if (activeStoreId) {
+    custRows = await getData(
+      db,
+      `SELECT current_balance FROM customers
+       WHERE (local_id = ? OR server_id = ?) AND (store_id = ? OR store_id IS NULL OR store_id = "") LIMIT 1;`,
+      [input.customer_id, input.customer_id, activeStoreId],
+    );
+  }
+  if (custRows.length === 0) {
+    custRows = await getData(
+      db,
+      `SELECT current_balance FROM customers
+       WHERE local_id = ? OR server_id = ? LIMIT 1;`,
+      [input.customer_id, input.customer_id],
+    );
+  }
+
+  const currentBalance = Number(custRows[0]?.current_balance || 0);
+  if (currentBalance <= 0) {
+    throw new Error('Este cliente no tiene saldo pendiente por pagar.');
+  }
+  if (input.amount > currentBalance) {
+    throw new Error(
+      `El abono no puede ser mayor a la deuda pendiente ($ ${currentBalance.toLocaleString('es-CO')}).`,
+    );
+  }
+
   // Inserción y actualización atómica en SQLite local
   await executeInTransaction(db, async () => {
     await executeQuery(

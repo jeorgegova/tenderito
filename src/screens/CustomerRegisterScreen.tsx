@@ -16,6 +16,7 @@ import { Card } from '../components/ui/Card';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { Input } from '../components/ui/Input';
 import { showAlert } from '../components/ui/AlertModal';
+import { useResponsive } from '../hooks/useResponsive';
 import { customerAuthEmail } from '../lib/customerAuth';
 import { supabase } from '../lib/supabase';
 import { findCustomerForActivation } from '../services/customerPortal';
@@ -23,11 +24,15 @@ import { Colors } from '../theme';
 
 export function CustomerRegisterScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const { isSmall, isCompact, isTablet } = useResponsive();
   const [document, setDocument] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [customer, setCustomer] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+
+  const logoW = isSmall ? 175 : isCompact ? 200 : 220;
+  const logoH = Math.round(logoW * (120 / 220));
 
   async function checkDocument() {
     Keyboard.dismiss();
@@ -128,6 +133,7 @@ export function CustomerRegisterScreen({ navigation }: any) {
         contentContainerStyle={[
           styles.wrap,
           { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 32, flexGrow: 1 },
+          isTablet ? { maxWidth: 480, width: '100%', alignSelf: 'center' } : null,
         ]}
         enableOnAndroid={true}
         enableAutomaticScroll={true}
@@ -141,7 +147,7 @@ export function CustomerRegisterScreen({ navigation }: any) {
         <View style={styles.logoContainer}>
           <Image
             source={require('../assets/NuevoLogo.png')}
-            style={styles.logoImage}
+            style={{ width: logoW, height: logoH }}
             resizeMode="contain"
           />
         </View>
@@ -365,6 +371,7 @@ const styles = StyleSheet.create({
   },
   trust: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 14,
     marginTop: 8,
@@ -373,6 +380,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(255, 255, 255, 0.75)',
     alignSelf: 'center',
+    maxWidth: '100%',
   },
   trustItem: {
     flexDirection: 'row',

@@ -13,7 +13,9 @@ import {Colors, Radius} from '../../theme';
 interface Props extends TextInputProps {
   label?: string;
   error?: string;
-  leadingIcon?: 'search';
+  leadingIcon?: string;
+  trailingIcon?: string;
+  onTrailingPress?: () => void;
   pill?: boolean;
 }
 
@@ -21,37 +23,70 @@ export function Input({
   label,
   error,
   leadingIcon,
+  trailingIcon,
+  onTrailingPress,
   pill,
   secureTextEntry,
+  onFocus,
+  onBlur,
   ...rest
 }: Props) {
   const [showPassword, setShowPassword] = useState(false);
-  const isPill = pill || leadingIcon === 'search';
+  const [isFocused, setIsFocused] = useState(false);
+  const isPill = pill || leadingIcon === 'search' || leadingIcon === 'search-outline';
   const isPassword = Boolean(secureTextEntry);
+
+  const iconName = leadingIcon === 'search' ? 'search-outline' : leadingIcon;
 
   return (
     <View style={styles.wrap}>
-      {label && <Text style={styles.label}>{label}</Text>}
+      {label && (
+        <Text style={[styles.label, isFocused && styles.labelFocused]}>
+          {label}
+        </Text>
+      )}
       <View
         style={[
           styles.field,
           isPill && styles.pillField,
+          isFocused && styles.fieldFocused,
           error ? styles.invalid : null,
         ]}>
-        {leadingIcon === 'search' ? (
+        {iconName ? (
           <Ionicons
-            name="search-outline"
+            name={iconName as any}
             size={19}
-            color={Colors.textMuted}
+            color={isFocused ? Colors.primary : Colors.textMuted}
             style={styles.leadingIcon}
           />
         ) : null}
         <TextInput
           placeholderTextColor={Colors.textMuted}
-          style={[styles.input, leadingIcon && {paddingLeft: 0}]}
+          style={[styles.input, Boolean(iconName) ? {paddingLeft: 0} : null]}
           secureTextEntry={isPassword ? !showPassword : false}
+          onFocus={e => {
+            setIsFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={e => {
+            setIsFocused(false);
+            onBlur?.(e);
+          }}
           {...rest}
         />
+        {trailingIcon ? (
+          <Pressable
+            onPress={onTrailingPress}
+            hitSlop={10}
+            style={styles.trailingBtn}
+            accessibilityRole="button">
+            <Ionicons
+              name={trailingIcon as any}
+              size={18}
+              color={Colors.textSecondary}
+            />
+          </Pressable>
+        ) : null}
         {isPassword ? (
           <Pressable
             onPress={() => setShowPassword(prev => !prev)}
@@ -82,6 +117,9 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     letterSpacing: 0.1,
   },
+  labelFocused: {
+    color: Colors.primaryDark,
+  },
   field: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -99,6 +137,16 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 1,
   },
+  fieldFocused: {
+    borderColor: Colors.primaryMid,
+    borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+    shadowColor: Colors.primary,
+    shadowOffset: {width: 0, height: 3},
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
   pillField: {
     borderRadius: 24,
     minHeight: 50,
@@ -107,6 +155,11 @@ const styles = StyleSheet.create({
   },
   leadingIcon: {
     marginRight: 2,
+  },
+  trailingBtn: {
+    padding: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   invalid: {borderColor: Colors.destructive, borderWidth: 1.5},
   input: {

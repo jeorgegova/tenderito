@@ -9,8 +9,11 @@ import {Input} from '../components/ui/Input';
 import {MonochromeIcon} from '../components/ui/MonochromeIcon';
 import {fetchOverdueCredits} from '../services/credits';
 import {Colors, formatCOP} from '../theme';
+import {formatDateDisplay} from '../utils/format';
+import {useResponsive} from '../hooks/useResponsive';
 
 export function ReportsScreen({navigation}: any) {
+  const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
   const [search, setSearch] = useState('');
   const {data, isLoading, refetch} = useQuery({
     queryKey: ['overdue'],
@@ -28,21 +31,34 @@ export function ReportsScreen({navigation}: any) {
     <View style={styles.wrap}>
       <DynamicBrandCurves position="bottom-right" />
       <Header title="Vencidos" subtitle="Fiados que necesitan seguimiento" />
-      <View style={styles.summaryWrap}>
+      <View
+        style={[
+          styles.summaryWrap,
+          isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' },
+        ]}>
         <Card style={styles.summary}>
           <View style={styles.summaryTop}>
             <View style={styles.summaryIcon}><MonochromeIcon name="clock" color={Colors.destructive} size={19} /></View>
             <Text style={styles.summaryLabel}>TOTAL VENCIDO</Text>
           </View>
-          <Text style={styles.summaryValue}>{formatCOP(total)}</Text>
+          <Text
+            style={[styles.summaryValue, isSmall && { fontSize: 24 }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit>
+            {formatCOP(total)}
+          </Text>
           <Text style={styles.summarySub}>{data?.length ?? 0} fiados vencidos por cobrar</Text>
         </Card>
       </View>
-      <View style={styles.searchWrap}>
+      <View
+        style={[
+          styles.searchWrap,
+          isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' },
+        ]}>
         <Input placeholder="Buscar cliente o fiado" value={search} onChangeText={setSearch} leadingIcon="search" returnKeyType="search" />
       </View>
       <FlatList
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, tabletContainerStyle(720)]}
         data={filtered}
         keyExtractor={item => item.id}
         refreshing={isLoading}
@@ -62,7 +78,7 @@ export function ReportsScreen({navigation}: any) {
               <View style={{flex: 1}}>
                 <Text style={styles.name}>{item.customers?.name ?? 'Cliente'}</Text>
                 <Text style={styles.detail} numberOfLines={1}>{item.concept}</Text>
-                <Text style={styles.date}>Venció el {new Date(`${item.due_date}T12:00:00`).toLocaleDateString('es-CO', {day: 'numeric', month: 'short', year: 'numeric'})}</Text>
+                <Text style={styles.date}>Venció el {formatDateDisplay(item.due_date)}</Text>
               </View>
               <View style={styles.amountCol}>
                 <Text style={styles.amount}>{formatCOP(Number(item.amount))}</Text>
@@ -93,7 +109,7 @@ const styles = StyleSheet.create({
   name: {fontWeight: '700', color: Colors.text, fontSize: 14},
   detail: {color: Colors.textSecondary, fontSize: 12, marginTop: 2},
   date: {color: Colors.destructive, fontSize: 11, fontWeight: '700', marginTop: 4},
-  amountCol: {alignItems: 'flex-end', gap: 6},
+  amountCol: {alignItems: 'flex-end', gap: 6, flexShrink: 0},
   amount: {fontWeight: '800', color: Colors.destructive, fontSize: 12},
   empty: {alignItems: 'center', gap: 5, paddingVertical: 24},
   emptyIcon: {width: 42, height: 42, borderRadius: 15, backgroundColor: '#EAF7EE', alignItems: 'center', justifyContent: 'center', marginBottom: 4},

@@ -31,6 +31,13 @@ import {canCreateCreditForCustomer} from '../services/portfolio';
 import {calculateSubscriptionStatus} from '../services/plans';
 import {useStore} from '../store/useStore';
 import {Colors, Radius, formatCOP} from '../theme';
+import {useResponsive} from '../hooks/useResponsive';
+import {
+  formatDateDisplay,
+  getBogotaCurrentMonthKey,
+  getBogotaMonthKey,
+  isOverdueBogota,
+} from '../utils/format';
 import type {CreditEligibility} from '../types';
 
 const MONTH_NAMES = [
@@ -63,27 +70,8 @@ const MONTH_SHORT_NAMES = [
   'Dic',
 ];
 
-const getCurrentMonthKey = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
-};
-
-const getMonthKeyFromDate = (dateStr?: string | null) => {
-  if (!dateStr) {
-    return '';
-  }
-  try {
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      return `${year}-${month}`;
-    }
-  } catch (_e) {}
-  return String(dateStr).slice(0, 7);
-};
+const getCurrentMonthKey = getBogotaCurrentMonthKey;
+const getMonthKeyFromDate = getBogotaMonthKey;
 
 const formatMonthLabel = (monthKey: string) => {
   if (monthKey === 'all') {
@@ -147,6 +135,7 @@ const generateAvailableMonths = (createdAt?: string | null) => {
 };
 
 export function CustomerDetailScreen({route, navigation}: any) {
+  const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
   const {id} = route.params as {id: string};
   const profile = useStore(s => s.profile);
   const subStatus = calculateSubscriptionStatus(profile);
@@ -369,36 +358,13 @@ export function CustomerDetailScreen({route, navigation}: any) {
     });
   };
 
-  const formatDateDisplay = (dateStr: string) => {
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString('es-CO', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      });
-    } catch (_e) {
-      return dateStr;
-    }
-  };
-
-  const isOverdue = (dueDateStr?: string | null) => {
-    if (!dueDateStr) {
-      return false;
-    }
-    try {
-      const today = new Date().toISOString().slice(0, 10);
-      return dueDateStr < today;
-    } catch (_e) {
-      return false;
-    }
-  };
+  const isOverdue = isOverdueBogota;
 
   return (
     <View style={styles.wrap}>
       <DynamicBrandCurves position="bottom-left" />
       <FlatList
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, tabletContainerStyle(720)]}
         data={filteredMovements}
         keyExtractor={item => `${item.kind}-${item.id}`}
         refreshing={
@@ -519,7 +485,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
             </Card>
 
             {/* ── Botones de Acción Principales (Grandes y Cómodos) ── */}
-            <View style={styles.actionsRow}>
+            <View style={[styles.actionsRow, isSmall && styles.actionsRowSmall]}>
               <View style={styles.flexOne}>
                 <Button
                   title="+ Nuevo fiado"
@@ -542,9 +508,17 @@ export function CustomerDetailScreen({route, navigation}: any) {
                   title="− Abonar plata"
                   variant="secondary"
                   icon="incoming"
-                  onPress={() =>
-                    navigation.navigate('NewPayment', {customerId: id})
-                  }
+                  disabled={isPaid}
+                  onPress={() => {
+                    if (isPaid) {
+                      showAlert(
+                        'Cliente al día',
+                        'Este cliente no tiene saldo pendiente por pagar.',
+                      );
+                      return;
+                    }
+                    navigation.navigate('NewPayment', {customerId: id});
+                  }}
                 />
               </View>
             </View>
@@ -588,7 +562,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
             {/* ── Cabecera de la Tabla Libreta con Filtro Mes y Buscador Animado ── */}
             <View style={styles.tableHeaderRow}>
               {/* Filtro Mes (reemplaza FECHA por el mes seleccionado) */}
-              <View style={styles.colDate}>
+              <View style={[styles.colDate, isSmall && styles.colDateSmall]}>
                 <TouchableOpacity
                   style={styles.headerMonthBtn}
                   onPress={() => setIsMonthModalVisible(true)}
@@ -613,7 +587,10 @@ export function CustomerDetailScreen({route, navigation}: any) {
                       transform: [{ translateX: conceptRowTranslateX }],
                     },
                   ]}>
-                  <Text style={styles.tableColHeader} numberOfLines={1}>
+                  <Text
+                    style={styles.tableColHeader}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit>
                     QUÉ SE LLEVÓ / ABONO
                   </Text>
                   <TouchableOpacity
@@ -674,8 +651,13 @@ export function CustomerDetailScreen({route, navigation}: any) {
               </View>
 
               {/* Columna Valor */}
-              <View style={styles.colAmount}>
-                <Text style={styles.tableColHeader}>VALOR</Text>
+              <View style={[styles.colAmount, isSmall && styles.colAmountSmall]}>
+                <Text
+                  style={styles.tableColHeader}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit>
+                  VALOR
+                </Text>
               </View>
             </View>
           </>
@@ -740,7 +722,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
             <View
               style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlt]}>
               {/* Columna Fecha */}
-              <View style={styles.colDate}>
+              <View style={[styles.colDate, isSmall && styles.colDateSmall]}>
                 <Text style={styles.rowDateText}>
                   {formatDateDisplay(item.date)}
                 </Text>
@@ -796,7 +778,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
               </View>
 
               {/* Columna Monto */}
-              <View style={styles.colAmount}>
+              <View style={[styles.colAmount, isSmall && styles.colAmountSmall]}>
                 <Text
                   style={[
                     styles.rowAmountText,
@@ -1173,6 +1155,10 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 16,
   },
+  actionsRowSmall: {
+    flexDirection: 'column',
+    gap: 10,
+  },
 
   freePortfolioNotice: {
     flexDirection: 'row',
@@ -1237,6 +1223,9 @@ const styles = StyleSheet.create({
   colDate: {
     width: 90,
   },
+  colDateSmall: {
+    width: 72,
+  },
   colConcept: {
     flex: 1,
     paddingHorizontal: 6,
@@ -1250,6 +1239,9 @@ const styles = StyleSheet.create({
   colAmount: {
     width: 90,
     alignItems: 'flex-end',
+  },
+  colAmountSmall: {
+    width: 82,
   },
 
   // Filtro de mes en cabecera

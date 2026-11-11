@@ -18,14 +18,17 @@ import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { fetchOverdueCredits, fetchTotalReceivable } from '../services/credits';
 import { fetchCustomers } from '../services/customers';
 import { Colors, formatCOP } from '../theme';
+import { formatDateDisplay } from '../utils/format';
 import { AnimatedMoney } from '../components/ui/AnimatedMoney';
 import { useStore } from '../store/useStore';
 import { calculateSubscriptionStatus } from '../services/plans';
 import { fetchFreePortfolioStatus } from '../services/portfolio';
 import { showAlert } from '../components/ui/AlertModal';
 import { confirmLogout } from '../lib/session';
+import { useResponsive } from '../hooks/useResponsive';
 
 export function DashboardScreen({ navigation }: any) {
+  const { isSmall, isTablet, tabletContainerStyle } = useResponsive();
   const [showBalance, setShowBalance] = useState(true);
   const profile = useStore(s => s.profile);
   const subStatus = calculateSubscriptionStatus(profile);
@@ -116,7 +119,10 @@ export function DashboardScreen({ navigation }: any) {
       <DynamicBrandCurves position="bottom-left" />
       <Header title="Inicio" subtitle="Tu plata, fácil y claro" />
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          tabletContainerStyle(720),
+        ]}
         showsVerticalScrollIndicator={false}>
         {/* Selección inicial de cartera al bajar al plan Free */}
         {freePortfolio.data?.selection_pending && (
@@ -207,14 +213,23 @@ export function DashboardScreen({ navigation }: any) {
           </View>
 
           {total.isLoading ? (
-            <Text style={styles.heroValue}>Cargando…</Text>
+            <Text
+              style={[styles.heroValue, isSmall && styles.heroValueSmall]}
+              numberOfLines={1}
+              adjustsFontSizeToFit>
+              Cargando…
+            </Text>
           ) : showBalance ? (
             <AnimatedMoney
               value={Number(total.data ?? 0)}
-              style={styles.heroValue}
+              style={[styles.heroValue, isSmall && styles.heroValueSmall]}
             />
           ) : (
-            <Text style={styles.heroValue}>$ ••••••</Text>
+            <Text
+              style={[styles.heroValue, isSmall && styles.heroValueSmall]}
+              numberOfLines={1}>
+              $ ••••••
+            </Text>
           )}
 
           <View style={styles.heroBottom}>
@@ -318,7 +333,7 @@ export function DashboardScreen({ navigation }: any) {
                       </Text>
                     ) : null}
                     <Text style={styles.muted} numberOfLines={1}>
-                      {item.concept} · venció el {item.due_date}
+                      {item.concept} · venció el {formatDateDisplay(item.due_date)}
                     </Text>
                     {cust?.phone ? (
                       <View style={styles.phoneInline}>
@@ -411,7 +426,7 @@ export function DashboardScreen({ navigation }: any) {
                         .toUpperCase()}
                     </Text>
                   </View>
-                  <View style={[styles.flex1, { maxWidth: 160 }]}>
+                  <View style={[styles.flex1, { minWidth: 0 }]}>
                     <Text style={styles.customerName} numberOfLines={1}>
                       {customer.alias || customer.name}
                     </Text>
@@ -528,6 +543,10 @@ const styles = StyleSheet.create({
     letterSpacing: -0.8,
     zIndex: 1,
   },
+  heroValueSmall: {
+    fontSize: 28,
+    lineHeight: 34,
+  },
   heroBottom: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -599,7 +618,7 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 2,
   },
-  alertAmountWrap: { alignItems: 'flex-end', justifyContent: 'center' },
+  alertAmountWrap: { alignItems: 'flex-end', justifyContent: 'center', flexShrink: 0 },
   alertAmountLabel: {
     fontSize: 11,
     color: Colors.destructive,
@@ -628,7 +647,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: Colors.primary, fontSize: 18, fontWeight: '800' },
-  balanceWrap: { alignItems: 'flex-end', gap: 2 },
+  balanceWrap: { alignItems: 'flex-end', gap: 2, flexShrink: 0 },
   balanceLabel: { fontSize: 11, color: Colors.textSecondary, fontWeight: '700' },
   balance: { fontSize: 16, color: Colors.destructive, fontWeight: '800' },
   touchHint: {

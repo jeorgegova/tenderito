@@ -1,16 +1,18 @@
-import React, {useCallback, useEffect, useRef} from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
   Animated,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
-import {create} from 'zustand';
-import {Colors, Radius} from '../../theme';
+import { create } from 'zustand';
+import { Colors, Radius } from '../../theme';
+import { useResponsive } from '../../hooks/useResponsive';
 
 export type AlertType = 'info' | 'success' | 'warning' | 'destructive';
 
@@ -37,8 +39,8 @@ interface AlertStoreState {
 export const useAlertStore = create<AlertStoreState>(set => ({
   alert: null,
   visible: false,
-  show: (data: AlertData) => set({alert: data, visible: true}),
-  hide: () => set({visible: false, alert: null}),
+  show: (data: AlertData) => set({ alert: data, visible: true }),
+  hide: () => set({ visible: false, alert: null }),
 }));
 
 /**
@@ -103,7 +105,8 @@ export function hideAlert(): void {
 }
 
 export function AlertModal() {
-  const {alert, visible, hide} = useAlertStore();
+  const { alert, visible, hide } = useAlertStore();
+  const { isSmall, height } = useResponsive();
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -148,7 +151,7 @@ export function AlertModal() {
   const buttons =
     alert.buttons && alert.buttons.length > 0
       ? alert.buttons
-      : [{text: 'Entendido', style: 'default' as const}];
+      : [{ text: 'Entendido', style: 'default' as const }];
 
   // Icono y color según el tipo
   let iconName:
@@ -173,7 +176,8 @@ export function AlertModal() {
     iconBg = '#FEF3C7';
   }
 
-  const isTwoButtons = buttons.length === 2;
+  const hasLongButtonText = buttons.some(b => b.text.length > 10);
+  const isTwoButtons = buttons.length === 2 && !isSmall && !hasLongButtonText;
 
   return (
     <Modal
@@ -197,19 +201,25 @@ export function AlertModal() {
                 styles.card,
                 {
                   opacity: opacityAnim,
-                  transform: [{scale: scaleAnim}],
+                  transform: [{ scale: scaleAnim }],
+                  maxHeight: Math.min(height * 0.85, 520),
                 },
               ]}>
-              {/* Icono temático */}
-              <View style={[styles.iconContainer, {backgroundColor: iconBg}]}>
-                <Ionicons name={iconName} size={32} color={iconColor} />
-              </View>
+              <ScrollView
+                bounces={false}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}>
+                {/* Icono temático */}
+                <View style={[styles.iconContainer, { backgroundColor: iconBg }]}>
+                  <Ionicons name={iconName} size={32} color={iconColor} />
+                </View>
 
-              {/* Título y Mensaje */}
-              <Text style={styles.title}>{alert.title}</Text>
-              {alert.message ? (
-                <Text style={styles.message}>{alert.message}</Text>
-              ) : null}
+                {/* Título y Mensaje */}
+                <Text style={styles.title}>{alert.title}</Text>
+                {alert.message ? (
+                  <Text style={styles.message}>{alert.message}</Text>
+                ) : null}
+              </ScrollView>
 
               {/* Botones de acción */}
               <View
@@ -226,7 +236,7 @@ export function AlertModal() {
                     <Pressable
                       key={`${btn.text}-${idx}`}
                       onPress={() => handleButtonPress(btn)}
-                      style={({pressed}) => [
+                      style={({ pressed }) => [
                         styles.button,
                         isCancel && styles.cancelButton,
                         isDestructive && styles.destructiveButton,
@@ -240,7 +250,10 @@ export function AlertModal() {
                           isCancel && styles.cancelButtonText,
                           isDestructive && styles.destructiveButtonText,
                           isPrimary && styles.primaryButtonText,
-                        ]}>
+                        ]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.85}>
                         {btn.text}
                       </Text>
                     </Pressable>
@@ -273,12 +286,16 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     alignItems: 'center',
     shadowColor: '#1C1008',
-    shadowOffset: {width: 0, height: 8},
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18,
     shadowRadius: 18,
     elevation: 10,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  scrollContent: {
+    alignItems: 'center',
+    width: '100%',
   },
   iconContainer: {
     width: 58,
@@ -327,12 +344,12 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.86,
-    transform: [{scale: 0.98}],
+    transform: [{ scale: 0.98 }],
   },
   primaryButton: {
     backgroundColor: Colors.primary,
     shadowColor: Colors.primary,
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 3,
@@ -345,7 +362,7 @@ const styles = StyleSheet.create({
   destructiveButton: {
     backgroundColor: Colors.destructive,
     shadowColor: Colors.destructive,
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 3,

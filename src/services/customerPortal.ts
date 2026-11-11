@@ -1,4 +1,5 @@
 import {supabase} from '../lib/supabase';
+import {getBogotaMonthRangeUtc} from '../utils/format';
 
 export async function findCustomerForActivation(documentNumber: string) {
   const {data, error} = await supabase.rpc('find_customer_for_activation', {
@@ -15,18 +16,34 @@ export interface CustomerPortalFilters {
 
 export async function fetchCustomerPortal(filters: CustomerPortalFilters = {}) {
   const {month, storeId} = filters;
-  const {
-    data: {user},
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('No autenticado');
+  
+  // Obtener usuario actual: primero de la sesión local activa (rápido sin red) o getUser como respaldo
+  const {data: {session}} = await supabase.auth.getSession();
+  let currentUser = session?.user ?? null;
+  if (!currentUser) {
+    const {data: {user: fetchedUser}} = await supabase.auth.getUser();
+    currentUser = fetchedUser;
+  }
+  if (!currentUser) throw new Error('No autenticado');
 
-  // 1. Obtener los datos del cliente directamente por su user_id
-  const {data: customer, error: customerError} = await supabase
+  // 1. Obtener los datos del cliente directamente por su user_id (o fallback a customer_id de metadata)
+  let {data: customer, error: customerError} = await supabase
     .from('customers')
     .select('*')
-    .eq('user_id', user.id)
-    .single();
-  if (customerError) throw customerError;
+    .eq('user_id', currentUser.id)
+    .maybeSingle();
+
+  if (!customer && currentUser.user_metadata?.customer_id) {
+    const {data: fallbackCust} = await supabase
+      .from('customers')
+      .select('*')
+      .eq('id', currentUser.user_metadata.customer_id)
+      .maybeSingle();
+    customer = fallbackCust;
+  }
+
+  if (customerError && !customer) throw customerError;
+  if (!customer) throw new Error('Cliente no registrado o vinculado');
 
   // 2. Tiendas vinculadas (saldo acumulado por tienda)
   const {data: stores, error: storesError} = await supabase
@@ -57,29 +74,16 @@ export async function fetchCustomerPortal(filters: CustomerPortalFilters = {}) {
   }
 
   if (month && month !== 'all') {
-    const [yearStr, monthStr] = month.split('-');
-    const year = parseInt(yearStr, 10);
-    const monthNum = parseInt(monthStr, 10);
-    if (!isNaN(year) && !isNaN(monthNum)) {
-      const startOfMonth = new Date(
-        year,
-        monthNum - 1,
-        1,
-        0,
-        0,
-        0,
-        0,
-      ).toISOString();
-      const endOfMonth = new Date(year, monthNum, 1, 0, 0, 0, 0).toISOString();
-
+    try {
+      const {startUtc, endUtc} = getBogotaMonthRangeUtc(month);
       creditsQuery = creditsQuery
-        .gte('created_at', startOfMonth)
-        .lt('created_at', endOfMonth);
+        .gte('created_at', startUtc)
+        .lt('created_at', endUtc);
 
       paymentsQuery = paymentsQuery
-        .gte('payment_date', startOfMonth)
-        .lt('payment_date', endOfMonth);
-    }
+        .gte('payment_date', startUtc)
+        .lt('payment_date', endUtc);
+    } catch (_e) {}
   }
 
   const [

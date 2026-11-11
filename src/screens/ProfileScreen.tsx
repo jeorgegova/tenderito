@@ -11,6 +11,7 @@ import {showAlert} from '../components/ui/AlertModal';
 import {supabase} from '../lib/supabase';
 import {confirmLogout} from '../lib/session';
 import {useStore} from '../store/useStore';
+import {useResponsive} from '../hooks/useResponsive';
 import {Colors} from '../theme';
 import {
   calculateSubscriptionStatus,
@@ -73,6 +74,7 @@ async function fetchProfile() {
 }
 
 export function ProfileScreen({navigation}: any) {
+  const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
   const setProfile = useStore(s => s.setProfile);
   const queryClient = useQueryClient();
   const {data, refetch: refetchProfile} = useQuery({
@@ -190,7 +192,9 @@ export function ProfileScreen({navigation}: any) {
     <View style={styles.wrap}>
       <DynamicBrandCurves position="top-left" />
       <Header title="Mi negocio" subtitle="Perfil y suscripción" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, tabletContainerStyle(620)]}
+        showsVerticalScrollIndicator={false}>
         <Card style={styles.accountCard}>
           <View style={styles.storeIcon}>
             <MonochromeIcon name="store" color={Colors.primary} size={22} />
@@ -464,7 +468,7 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     marginTop: 3,
   },
-  priceCol: {alignItems: 'flex-end'},
+  priceCol: {alignItems: 'flex-end', flexShrink: 0},
   price: {fontWeight: '800', color: Colors.text, fontSize: 13},
   pricePeriod: {fontSize: 10, color: Colors.textSecondary},
   chooseButton: {paddingHorizontal: 12, paddingVertical: 7, minHeight: 36, borderRadius: 12},

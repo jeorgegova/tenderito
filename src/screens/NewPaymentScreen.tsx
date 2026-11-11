@@ -12,14 +12,16 @@ import {Card} from '../components/ui/Card';
 import {Button} from '../components/ui/Button';
 import {Input} from '../components/ui/Input';
 import {showAlert} from '../components/ui/AlertModal';
-import {fetchCustomers} from '../services/customers';
+import {fetchCustomerById, fetchCustomers} from '../services/customers';
 import {createPayment} from '../services/payments';
 import {Colors, formatCOP} from '../theme';
 import {FormatMoney, parseMoney} from '../utils/format';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useMutationWithSync} from '../hooks/useMutationWithSync';
+import {useResponsive} from '../hooks/useResponsive';
 
 export function NewPaymentScreen({route, navigation}: any) {
+  const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
   const initialId = route.params?.customerId as string | undefined;
   const [customer_id, setCustomerId] = useState(initialId ?? '');
   const [amount, setAmount] = useState('');
@@ -32,13 +34,29 @@ export function NewPaymentScreen({route, navigation}: any) {
     queryFn: () => fetchCustomers(),
   });
 
-  const selectedCustomer = customers?.find(c => c.id === customer_id);
+  const customerQuery = useQuery({
+    queryKey: ['customer', customer_id],
+    queryFn: () => fetchCustomerById(customer_id),
+    enabled: !!customer_id,
+  });
+
+  const selectedCustomer =
+    customerQuery.data ??
+    customers?.find(
+      c =>
+        c.id === customer_id ||
+        c.local_id === customer_id ||
+        c.server_id === customer_id,
+    );
   const currentBalance = Number(selectedCustomer?.current_balance ?? 0);
   const numericAmount = parseMoney(amount);
 
-  // Cálculos sencillos y directos
+  // Cálculos sencillos y directos con validación estricta de saldo pendiente
+  const isPaid = selectedCustomer != null && currentBalance <= 0;
+  const exceedsBalance =
+    numericAmount > 0 &&
+    (currentBalance <= 0 || numericAmount > currentBalance);
   const remainingBalance = Math.max(0, currentBalance - numericAmount);
-  const exceedsBalance = currentBalance > 0 && numericAmount > currentBalance;
   const isTotalPayment = currentBalance > 0 && numericAmount === currentBalance;
 
   const matchingCustomers = (customers ?? []).filter(c =>
@@ -74,7 +92,14 @@ export function NewPaymentScreen({route, navigation}: any) {
     if (!customer_id) {
       return showAlert({
         title: 'Faltan datos',
-        message: 'Selecciona un cliente',
+        message: 'Selecciona un cliente para registrar el abono.',
+        type: 'warning',
+      });
+    }
+    if (isPaid || currentBalance <= 0) {
+      return showAlert({
+        title: 'Cliente al día',
+        message: 'Este cliente no tiene saldo pendiente por pagar.',
         type: 'warning',
       });
     }
@@ -85,12 +110,12 @@ export function NewPaymentScreen({route, navigation}: any) {
         type: 'warning',
       });
     }
-    if (exceedsBalance) {
+    if (numericAmount > currentBalance) {
       return showAlert({
         title: 'Supera lo que debe',
         message: `El cliente solo debe ${formatCOP(
           currentBalance,
-        )}. No puedes ingresar un valor mayor.`,
+        )}. No puedes registrar un abono mayor a la deuda pendiente.`,
         type: 'warning',
       });
     }
@@ -105,7 +130,7 @@ export function NewPaymentScreen({route, navigation}: any) {
   return (
     <View style={styles.sheet}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, tabletContainerStyle(560)]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
         {selectedCustomer ? (
@@ -185,73 +210,89 @@ export function NewPaymentScreen({route, navigation}: any) {
               )}
             </Card>
 
-            {/* Entrada del abono */}
-            <View style={styles.inputSection}>
-              <Input
-                label="¿Cuánto te entregó o abonó?"
-                value={amount ? FormatMoney(amount) : ''}
-                onChangeText={value => setAmount(FormatMoney(value))}
-                keyboardType="numeric"
-                placeholder="$ 0"
-                error={
-                  exceedsBalance
-                    ? `Supera lo que debe. El cliente solo debe ${formatCOP(
-                        currentBalance,
-                      )}`
-                    : undefined
-                }
-              />
+            {/* Entrada del abono o aviso de cliente al día */}
+            {isPaid ? (
+              <View style={styles.zeroStateCard}>
+                <Ionicons
+                  name="checkmark-done-circle"
+                  size={46}
+                  color="#15803D"
+                />
+                <Text style={styles.zeroStateTitle}>
+                  ¡Cliente al día y a paz y salvo!
+                </Text>
+                <Text style={styles.zeroStateDesc}>
+                  Este cliente no tiene compras fiadas pendientes ni saldo adeudado ($ 0). No es posible ni necesario registrar abonos.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.inputSection}>
+                <Input
+                  label="¿Cuánto te entregó o abonó?"
+                  value={amount ? FormatMoney(amount) : ''}
+                  onChangeText={value => setAmount(FormatMoney(value))}
+                  keyboardType="numeric"
+                  placeholder="$ 0"
+                  error={
+                    exceedsBalance
+                      ? `Supera lo que debe. El cliente solo debe ${formatCOP(
+                          currentBalance,
+                        )}`
+                      : undefined
+                  }
+                />
 
-              {/* Mensajes de resultado sencillos */}
-              {exceedsBalance ? (
-                <View style={styles.alertBox}>
-                  <Ionicons
-                    name="alert-circle-outline"
-                    size={18}
-                    color={Colors.destructive}
-                  />
-                  <Text style={styles.alertText}>
-                    Supera lo que debe. El cliente debe{' '}
-                    {formatCOP(currentBalance)}, no puedes registrar un abono de{' '}
-                    {formatCOP(numericAmount)}.
-                  </Text>
-                </View>
-              ) : numericAmount > 0 ? (
-                isTotalPayment ? (
-                  <View style={styles.peaceBox}>
+                {/* Mensajes de resultado sencillos */}
+                {exceedsBalance ? (
+                  <View style={styles.alertBox}>
                     <Ionicons
-                      name="checkmark-circle"
+                      name="alert-circle-outline"
                       size={18}
-                      color="#15803D"
+                      color={Colors.destructive}
                     />
-                    <Text style={styles.peaceText}>
-                      ¡Queda a paz y salvo! La deuda quedará en $ 0.
+                    <Text style={styles.alertText}>
+                      Supera lo que debe. El cliente debe{' '}
+                      {formatCOP(currentBalance)}, no puedes registrar un abono de{' '}
+                      {formatCOP(numericAmount)}.
                     </Text>
                   </View>
-                ) : (
-                  <View style={styles.remainingBox}>
-                    <Ionicons
-                      name="information-circle-outline"
-                      size={18}
-                      color={Colors.textSecondary}
-                    />
-                    <Text style={styles.remainingText}>
-                      Ahora quedará debiendo:{' '}
-                      <Text style={styles.remainingBold}>
-                        {formatCOP(remainingBalance)}
+                ) : numericAmount > 0 ? (
+                  isTotalPayment ? (
+                    <View style={styles.peaceBox}>
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={18}
+                        color="#15803D"
+                      />
+                      <Text style={styles.peaceText}>
+                        ¡Queda a paz y salvo! La deuda quedará en $ 0.
                       </Text>
-                    </Text>
-                  </View>
-                )
-              ) : null}
+                    </View>
+                  ) : (
+                    <View style={styles.remainingBox}>
+                      <Ionicons
+                        name="information-circle-outline"
+                        size={18}
+                        color={Colors.textSecondary}
+                      />
+                      <Text style={styles.remainingText}>
+                        Ahora quedará debiendo:{' '}
+                        <Text style={styles.remainingBold}>
+                          {formatCOP(remainingBalance)}
+                        </Text>
+                      </Text>
+                    </View>
+                  )
+                ) : null}
 
-              <Input
-                label="Nota (opcional)"
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="Ej. En efectivo, Nequi..."
-              />
-            </View>
+                <Input
+                  label="Nota (opcional)"
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Ej. En efectivo, Nequi..."
+                />
+              </View>
+            )}
           </View>
         ) : (
           /* Buscador de clientes si entra sin cliente seleccionado */
@@ -322,10 +363,16 @@ export function NewPaymentScreen({route, navigation}: any) {
           {paddingBottom: Math.max(insets.bottom, 12) + 8},
         ]}>
         <Button
-          title={mutation.isPending ? 'Guardando…' : 'Guardar abono'}
+          title={
+            mutation.isPending
+              ? 'Guardando…'
+              : isPaid
+              ? 'Cliente al día ($ 0 deuda)'
+              : 'Guardar abono'
+          }
           icon="check"
           onPress={onSave}
-          disabled={mutation.isPending || exceedsBalance || !numericAmount}
+          disabled={mutation.isPending || isPaid || exceedsBalance || !numericAmount}
         />
         <Button
           title="Cancelar"
@@ -508,6 +555,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: Colors.text,
+  },
+  zeroStateCard: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#BBF7D0',
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  zeroStateTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#15803D',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  zeroStateDesc: {
+    fontSize: 13,
+    color: '#166534',
+    textAlign: 'center',
+    lineHeight: 19,
+    paddingHorizontal: 8,
   },
   picker: {gap: 10},
   pickerTitle: {
