@@ -104,6 +104,34 @@ export async function fetchCustomerById(id: string): Promise<Customer> {
     } as Customer;
   }
 
+  // Fallback: Si no está en SQLite local (ej. usuario registrado en otra tienda al consultar historial), buscar en Supabase
+  try {
+    const {data, error} = await supabase
+      .from('customers')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (!error && data) {
+      return {
+        id: data.id,
+        local_id: data.id,
+        server_id: data.id,
+        name: data.name,
+        document_type: data.document_type,
+        document_number: data.document_number,
+        phone: data.phone,
+        notes: data.notes,
+        alias: data.alias,
+        credit_limit: Number(data.credit_limit || 0),
+        current_balance: Number(data.current_balance || 0),
+        free_plan_selected: Number(data.free_plan_selected ?? 1) === 1,
+        estadoServidor: 'synced',
+        created_at: data.created_at,
+      } as Customer;
+    }
+  } catch (_e) {}
+
   throw new Error('Cliente no encontrado localmente');
 }
 

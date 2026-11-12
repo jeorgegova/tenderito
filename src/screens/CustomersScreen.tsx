@@ -1,50 +1,26 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
-  Animated,
   BackHandler,
   FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Header } from '../components/ui/Header';
 import { Input } from '../components/ui/Input';
-import { showAlert } from '../components/ui/AlertModal';
 import { SyncBadge } from '../components/ui/Badge';
-import { StoreHistoryLockNotice } from '../components/ui/StoreHistoryLockNotice';
 import { MagnetFilterBar } from '../components/ui/MagnetFilterBar';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  createCustomer,
-  findCustomerByDocument,
-  fetchCustomers,
-  linkCustomerToStore,
-} from '../services/customers';
-import { useStore } from '../store/useStore';
-import { calculateSubscriptionStatus } from '../services/plans';
+import { fetchCustomers } from '../services/customers';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { Colors, Radius, formatCOP } from '../theme';
-import { FormatMoney, parseMoney } from '../utils/format';
 import { useResponsive } from '../hooks/useResponsive';
-
-const DOCUMENT_TYPES = [
-  { value: 'CC', label: 'CC · Cédula de ciudadanía' },
-  { value: 'CE', label: 'CE · Cédula de extranjería' },
-  { value: 'NIT', label: 'NIT · Número tributario' },
-  { value: 'PAS', label: 'PAS · Pasaporte' },
-  { value: 'PEP', label: 'PEP · Permiso especial' },
-  { value: 'PPT', label: 'PPT · Permiso protección temporal' },
-];
+import { CreateCustomerModal } from '../components/CreateCustomerModal';
 
 export function CustomersScreen({ navigation }: any) {
   const { isSmall, isTablet, tabletContainerStyle } = useResponsive();
@@ -53,31 +29,17 @@ export function CustomersScreen({ navigation }: any) {
     'all',
   );
   const [modal, setModal] = useState(false);
-  const [name, setName] = useState('');
-  const [documentType, setDocumentType] = useState('CC');
-  const [showTypePicker, setShowTypePicker] = useState(false);
-  const [documentNumber, setDocumentNumber] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [creditLimit, setCreditLimit] = useState('0');
-  const [alias, setAlias] = useState('');
-  const [foundCustomer, setFoundCustomer] = useState<any>(null);
-  const [verified, setVerified] = useState(false);
-  const [checkingDocument, setCheckingDocument] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(12)).current;
   const insets = useSafeAreaInsets();
-  const profile = useStore(s => s.profile);
-  const subStatus = calculateSubscriptionStatus(profile);
 
-  // Botón físico "Atrás" en Clientes: si hay un modal abierto lo cierra, de lo contrario vuelve a Inicio
+  const { data, refetch, isLoading } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => fetchCustomers(),
+  });
+
+  // Botón físico "Atrás" en Clientes: si está en Nuevo Cliente lo cierra, de lo contrario vuelve a Inicio
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
-        if (showTypePicker) {
-          setShowTypePicker(false);
-          return true;
-        }
         if (modal) {
           setModal(false);
           return true;
@@ -91,145 +53,9 @@ export function CustomersScreen({ navigation }: any) {
         onBackPress,
       );
       return () => subscription.remove();
-    }, [showTypePicker, modal, navigation]),
+    }, [modal, navigation]),
   );
 
-  function resetForm() {
-    setName('');
-    setDocumentType('CC');
-    setShowTypePicker(false);
-    setDocumentNumber('');
-    setPhone('');
-    setEmail('');
-    setCreditLimit('0');
-    setAlias('');
-    setFoundCustomer(null);
-    setVerified(false);
-    fadeAnim.setValue(0);
-    slideAnim.setValue(12);
-  }
-
-  function handleDocumentChange(value: string) {
-    setDocumentNumber(value);
-    if (verified) {
-      setVerified(false);
-      setFoundCustomer(null);
-    }
-  }
-
-  function handleTypeSelect(value: string) {
-    setDocumentType(value);
-    setShowTypePicker(false);
-    if (verified) {
-      setVerified(false);
-      setFoundCustomer(null);
-    }
-  }
-
-  function handleCreditLimitChange(text: string) {
-    if (!text || text === '' || text === '$ ' || text === '$') {
-      setCreditLimit('0');
-      return;
-    }
-    setCreditLimit(FormatMoney(text));
-  }
-
-  useEffect(() => {
-    if (verified) {
-      fadeAnim.setValue(0);
-      slideAnim.setValue(12);
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [verified, fadeAnim, slideAnim]);
-
-  const { data, refetch, isLoading } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => fetchCustomers(),
-  });
-
-  const isAlreadyLinked = useMemo(() => {
-    if (!foundCustomer) {
-      return false;
-    }
-    if (foundCustomer.isLinkedToMyStore) {
-      return true;
-    }
-    const docClean = (documentNumber || '').trim();
-    return (data ?? []).some(
-      c =>
-        (c.document_number && c.document_number.trim() === docClean) ||
-        c.id === foundCustomer.id,
-    );
-  }, [foundCustomer, documentNumber, data]);
-
-  async function onCheckDocument() {
-    if (!documentNumber.trim()) {
-      return showAlert('Faltan datos', 'Ingresa la cédula del cliente');
-    }
-    setCheckingDocument(true);
-    try {
-      const customer = await findCustomerByDocument(documentNumber.trim());
-      setFoundCustomer(customer);
-      setVerified(true);
-      if (customer) {
-        setName(customer.name);
-        setPhone(customer.phone ?? '');
-        setEmail(customer.email ?? '');
-
-        const alreadyLinked =
-          customer.isLinkedToMyStore ||
-          (data ?? []).some(
-            c =>
-              (c.document_number &&
-                c.document_number.trim() === documentNumber.trim()) ||
-              c.id === customer.id,
-          );
-
-        if (alreadyLinked) {
-          showAlert({
-            title: 'Cliente ya vinculado',
-            message: `"${customer.alias || customer.name
-              }" ya se encuentra registrado y vinculado a tu tienda.`,
-            type: 'warning',
-            buttons: [
-              {
-                text: 'Ver detalles',
-                onPress: () => {
-                  setModal(false);
-                  resetForm();
-                  navigation.navigate('CustomerDetail', { id: customer.id });
-                },
-              },
-              { text: 'Entendido', style: 'cancel' },
-            ],
-          });
-        } else {
-          showAlert(
-            'Cliente encontrado',
-            'El cliente está registrado en Tenderito. Revisa sus datos y define el tope de crédito para vincularlo a tu tienda.',
-          );
-        }
-      } else {
-        setName('');
-        showAlert('Cliente nuevo', 'Completa los datos para registrarlo.');
-      }
-    } catch (error: any) {
-      showAlert('No se pudo verificar', error?.message ?? 'Intenta de nuevo');
-    } finally {
-      setCheckingDocument(false);
-    }
-  }
   const visibleCustomers = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('es-CO');
     return (data ?? []).filter(customer => {
@@ -247,66 +73,6 @@ export function CustomersScreen({ navigation }: any) {
       );
     });
   }, [data, search, balanceFilter]);
-
-  async function onCreate() {
-    if (isAlreadyLinked) {
-      return showAlert(
-        'Cliente ya vinculado',
-        'Este cliente ya forma parte de tu tienda.',
-        [
-          {
-            text: 'Ver detalles',
-            onPress: () => {
-              setModal(false);
-              resetForm();
-              navigation.navigate('CustomerDetail', { id: foundCustomer?.id });
-            },
-          },
-          { text: 'Cerrar', style: 'cancel' },
-        ],
-      );
-    }
-
-    if (foundCustomer) {
-      if (!documentNumber.trim()) {
-        return showAlert('Faltan datos', 'Identificación es obligatoria');
-      }
-    } else if (!name.trim() || !documentNumber.trim() || !phone.trim()) {
-      return showAlert(
-        'Faltan datos',
-        'Nombre, identificación y teléfono son obligatorios',
-      );
-    }
-    try {
-      if (foundCustomer) {
-        await linkCustomerToStore(
-          foundCustomer,
-          parseMoney(creditLimit),
-          alias,
-        );
-        showAlert(
-          'Cliente vinculado',
-          `"${alias?.trim() || foundCustomer.name}" ha sido vinculado a tu tienda exitosamente.`,
-        );
-      } else {
-        await createCustomer({
-          name: name.trim(),
-          document_type: documentType.trim().toUpperCase(),
-          document_number: documentNumber.trim(),
-          phone: phone.trim() || null,
-          email: email.trim() || null,
-          credit_limit: parseMoney(creditLimit),
-          alias: alias.trim() || null,
-        });
-      }
-      resetForm();
-      setModal(false);
-      refetch();
-    } catch (error: any) {
-      showAlert('No se pudo guardar', error?.message ?? 'Intenta de nuevo');
-      console.log('Error al guardar cliente', error);
-    }
-  }
 
   return (
     <View style={styles.wrap}>
@@ -464,325 +230,22 @@ export function CustomersScreen({ navigation }: any) {
         }}
       />
       <Pressable
-        onPress={async () => {
-          resetForm();
-          setModal(true);
-        }}
+        onPress={() => setModal(true)}
         accessibilityLabel="Nuevo cliente"
         style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}>
         <Ionicons name="add-circle" size={22} color="#fff" />
         <Text style={styles.fabText}>Nuevo cliente</Text>
       </Pressable>
-      <Modal
+
+      <CreateCustomerModal
         visible={modal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setModal(false)}>
-        <View
-          style={[
-            styles.sheet,
-            isTablet && { maxWidth: 560, width: '100%', alignSelf: 'center', borderRadius: 24, marginVertical: 32 },
-          ]}>
-          <View style={[styles.modalHeader, { paddingTop: insets.top + 8 }]}>
-            <Pressable
-              onPress={() => setModal(false)}
-              style={styles.backButton}
-              hitSlop={8}>
-              <Text style={styles.backText}>‹ Volver</Text>
-            </Pressable>
-            <Text style={styles.sheetTitle}>Nuevo cliente</Text>
-            <View style={{ width: 64 }} />
-          </View>
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
-            <View style={{ flex: 1 }}>
-              <ScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={styles.sheetContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View style={{ width: isSmall ? 85 : 110 }}>
-                    <Text style={styles.label}>Tipo</Text>
-                    <Pressable
-                      onPress={() => setShowTypePicker(true)}
-                      style={styles.pickerButton}>
-                      <Text style={styles.pickerValue}>{documentType}</Text>
-                      <Text style={styles.pickerChevron}>▾</Text>
-                    </Pressable>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Input
-                      label="Identificación"
-                      value={documentNumber}
-                      onChangeText={handleDocumentChange}
-                      keyboardType="number-pad"
-                      placeholder="123456789"
-                    />
-                  </View>
-                </View>
-                <Button
-                  title={
-                    checkingDocument ? 'Verificando...' : 'Verificar cédula'
-                  }
-                  variant="secondary"
-                  onPress={onCheckDocument}
-                  disabled={checkingDocument}
-                />
-                {!verified ? (
-                  <Text style={styles.hint}>
-                    Verifica la cédula para continuar con el registro.
-                  </Text>
-                ) : (
-                  <Animated.View
-                    style={{
-                      opacity: fadeAnim,
-                      transform: [{ translateY: slideAnim }],
-                      gap: 12,
-                    }}>
-                    {foundCustomer ? (
-                      isAlreadyLinked ? (
-                        <View style={styles.alreadyLinkedCard}>
-                          <View style={styles.alreadyLinkedHeader}>
-                            <View style={styles.alreadyLinkedIconWrap}>
-                              <Ionicons
-                                name="checkmark-circle"
-                                size={22}
-                                color="#15803D"
-                              />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.alreadyLinkedTitle}>
-                                Cliente ya vinculado a tu tienda
-                              </Text>
-                              <Text style={styles.alreadyLinkedDesc}>
-                                Este cliente ya forma parte de tu libreta de
-                                fiados activa.
-                              </Text>
-                            </View>
-                          </View>
-                          <View style={styles.alreadyLinkedDivider} />
-                          <View style={styles.alreadyLinkedInfo}>
-                            <Text style={styles.alreadyLinkedName}>
-                              {foundCustomer.alias || foundCustomer.name}
-                            </Text>
-                            {foundCustomer.alias ? (
-                              <Text style={styles.alreadyLinkedSub}>
-                                Nombre: {foundCustomer.name}
-                              </Text>
-                            ) : null}
-                            <Text style={styles.alreadyLinkedSub}>
-                              {foundCustomer.document_type || 'CC'}{' '}
-                              {foundCustomer.document_number} ·{' '}
-                              {foundCustomer.phone || 'Sin teléfono'}
-                            </Text>
-                            <View style={styles.alreadyLinkedBalanceRow}>
-                              <Text style={styles.alreadyLinkedBalanceLabel}>
-                                Saldo pendiente:
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.alreadyLinkedBalanceValue,
-                                  Number(foundCustomer.current_balance) > 0
-                                    ? styles.alreadyLinkedBalanceOwing
-                                    : styles.alreadyLinkedBalanceClear,
-                                ]}>
-                                {formatCOP(
-                                  Number(foundCustomer.current_balance || 0),
-                                )}
-                              </Text>
-                            </View>
-                            {Number(foundCustomer.credit_limit || 0) > 0 ? (
-                              <Text style={styles.alreadyLinkedSub}>
-                                Tope de crédito:{' '}
-                                {formatCOP(Number(foundCustomer.credit_limit))}
-                              </Text>
-                            ) : null}
-                          </View>
-                        </View>
-                      ) : (
-                        <>
-                          <Card style={{ gap: 4 }}>
-                            <Text style={styles.name}>
-                              {foundCustomer.name}
-                            </Text>
-                            <Text style={styles.sub}>
-                              {foundCustomer.phone ?? 'Sin teléfono'}
-                            </Text>
-                            {foundCustomer.email ? (
-                              <Text style={styles.sub}>
-                                {foundCustomer.email}
-                              </Text>
-                            ) : null}
-                            <Text style={styles.sub}>
-                              Cliente registrado en Tenderito
-                            </Text>
-                            {subStatus.effectivePlan !== 'free' ? (
-                              <Button
-                                title="Ver historial"
-                                variant="ghost"
-                                onPress={() => {
-                                  setModal(false);
-                                  navigation.navigate('CustomerHistory', {
-                                    id: foundCustomer.id,
-                                  });
-                                }}
-                              />
-                            ) : (
-                              <StoreHistoryLockNotice />
-                            )}
-                          </Card>
-                          <Input
-                            label="Tope de crédito"
-                            value={
-                              creditLimit ? FormatMoney(creditLimit) : '$ 0'
-                            }
-                            onChangeText={handleCreditLimitChange}
-                            keyboardType="numeric"
-                            placeholder="$ 0"
-                          />
-                          <Input
-                            label="Alias para mi tienda (opcional)"
-                            value={alias}
-                            onChangeText={setAlias}
-                            placeholder="Ej. Juan de la esquina"
-                          />
-                        </>
-                      )
-                    ) : (
-                      <>
-                        <Input
-                          label="Nombre completo"
-                          value={name}
-                          onChangeText={setName}
-                          placeholder="Nombre del cliente"
-                        />
-                        <Input
-                          label="Teléfono"
-                          value={phone}
-                          onChangeText={setPhone}
-                          keyboardType="phone-pad"
-                          placeholder="300 123 4567"
-                        />
-                        <Input
-                          label="Correo electrónico (opcional)"
-                          value={email}
-                          onChangeText={setEmail}
-                          autoCapitalize="none"
-                          keyboardType="email-address"
-                          placeholder="cliente@correo.com"
-                        />
-                        <Input
-                          label="Tope de crédito"
-                          value={creditLimit ? FormatMoney(creditLimit) : '$ 0'}
-                          onChangeText={handleCreditLimitChange}
-                          keyboardType="numeric"
-                          placeholder="$ 0"
-                        />
-                        <Input
-                          label="Alias para mi tienda (opcional)"
-                          value={alias}
-                          onChangeText={setAlias}
-                          placeholder="Ej. Juan de la esquina"
-                        />
-                      </>
-                    )}
-                  </Animated.View>
-                )}
-              </ScrollView>
-              <View
-                style={[
-                  styles.modalFooter,
-                  { paddingBottom: insets.bottom + 12 },
-                ]}>
-                {verified ? (
-                  isAlreadyLinked ? (
-                    <View style={styles.alreadyLinkedFooter}>
-                      <View style={styles.alreadyLinkedPill}>
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={18}
-                          color="#15803D"
-                        />
-                        <Text style={styles.alreadyLinkedPillText}>
-                          Cliente ya vinculado
-                        </Text>
-                      </View>
-                      <Button
-                        title="Ver detalles del cliente"
-                        onPress={() => {
-                          setModal(false);
-                          resetForm();
-                          navigation.navigate('CustomerDetail', {
-                            id: foundCustomer?.id,
-                          });
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <Button
-                      title={
-                        foundCustomer
-                          ? 'Vincular cliente a mi tienda'
-                          : 'Guardar y vincular'
-                      }
-                      onPress={onCreate}
-                    />
-                  )
-                ) : null}
-                <Button
-                  title={isAlreadyLinked ? 'Cerrar' : 'Volver atrás'}
-                  variant="ghost"
-                  onPress={() => {
-                    setModal(false);
-                    resetForm();
-                  }}
-                />
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-        <Modal
-          visible={showTypePicker}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowTypePicker(false)}>
-          <Pressable
-            style={styles.overlay}
-            onPress={() => setShowTypePicker(false)}>
-            <Pressable onPress={e => e.stopPropagation?.()}>
-              <Card style={{ gap: 4, minWidth: 280 }}>
-                <Text style={styles.sheetTitle}>Tipo documento</Text>
-                {DOCUMENT_TYPES.map(item => (
-                  <Pressable
-                    key={item.value}
-                    onPress={() => handleTypeSelect(item.value)}
-                    style={[
-                      styles.typeOption,
-                      item.value === documentType && styles.typeOptionSelected,
-                    ]}>
-                    <Text
-                      style={[
-                        styles.typeOptionText,
-                        item.value === documentType &&
-                        styles.typeOptionTextSelected,
-                      ]}>
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                ))}
-                <Button
-                  title="Cerrar"
-                  variant="ghost"
-                  onPress={() => setShowTypePicker(false)}
-                />
-              </Card>
-            </Pressable>
-          </Pressable>
-        </Modal>
-      </Modal>
+        onClose={() => setModal(false)}
+        existingCustomers={data}
+        onCustomerCreated={() => {
+          setModal(false);
+          refetch();
+        }}
+      />
     </View>
   );
 }

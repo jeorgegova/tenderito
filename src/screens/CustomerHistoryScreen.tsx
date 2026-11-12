@@ -31,10 +31,14 @@ function formatLastMovement(lastMovement?: string | null): string {
 
 export function CustomerHistoryScreen({ route }: any) {
   const { isTablet, tabletContainerStyle } = useResponsive();
-  const { id } = route.params as { id: string };
+  const { id, customer: initialCustomer } = (route.params || {}) as {
+    id: string;
+    customer?: any;
+  };
   const customer = useQuery({
     queryKey: ['customer', id],
     queryFn: () => fetchCustomerById(id),
+    initialData: initialCustomer,
   });
   const history = useQuery({
     queryKey: ['customer-global-history', id],
@@ -45,6 +49,14 @@ export function CustomerHistoryScreen({ route }: any) {
     (sum: number, s: any) => sum + Number(s.current_balance ?? 0),
     0,
   );
+
+  const customerData = customer.data || initialCustomer;
+  const displayName =
+    customerData?.alias || customerData?.name || (customer.isLoading ? 'Cargando…' : 'Cliente');
+  const realName =
+    customerData?.alias && customerData?.name ? customerData.name : null;
+  const phone = customerData?.phone ?? 'Sin teléfono';
+  const initialChar = (displayName || '?').charAt(0).toUpperCase();
 
   return (
     <View style={styles.wrap}>
@@ -57,21 +69,13 @@ export function CustomerHistoryScreen({ route }: any) {
             {/* Cabecera del cliente */}
             <View style={styles.headerWrap}>
               <View style={styles.avatarLg}>
-                <Text style={styles.avatarLgText}>
-                  {(customer.data?.alias || customer.data?.name || '?')
-                    .charAt(0)
-                    .toUpperCase()}
-                </Text>
+                <Text style={styles.avatarLgText}>{initialChar}</Text>
               </View>
-              <Text style={styles.title}>
-                {customer.data?.alias || customer.data?.name || '…'}
-              </Text>
-              {customer.data?.alias ? (
-                <Text style={styles.subtitle}>{customer.data.name}</Text>
+              <Text style={styles.title}>{displayName}</Text>
+              {realName ? (
+                <Text style={styles.subtitle}>{realName}</Text>
               ) : null}
-              <Text style={styles.subtitle}>
-                {customer.data?.phone ?? 'Sin teléfono'}
-              </Text>
+              <Text style={styles.subtitle}>{phone}</Text>
             </View>
 
             {/* Resumen total */}

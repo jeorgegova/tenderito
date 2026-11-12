@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  BackHandler,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -12,6 +13,7 @@ import {
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
@@ -54,6 +56,7 @@ export function CreateCustomerModal({
   existingCustomers = [],
 }: CreateCustomerModalProps) {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const { isSmall, isTablet } = useResponsive();
   const queryClient = useQueryClient();
   const profile = useStore(s => s.profile);
@@ -113,6 +116,22 @@ export function CreateCustomerModal({
     }
     setCreditLimit(FormatMoney(text));
   }
+
+  useEffect(() => {
+    if (!visible) return;
+    const onBackPress = () => {
+      if (showTypePicker) {
+        setShowTypePicker(false);
+        return true;
+      }
+      resetForm();
+      onClose();
+      return true;
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [visible, showTypePicker, onClose]);
 
   useEffect(() => {
     if (verified) {
@@ -251,15 +270,10 @@ export function CreateCustomerModal({
     }
   }
 
+  if (!visible) return null;
+
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={() => {
-        resetForm();
-        onClose();
-      }}>
+    <View style={styles.fullscreenOverlay}>
       <View
         style={[
           styles.sheet,
@@ -369,9 +383,20 @@ export function CreateCustomerModal({
                           <Text style={styles.sub}>
                             Cliente registrado en Tenderito
                           </Text>
-                          {subStatus.effectivePlan === 'free' ? (
+                          {subStatus.effectivePlan !== 'free' ? (
+                            <Button
+                              title="Ver historial entre tiendas"
+                              variant="ghost"
+                              onPress={() => {
+                                navigation.navigate('CustomerHistory', {
+                                  id: foundCustomer.id,
+                                  customer: foundCustomer,
+                                });
+                              }}
+                            />
+                          ) : (
                             <StoreHistoryLockNotice />
-                          ) : null}
+                          )}
                         </Card>
                         <Input
                           label="Tope de crédito"
@@ -437,14 +462,29 @@ export function CreateCustomerModal({
               ]}>
               {verified ? (
                 isAlreadyLinked ? (
-                  <Button
-                    title="Usar este cliente"
-                    onPress={() => {
-                      resetForm();
-                      onClose();
-                      onCustomerCreated?.(foundCustomer);
-                    }}
-                  />
+                  <View style={{ gap: 8 }}>
+                    <Button
+                      title="Ver detalles del cliente"
+                      onPress={() => {
+                        resetForm();
+                        onClose();
+                        navigation.navigate('CustomerDetail', {
+                          id: foundCustomer?.id,
+                        });
+                      }}
+                    />
+                    {onCustomerCreated ? (
+                      <Button
+                        title="Usar este cliente"
+                        variant="secondary"
+                        onPress={() => {
+                          resetForm();
+                          onClose();
+                          onCustomerCreated(foundCustomer);
+                        }}
+                      />
+                    ) : null}
+                  </View>
                 ) : (
                   <Button
                     title={
@@ -457,7 +497,7 @@ export function CreateCustomerModal({
                 )
               ) : null}
               <Button
-                title="Cancelar"
+                title={isAlreadyLinked ? 'Cerrar' : 'Volver atrás'}
                 variant="ghost"
                 onPress={() => {
                   resetForm();
@@ -507,11 +547,17 @@ export function CreateCustomerModal({
           </Pressable>
         </Pressable>
       </Modal>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  fullscreenOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    backgroundColor: Colors.background,
+    elevation: 10,
+  },
   sheet: { flex: 1, backgroundColor: Colors.background },
   modalHeader: {
     flexDirection: 'row',
