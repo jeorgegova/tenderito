@@ -52,9 +52,9 @@ export function getDeviceModelName(): string {
  */
 export function getAppVersion(): string {
   try {
-    return DeviceInfo.getVersion() || '1.0';
+    return DeviceInfo.getVersion() || '1.0.4';
   } catch (_e) {
-    return '1.0';
+    return '1.0.4';
   }
 }
 

@@ -20,6 +20,7 @@ import { supabase } from '../lib/supabase';
 import { customerAuthEmail } from '../lib/customerAuth';
 import { Colors } from '../theme';
 import { useResponsive } from '../hooks/useResponsive';
+import { getAppVersion } from '../services/deviceService';
 
 export function LoginScreen({ route, navigation }: any) {
   const { isSmall, isCompact, isTablet } = useResponsive();
@@ -31,6 +32,7 @@ export function LoginScreen({ route, navigation }: any) {
   const [role, setRole] = useState<'store' | 'customer'>(initialRole);
   const [loading, setLoading] = useState(false);
   const insets = useSafeAreaInsets();
+  const appVersion = getAppVersion();
 
   useEffect(() => {
     if (route?.params?.role) {
@@ -218,24 +220,27 @@ export function LoginScreen({ route, navigation }: any) {
           </Card>
         </View>
 
-        {/* ── Confianza ── */}
-        <View style={styles.trust}>
-          <View style={styles.trustItem}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={13}
-              color={Colors.textMuted}
-            />
-            <Text style={styles.trustText}>Tus datos siempre seguros</Text>
+        {/* ── Confianza y versión ── */}
+        <View style={styles.trustWrap}>
+          <View style={styles.trust}>
+            <View style={styles.trustItem}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={13}
+                color={Colors.textMuted}
+              />
+              <Text style={styles.trustText}>Tus datos siempre seguros</Text>
+            </View>
+            <View style={styles.trustItem}>
+              <Ionicons
+                name="cloud-offline-outline"
+                size={13}
+                color={Colors.textMuted}
+              />
+              <Text style={styles.trustText}>Funciona sin internet</Text>
+            </View>
           </View>
-          <View style={styles.trustItem}>
-            <Ionicons
-              name="cloud-offline-outline"
-              size={13}
-              color={Colors.textMuted}
-            />
-            <Text style={styles.trustText}>Funciona sin internet</Text>
-          </View>
+          <Text style={styles.versionText}>Versión {appVersion}</Text>
         </View>
       </KeyboardAwareScrollView>
     </View>
@@ -379,13 +384,18 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontWeight: '700',
   },
-  // Confianza
+  // Confianza y versión
+  trustWrap: {
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 6,
+  },
   trust: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 12,
-    marginTop: 4,
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: 999,
@@ -402,5 +412,11 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: Colors.textSecondary,
     fontWeight: '600',
+  },
+  versionText: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 });
