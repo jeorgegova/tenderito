@@ -236,6 +236,7 @@ export async function notifyCustomerMovement(params: {
   customerId: string;
   storeId?: string | null;
   type: 'payment' | 'credit';
+  status?: 'active' | 'cancelled';
   amount: number;
   concept?: string | null;
   notes?: string | null;
@@ -247,7 +248,7 @@ export async function notifyCustomerMovement(params: {
     }
 
     console.log(
-      `[notifyCustomerMovement] Iniciando notificación para cliente ${params.customerId} (tipo: ${params.type}, monto: ${params.amount})...`,
+      `[notifyCustomerMovement] Iniciando notificación para cliente ${params.customerId} (tipo: ${params.type}, status: ${params.status || 'active'}, monto: ${params.amount})...`,
     );
 
     // Invocar la Edge Function en Supabase (nombre exacto desplegado: push-notification)
@@ -261,6 +262,7 @@ export async function notifyCustomerMovement(params: {
           amount: params.amount,
           concept: params.concept,
           notes: params.notes,
+          status: params.status || 'active',
         },
       },
     });

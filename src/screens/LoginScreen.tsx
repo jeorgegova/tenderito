@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   BackHandler,
   Image,
@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -15,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
+import { MagnetRoleSwitch } from '../components/ui/MagnetRoleSwitch';
 import { showAlert } from '../components/ui/AlertModal';
 import { supabase } from '../lib/supabase';
 import { customerAuthEmail } from '../lib/customerAuth';
@@ -31,6 +33,7 @@ export function LoginScreen({ route, navigation }: any) {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'store' | 'customer'>(initialRole);
   const [loading, setLoading] = useState(false);
+  const passwordInputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
   const appVersion = getAppVersion();
 
@@ -122,45 +125,21 @@ export function LoginScreen({ route, navigation }: any) {
 
         {/* ── Contenedor centralizado para tablets ── */}
         <View style={[styles.innerContent, isTablet && styles.innerContentTablet]}>
-          {/* ── Selector de rol ── */}
-          <View style={[styles.roleRow, isSmall && styles.roleRowSmall]}>
-            {[
-              { id: 'store', label: 'Soy tendero', icon: 'storefront-outline' },
-              { id: 'customer', label: 'Soy cliente', icon: 'person-outline' },
-            ].map(r => (
-              <Pressable
-                key={r.id}
-                onPress={() => setRole(r.id as 'store' | 'customer')}
-                style={[
-                  styles.roleBtn,
-                  isSmall && styles.roleBtnSmall,
-                  role === r.id && styles.roleBtnActive,
-                ]}>
-                <Ionicons
-                  name={r.icon as any}
-                  size={isSmall ? 16 : 18}
-                  color={role === r.id ? Colors.primary : Colors.textSecondary}
-                />
-                <Text
-                  style={[
-                    styles.roleTxt,
-                    isSmall && styles.roleTxtSmall,
-                    role === r.id && styles.roleTxtActive,
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.85}>
-                  {r.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          {/* ── Selector de rol con efecto Magnet ── */}
+          <MagnetRoleSwitch role={role} onChange={setRole} />
 
           {/* ── Formulario ── */}
           <Card style={[styles.form, isSmall && styles.formSmall]}>
-            <Text style={[styles.formTitle, isSmall && styles.formTitleSmall]}>
-              {role === 'store' ? 'Entra a tu tienda' : 'Entra a tu cuenta'}
-            </Text>
+            <View style={styles.formHeader}>
+              <Text style={[styles.formTitle, isSmall && styles.formTitleSmall]}>
+                {role === 'store' ? 'Acceso para tenderos' : 'Acceso para clientes'}
+              </Text>
+              <Text style={[styles.formSubtitle, isSmall && styles.formSubtitleSmall]}>
+                {role === 'store'
+                  ? 'Administra tu tienda, tus clientes y tus cuentas por cobrar.'
+                  : 'Consulta tus fiados y movimientos de tu cuenta en tu tienda.'}
+              </Text>
+            </View>
             {role === 'store' ? (
               <Input
                 label="Correo electrónico"
@@ -169,6 +148,9 @@ export function LoginScreen({ route, navigation }: any) {
                 autoCapitalize="none"
                 keyboardType="email-address"
                 placeholder="tutienda@mail.com"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
+                blurOnSubmit={false}
               />
             ) : (
               <Input
@@ -177,15 +159,32 @@ export function LoginScreen({ route, navigation }: any) {
                 onChangeText={setDocument}
                 keyboardType="number-pad"
                 placeholder="Tu cédula"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
+                blurOnSubmit={false}
               />
             )}
             <Input
+              ref={passwordInputRef}
               label="Contraseña"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
               placeholder="••••••••"
+              returnKeyType="done"
+              onSubmitEditing={onLogin}
             />
+            <Pressable
+              onPress={() =>
+                navigation.navigate('ForgotPassword', {
+                  role,
+                  document: role === 'customer' ? document : undefined,
+                  email: role === 'store' ? email : undefined,
+                })
+              }
+              style={styles.forgotBtn}>
+              <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
+            </Pressable>
             <Button
               title={
                 loading
@@ -361,14 +360,41 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 11,
   },
+  formHeader: {
+    marginBottom: 2,
+    alignItems: 'center',
+  },
   formTitle: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '800',
     color: Colors.text,
-    marginBottom: 2,
+    textAlign: 'center',
+    marginBottom: 4,
   },
   formTitleSmall: {
     fontSize: 17,
+    marginBottom: 2,
+  },
+  formSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  formSubtitleSmall: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  forgotBtn: {
+    alignSelf: 'flex-end',
+    marginTop: -6,
+    paddingVertical: 4,
+  },
+  forgotText: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '700',
   },
   // Registro
   registerWrap: {

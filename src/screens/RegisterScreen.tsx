@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
@@ -25,16 +26,83 @@ export function RegisterScreen({ navigation }: any) {
   const [merchantName, setMerchantName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Validación estilo Formik (touched + errors en tiempo real)
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const merchantNameRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmPasswordRef = useRef<TextInput>(null);
 
   const logoW = isSmall ? 175 : isCompact ? 200 : 220;
   const logoH = Math.round(logoW * (120 / 220));
 
+  const errors = useMemo(() => {
+    const errs: Record<string, string> = {};
+    if (!storeName.trim()) {
+      errs.storeName = 'El nombre de la tienda es requerido';
+    }
+    if (!merchantName.trim()) {
+      errs.merchantName = 'Tu nombre completo es requerido';
+    }
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      errs.email = 'El correo electrónico es requerido';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      errs.email = 'Ingresa un correo electrónico válido';
+    }
+    if (!password) {
+      errs.password = 'La contraseña es requerida';
+    } else if (password.length < 6) {
+      errs.password = 'La contraseña debe tener al menos 6 caracteres';
+    }
+    if (!confirmPassword) {
+      errs.confirmPassword = 'Debes confirmar tu contraseña';
+    } else if (confirmPassword !== password) {
+      errs.confirmPassword = 'Las contraseñas no coinciden';
+    }
+    return errs;
+  }, [storeName, merchantName, email, password, confirmPassword]);
+
+  const handleBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+  };
+
+  // Al digitar confirmar contraseña, valida inmediatamente si no coincide
+  const confirmPasswordError =
+    (touched.confirmPassword || confirmPassword.length > 0) && errors.confirmPassword
+      ? errors.confirmPassword
+      : undefined;
+
+  const passwordError =
+    (touched.password || (password.length > 0 && password.length < 6 && (touched.confirmPassword || confirmPassword.length > 0))) && errors.password
+      ? errors.password
+      : touched.password && errors.password
+      ? errors.password
+      : undefined;
+
   async function onRegister() {
-    if (!storeName || !merchantName || !email || !password) {
+    setTouched({
+      storeName: true,
+      merchantName: true,
+      email: true,
+      password: true,
+      confirmPassword: true,
+    });
+
+    if (Object.keys(errors).length > 0) {
+      const firstError =
+        errors.storeName ||
+        errors.merchantName ||
+        errors.email ||
+        errors.password ||
+        errors.confirmPassword;
       return showAlert({
-        title: 'Faltan datos',
-        message: 'Completa todos los campos',
+        title: 'Verifica los campos',
+        message: firstError,
         type: 'warning',
       });
     }
@@ -124,28 +192,63 @@ export function RegisterScreen({ navigation }: any) {
             label="Nombre de tu tienda"
             value={storeName}
             onChangeText={setStoreName}
+            onBlur={() => handleBlur('storeName')}
+            error={touched.storeName ? errors.storeName : undefined}
             placeholder="Ej: Tienda La Esquina"
+            returnKeyType="next"
+            onSubmitEditing={() => merchantNameRef.current?.focus()}
+            blurOnSubmit={false}
           />
           <Input
+            ref={merchantNameRef}
             label="Tu nombre"
             value={merchantName}
             onChangeText={setMerchantName}
+            onBlur={() => handleBlur('merchantName')}
+            error={touched.merchantName ? errors.merchantName : undefined}
             placeholder="Ej: Doña María"
+            returnKeyType="next"
+            onSubmitEditing={() => emailRef.current?.focus()}
+            blurOnSubmit={false}
           />
           <Input
+            ref={emailRef}
             label="Correo electrónico"
             value={email}
             onChangeText={setEmail}
+            onBlur={() => handleBlur('email')}
+            error={touched.email ? errors.email : undefined}
             autoCapitalize="none"
             keyboardType="email-address"
             placeholder="tutienda@mail.com"
+            returnKeyType="next"
+            onSubmitEditing={() => passwordRef.current?.focus()}
+            blurOnSubmit={false}
           />
           <Input
+            ref={passwordRef}
             label="Contraseña"
             value={password}
             onChangeText={setPassword}
+            onBlur={() => handleBlur('password')}
+            error={passwordError}
             secureTextEntry
             placeholder="Mínimo 6 caracteres"
+            returnKeyType="next"
+            onSubmitEditing={() => confirmPasswordRef.current?.focus()}
+            blurOnSubmit={false}
+          />
+          <Input
+            ref={confirmPasswordRef}
+            label="Confirmar contraseña"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            onBlur={() => handleBlur('confirmPassword')}
+            error={confirmPasswordError}
+            secureTextEntry
+            placeholder="Repite tu contraseña"
+            returnKeyType="done"
+            onSubmitEditing={onRegister}
           />
 
           <Button

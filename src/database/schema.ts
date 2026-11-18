@@ -4,7 +4,7 @@ import {createPaymentsTable} from './tables/payments';
 import {createMetadataTable} from './tables/metadata';
 import {createSubscriptionPlansTable} from './tables/plans';
 
-export const DATABASE_VERSION = '1.4';
+export const DATABASE_VERSION = '1.5';
 
 /**
  * Crea las tablas base de la base de datos local si no existen.

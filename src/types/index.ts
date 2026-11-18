@@ -1,7 +1,7 @@
 // Interfaces TypeScript basadas en esquema Supabase Tenderito
 
 export type SubscriptionPlan = 'free' | 'basic' | 'pro';
-export type CreditStatus = 'pending' | 'partially_paid' | 'paid';
+export type CreditStatus = 'pending' | 'partially_paid' | 'paid' | 'cancelled';
 export type EstadoServidor =
   | 'pendiente'
   | 'sincronizado'
@@ -120,6 +120,7 @@ export interface Payment {
   amount: number;
   payment_date: string;
   notes: string | null;
+  status?: 'completed' | 'cancelled';
   created_at: string;
   estadoServidor?: EstadoServidor;
 }

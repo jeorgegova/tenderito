@@ -16,6 +16,7 @@ import {RegisterScreen} from '../screens/RegisterScreen';
 import {ReportsScreen} from '../screens/ReportsScreen';
 import {StatsScreen} from '../screens/StatsScreen';
 import {CustomerRegisterScreen} from '../screens/CustomerRegisterScreen';
+import {ForgotPasswordScreen} from '../screens/ForgotPasswordScreen';
 import {CustomerHomeScreen} from '../screens/CustomerHomeScreen';
 import {CustomerHistoryScreen} from '../screens/CustomerHistoryScreen';
 import {FreePortfolioScreen} from '../screens/FreePortfolioScreen';
@@ -127,6 +128,11 @@ export function RootNavigator() {
            ======================================================== */
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen
+            name="ForgotPassword"
+            component={ForgotPasswordScreen}
+            options={{headerShown: false}}
+          />
           <Stack.Screen
             name="CustomerRegister"
             component={CustomerRegisterScreen}

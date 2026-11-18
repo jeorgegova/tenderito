@@ -7,6 +7,7 @@ const map: Record<CreditStatus, { label: string; bg: string; fg: string }> = {
   pending: { label: "Pendiente", bg: "#FFF3E8", fg: Colors.primary },
   partially_paid: { label: "Parcial", bg: "#FEF3C7", fg: "#B45309" },
   paid: { label: "Pagado", bg: "#DCFCE7", fg: "#15803D" },
+  cancelled: { label: "Cancelado", bg: "#F1F5F9", fg: "#64748B" },
 };
 
 export function Badge({ status }: { status: CreditStatus }) {

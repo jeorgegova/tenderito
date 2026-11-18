@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
@@ -17,15 +18,18 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
 import {Header} from '../components/ui/Header';
 import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
-import {MonochromeIcon} from '../components/ui/MonochromeIcon';
 import {MagnetFilterBar, type MagnetFilterOption} from '../components/ui/MagnetFilterBar';
 import {fetchCustomers} from '../services/customers';
-import {fetchStats, type StatsFilters} from '../services/stats';
+import {
+  fetchStats,
+  openWhatsAppCustomerReminder,
+  type StatsFilters,
+  type CustomerStatRow,
+} from '../services/stats';
+import {useStore} from '../store/useStore';
 import {Colors, formatCOP} from '../theme';
 import {getBogotaDaysAgoYMD, getBogotaTodayYMD} from '../utils/format';
 import {useResponsive} from '../hooks/useResponsive';
-
-// ──────────────── Helpers ────────────────
 
 const DATE_PRESETS = [
   {label: 'Hoy', getDates: () => ({from: getBogotaTodayYMD(), to: getBogotaTodayYMD()})},
@@ -43,18 +47,19 @@ const STATS_PRESET_OPTIONS: MagnetFilterOption[] = [
   {key: '4', label: 'Todo'},
 ];
 
-// ──────────────── Main screen ────────────────
+type QuickFilter = 'all' | 'debt' | 'no_abonos' | 'uptodate';
 
 export function StatsScreen({navigation}: any) {
   const insets = useSafeAreaInsets();
   const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
+  const profile = useStore(s => s.profile);
 
-  // Filtros activos
-  const [preset, setPreset] = useState<number>(2); // default "Últ. 30 días"
+  const [preset, setPreset] = useState<number>(2); // Default: "Últ. 30 días"
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
 
-  // Botón físico "Atrás" en Estadísticas: cierra el selector de clientes o vuelve a Inicio
+  // Botón físico "Atrás" en Android
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
@@ -80,6 +85,7 @@ export function StatsScreen({navigation}: any) {
     from,
     to,
     customerIds: selectedIds.length > 0 ? selectedIds : undefined,
+    presetIndex: preset,
   };
 
   const {data: allCustomers = []} = useQuery({
@@ -87,19 +93,10 @@ export function StatsScreen({navigation}: any) {
     queryFn: () => fetchCustomers(),
   });
 
-  const {data: stats, isLoading, refetch} = useQuery({
-    queryKey: ['stats', filters.from, filters.to, selectedIds],
+  const {data: stats, isLoading} = useQuery({
+    queryKey: ['stats', filters.from, filters.to, selectedIds, preset],
     queryFn: () => fetchStats(filters),
   });
-
-  const maxVal = useMemo(
-    () =>
-      Math.max(
-        ...(stats?.rows.map(r => Math.max(r.total_credits, r.total_payments)) ?? [1]),
-        1,
-      ),
-    [stats],
-  );
 
   function toggleCustomer(id: string) {
     setSelectedIds(prev =>
@@ -111,15 +108,49 @@ export function StatsScreen({navigation}: any) {
     .filter(c => selectedIds.includes(c.id))
     .map(c => c.alias || c.name);
 
+  // Filtrado de filas de clientes según el chip activo
+  const filteredRows = useMemo(() => {
+    const list = stats?.rows ?? [];
+    if (quickFilter === 'debt') return list.filter(r => r.current_balance > 0);
+    if (quickFilter === 'no_abonos') return list.filter(r => r.current_balance > 0 && r.period_payments === 0);
+    if (quickFilter === 'uptodate') return list.filter(r => r.current_balance <= 0);
+    return list;
+  }, [stats?.rows, quickFilter]);
+
+  // Contadores para chips
+  const countAll = stats?.rows.length ?? 0;
+  const countDebt = stats?.customersWithDebtCount ?? 0;
+  const countNoAbonos = useMemo(
+    () => (stats?.rows ?? []).filter(r => r.current_balance > 0 && r.period_payments === 0).length,
+    [stats?.rows],
+  );
+  const countUpToDate = stats?.customersUpToDateCount ?? 0;
+
+  // Opciones magnéticas para el filtro de clientes (Efecto Imán)
+  const customerFilterOptions = useMemo<MagnetFilterOption<QuickFilter>[]>(
+    () => [
+      { key: 'all', label: `Todos (${countAll})` },
+      { key: 'debt', label: `Con deuda (${countDebt})` },
+      { key: 'no_abonos', label: `Sin abonos (${countNoAbonos})` },
+      { key: 'uptodate', label: `Al día (${countUpToDate})` },
+    ],
+    [countAll, countDebt, countNoAbonos, countUpToDate],
+  );
+
+  // Proporción de flujo de período
+  const totalPeriodFlow = (stats?.periodCreditsTotal ?? 0) + (stats?.periodPaymentsTotal ?? 0);
+  const creditBarPct = totalPeriodFlow > 0 ? Math.round(((stats?.periodCreditsTotal ?? 0) / totalPeriodFlow) * 100) : 50;
+  const paymentBarPct = totalPeriodFlow > 0 ? 100 - creditBarPct : 50;
+
   return (
     <View style={s.wrap}>
       <DynamicBrandCurves position="bottom-right" />
-      <Header title="Estadísticas" subtitle="Deudas, abonos y saldo por cliente" />
+      <Header title="Estadísticas" subtitle="Conoce cómo va tu cartera" />
 
       <ScrollView
         contentContainerStyle={[
           s.content,
-          {paddingBottom: insets.bottom + 24},
+          {paddingBottom: insets.bottom + 90},
           tabletContainerStyle(720),
         ]}
         showsVerticalScrollIndicator={false}>
@@ -140,314 +171,386 @@ export function StatsScreen({navigation}: any) {
           <Text style={s.customerBtnText} numberOfLines={1}>
             {selectedIds.length === 0
               ? 'Todos los clientes'
-              : `${selectedIds.length} cliente${selectedIds.length > 1 ? 's' : ''}: ${selectedNames.slice(0, 2).join(', ')}${selectedNames.length > 2 ? '…' : ''}`}
+              : `${selectedIds.length} seleccionado(s): ${selectedNames.slice(0, 2).join(', ')}${selectedNames.length > 2 ? '…' : ''}`}
           </Text>
           <Ionicons name="chevron-down" size={16} color={Colors.primary} />
         </Pressable>
 
-        {/* ── Tarjetas de resumen compactas ── */}
         {isLoading ? (
           <Card style={s.loadingCard}>
-            <Text style={s.muted}>Calculando estadísticas…</Text>
+            <Text style={s.loadingText}>Calculando cartera y estadísticas…</Text>
           </Card>
         ) : (
           <>
-            <View style={[s.summaryGrid, isSmall && { flexDirection: 'column' }]}>
-              <View style={[s.summaryCard, s.summaryDebt]}>
-                <View style={s.summaryTopRow}>
-                  <View style={[s.summaryIconCircle, {backgroundColor: Colors.destructiveAlt}]}>
-                    <Ionicons name="arrow-up" size={13} color={Colors.destructive} />
-                  </View>
-                  <Text style={s.summaryLabel}>TOTAL FIADO</Text>
-                </View>
-                <Text
-                  style={[s.summaryValue, {color: Colors.destructive}]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit>
-                  {formatCOP(stats?.totalCredits ?? 0)}
-                </Text>
-              </View>
+            {/* ─── BLOQUE 1: ASÍ ESTÁ TU NEGOCIO ─── */}
+            <View style={s.blockContainer}>
+              <Text style={s.blockTitle}>ASÍ ESTÁ TU NEGOCIO</Text>
 
-              <View style={[s.summaryCard, s.summaryPaid]}>
-                <View style={s.summaryTopRow}>
-                  <View style={[s.summaryIconCircle, {backgroundColor: Colors.successAlt}]}>
-                    <Ionicons name="arrow-down" size={13} color={Colors.success} />
-                  </View>
-                  <Text style={s.summaryLabel}>TOTAL ABONADO</Text>
+              {/* Indicador Principal: Dinero que te deben hoy (Estado Actual Vivo) */}
+              <View style={s.mainReceivableCard}>
+                <View style={s.mainReceivableIcon}>
+                  <Ionicons name="wallet-outline" size={24} color={Colors.primary} />
                 </View>
-                <Text
-                  style={[s.summaryValue, {color: Colors.success}]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit>
-                  {formatCOP(stats?.totalPayments ?? 0)}
-                </Text>
-              </View>
-            </View>
-
-            <View style={s.netCard}>
-              <View style={s.netRow}>
-                <View style={s.netIcon}>
-                  <Ionicons name="wallet-outline" color={Colors.primary} size={20} />
-                </View>
-                <View style={{flex: 1}}>
-                  <Text style={s.netLabel}>SALDO PENDIENTE NETO</Text>
-                  <Text style={s.netValue} numberOfLines={1} adjustsFontSizeToFit>
-                    {formatCOP(stats?.netBalance ?? 0)}
+                <View style={{flex: 1, minWidth: 0}}>
+                  <Text style={s.mainReceivableLabel}>DINERO TOTAL POR COBRAR</Text>
+                  <Text style={s.mainReceivableValue} numberOfLines={1} adjustsFontSizeToFit>
+                    {formatCOP(stats?.currentTotalReceivable ?? 0)}
                   </Text>
-                </View>
-                <View style={s.countBadge}>
-                  <Text style={s.countText}>{stats?.customerCount ?? 0}</Text>
-                  <Text style={s.countSub}>
-                    {stats?.customerCount === 1 ? 'cliente' : 'clientes'}
+                  <Text style={s.mainReceivableSub}>
+                    {stats?.customersWithDebtCount ?? 0} cliente{(stats?.customersWithDebtCount ?? 0) === 1 ? '' : 's'} con saldo pendiente
                   </Text>
                 </View>
               </View>
+
+              {/* Indicadores Secundarios: Flujo del período */}
+              <View style={[s.summaryGrid, isSmall && {flexDirection: 'column'}]}>
+                <View style={[s.summaryCard, s.summaryDebt]}>
+                  <View style={s.summaryTopRow}>
+                    <View style={[s.summaryIconCircle, {backgroundColor: Colors.destructiveAlt}]}>
+                      <Ionicons name="arrow-up" size={13} color={Colors.destructive} />
+                    </View>
+                    <Text style={s.summaryLabel}>FIADO EN PERÍODO</Text>
+                  </View>
+                  <Text style={[s.summaryValue, {color: Colors.destructive}]} numberOfLines={1} adjustsFontSizeToFit>
+                    {formatCOP(stats?.periodCreditsTotal ?? 0)}
+                  </Text>
+                  <Text style={s.summarySub}>
+                    {stats?.periodCreditsCount ?? 0} movimiento{(stats?.periodCreditsCount ?? 0) === 1 ? '' : 's'}
+                  </Text>
+                </View>
+
+                <View style={[s.summaryCard, s.summaryPaid]}>
+                  <View style={s.summaryTopRow}>
+                    <View style={[s.summaryIconCircle, {backgroundColor: '#DCFCE7'}]}>
+                      <Ionicons name="arrow-down" size={13} color={Colors.success} />
+                    </View>
+                    <Text style={[s.summaryLabel, {color: Colors.success}]}>RECIBIDO EN ABONOS</Text>
+                  </View>
+                  <Text style={[s.summaryValue, {color: Colors.success}]} numberOfLines={1} adjustsFontSizeToFit>
+                    {formatCOP(stats?.periodPaymentsTotal ?? 0)}
+                  </Text>
+                  <Text style={s.summarySub}>
+                    {stats?.periodPaymentsCount ?? 0} movimiento{(stats?.periodPaymentsCount ?? 0) === 1 ? '' : 's'}
+                  </Text>
+                </View>
+              </View>
             </View>
 
-            {/* ── Desglose por cliente ── */}
-            {(stats?.rows.length ?? 0) > 0 && (
-              <View style={s.customerSection}>
-                <View style={s.sectionHead}>
-                  <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-                    <Text style={s.sectionTitle}>Por cliente</Text>
-                    <View style={s.sectionCountBadge}>
-                      <Text style={s.sectionCountText}>
-                        {stats?.rows.length ?? 0}
+            {/* ─── BLOQUE 2: COMPARACIÓN DEL COMPORTAMIENTO ─── */}
+            <Card style={s.comparisonCard}>
+              <View style={s.comparisonHead}>
+                <Text style={s.comparisonTitle}>Flujo del período: Fiado vs Abono</Text>
+                {stats?.periodComparison.paymentsChangePct !== null && (
+                  <View style={s.comparisonPill}>
+                    <Ionicons
+                      name={(stats?.periodComparison.paymentsChangePct ?? 0) >= 0 ? 'trending-up' : 'trending-down'}
+                      size={14}
+                      color={(stats?.periodComparison.paymentsChangePct ?? 0) >= 0 ? Colors.success : Colors.destructive}
+                    />
+                    <Text
+                      style={[
+                        s.comparisonPillText,
+                        {color: (stats?.periodComparison.paymentsChangePct ?? 0) >= 0 ? Colors.success : Colors.destructive},
+                      ]}>
+                      {(stats?.periodComparison.paymentsChangePct ?? 0) >= 0 ? '+' : ''}
+                      {stats?.periodComparison.paymentsChangePct}% abonos vs ant.
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {totalPeriodFlow === 0 ? (
+                <Text style={s.emptyFlowText}>Sin fiados ni abonos en este período.</Text>
+              ) : (
+                <>
+                  <View style={s.barTrack}>
+                    <View style={[s.barSegment, {width: `${creditBarPct}%`, backgroundColor: Colors.destructive}]} />
+                    <View style={[s.barSegment, {width: `${paymentBarPct}%`, backgroundColor: Colors.success}]} />
+                  </View>
+
+                  <View style={s.legendRow}>
+                    <View style={s.legendItem}>
+                      <View style={[s.legendDot, {backgroundColor: Colors.destructive}]} />
+                      <Text style={[s.legendLabel, {color: Colors.destructive}]}>
+                        Fiado: {creditBarPct}% ({formatCOP(stats?.periodCreditsTotal ?? 0)})
+                      </Text>
+                    </View>
+                    <View style={s.legendItem}>
+                      <View style={[s.legendDot, {backgroundColor: Colors.success}]} />
+                      <Text style={[s.legendLabel, {color: Colors.success}]}>
+                        Abonado: {paymentBarPct}% ({formatCOP(stats?.periodPaymentsTotal ?? 0)})
                       </Text>
                     </View>
                   </View>
-                  <View style={s.legend}>
-                    <View style={[s.dot, {backgroundColor: Colors.destructive}]} />
-                    <Text style={s.legendText}>Fiado</Text>
-                    <View style={[s.dot, {backgroundColor: '#15803D'}]} />
-                    <Text style={s.legendText}>Abonado</Text>
+                </>
+              )}
+            </Card>
+
+
+
+            {/* ─── BLOQUE 4: ATENCIÓN A TUS CLIENTES ─── */}
+            {stats?.alerts.oldestDebtCustomer && (
+              <View style={s.blockContainer}>
+                <Text style={s.blockTitle}>ATENCIÓN A TUS CLIENTES</Text>
+
+                {/* Alerta 1: Mayor tiempo con deuda viva */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    navigation.navigate('CustomerDetail', {
+                      id: stats.alerts.oldestDebtCustomer?.customer_id,
+                    })
+                  }
+                  style={[s.alertCard, {borderLeftColor: Colors.primary}]}>
+                  <View style={s.alertTopRow}>
+                    <View style={s.alertTagRow}>
+                      <Ionicons name="time-outline" size={16} color={Colors.primary} />
+                      <Text style={s.alertTagText}>Mayor tiempo con deuda viva</Text>
+                    </View>
+                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+                      <View style={s.daysBadge}>
+                        <Text style={s.daysBadgeText}>{stats.alerts.oldestDebtCustomer.debt_days} días</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={14} color={Colors.textSecondary} />
+                    </View>
                   </View>
-                </View>
 
-                <View style={s.customerList}>
-                  {(stats?.rows ?? []).map(row => {
-                    const creditPct =
-                      maxVal > 0
-                        ? Math.min(
-                            100,
-                            Math.max(
-                              0,
-                              Math.round((row.total_credits / maxVal) * 100),
-                            ),
-                          )
-                        : 0;
-                    const paymentPct =
-                      maxVal > 0
-                        ? Math.min(
-                            100,
-                            Math.max(
-                              0,
-                              Math.round((row.total_payments / maxVal) * 100),
-                            ),
-                          )
-                        : 0;
-                    const displayName = row.alias || row.name || 'Cliente';
-                    const initial = displayName.charAt(0).toUpperCase();
+                  <View style={s.alertMainRow}>
+                    <View style={{flex: 1}}>
+                      <Text style={s.alertCustomerName}>
+                        {stats.alerts.oldestDebtCustomer.alias || stats.alerts.oldestDebtCustomer.name}
+                      </Text>
+                      <Text style={s.alertCustomerSub}>
+                        {stats.alerts.oldestDebtCustomer.days_since_last_payment !== null
+                          ? `Último abono: hace ${stats.alerts.oldestDebtCustomer.days_since_last_payment} días`
+                          : 'Sin abonos registrados en el ciclo'}
+                      </Text>
+                    </View>
+                    <View style={{alignItems: 'flex-end'}}>
+                      <Text style={s.alertBalanceLabel}>Saldo pendiente</Text>
+                      <Text style={s.alertBalanceValue}>
+                        {formatCOP(stats.alerts.oldestDebtCustomer.current_balance)}
+                      </Text>
+                    </View>
+                  </View>
 
-                    return (
-                      <Pressable
-                        key={row.customer_id}
-                        style={({pressed}) => [
-                          s.customerCard,
-                          pressed && s.customerCardPressed,
-                        ]}
-                        onPress={() =>
-                          navigation.navigate('CustomerDetail', {
-                            id: row.customer_id,
-                          })
-                        }>
-                        {/* Fila Superior: Avatar + Nombre + Saldo actual */}
-                        <View style={s.custTopRow}>
-                          <View style={s.custAvatar}>
-                            <Text style={s.custInitial}>{initial}</Text>
-                          </View>
-
-                          <View style={s.custNameCol}>
-                            <Text style={s.custName} numberOfLines={1}>
-                              {displayName}
-                            </Text>
-                            {row.alias && row.name && row.name !== row.alias ? (
-                              <Text style={s.custSubName} numberOfLines={1}>
-                                {row.name}
-                              </Text>
-                            ) : null}
-                          </View>
-
-                          <View style={s.custBalanceCol}>
-                            <Text style={s.custBalanceLabel}>SALDO ACTUAL</Text>
-                            <Text
-                              style={[
-                                s.custBalanceVal,
-                                row.balance > 0
-                                  ? s.custBalanceDebt
-                                  : s.custBalanceZero,
-                              ]}
-                              numberOfLines={1}>
-                              {formatCOP(row.balance)}
-                            </Text>
-                          </View>
-
-                          <Ionicons
-                            name="chevron-forward"
-                            size={16}
-                            color={Colors.textSecondary}
-                          />
-                        </View>
-
-                        {/* Fila Inferior: Métricas del período (Fiado vs Abonado) */}
-                        <View style={s.custMetricsRow}>
-                          {/* Box Fiado */}
-                          <View style={[s.custMetricBox, s.metricBoxFiado]}>
-                            <View style={s.metricTop}>
-                              <View
-                                style={[
-                                  s.metricDot,
-                                  {backgroundColor: Colors.destructive},
-                                ]}
-                              />
-                              <Text style={s.metricLabel}>FIADO EN PERÍODO</Text>
-                            </View>
-                            <Text
-                              style={[
-                                s.metricValue,
-                                {color: Colors.destructive},
-                              ]}
-                              numberOfLines={1}
-                              adjustsFontSizeToFit>
-                              {formatCOP(row.total_credits)}
-                            </Text>
-                            <View style={s.metricTrack}>
-                              <View
-                                style={[
-                                  s.metricFill,
-                                  {
-                                    backgroundColor: Colors.destructive,
-                                    width: `${creditPct}%`,
-                                  },
-                                ]}
-                              />
-                            </View>
-                          </View>
-
-                          {/* Box Abonado */}
-                          <View style={[s.custMetricBox, s.metricBoxAbonado]}>
-                            <View style={s.metricTop}>
-                              <View
-                                style={[
-                                  s.metricDot,
-                                  {backgroundColor: '#15803D'},
-                                ]}
-                              />
-                              <Text style={s.metricLabel}>ABONADO EN PERÍODO</Text>
-                            </View>
-                            <Text
-                              style={[s.metricValue, {color: '#15803D'}]}
-                              numberOfLines={1}
-                              adjustsFontSizeToFit>
-                              {formatCOP(row.total_payments)}
-                            </Text>
-                            <View style={s.metricTrack}>
-                              <View
-                                style={[
-                                  s.metricFill,
-                                  {
-                                    backgroundColor: '#15803D',
-                                    width: `${paymentPct}%`,
-                                  },
-                                ]}
-                              />
-                            </View>
-                          </View>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                  {stats.alerts.oldestDebtCustomer.phone ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        openWhatsAppCustomerReminder(
+                          stats.alerts.oldestDebtCustomer?.phone,
+                          stats.alerts.oldestDebtCustomer?.alias || stats.alerts.oldestDebtCustomer?.name || 'Cliente',
+                          stats.alerts.oldestDebtCustomer?.current_balance || 0,
+                          profile?.store_name,
+                        )
+                      }
+                      style={s.alertWaBtn}
+                      activeOpacity={0.8}>
+                      <Ionicons name="logo-whatsapp" size={16} color="#16A34A" />
+                      <Text style={s.alertWaText}>Enviar recordatorio por WhatsApp</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </TouchableOpacity>
               </View>
             )}
 
-            {(stats?.rows.length ?? 0) === 0 && !isLoading && (
-              <Card style={s.emptyCard}>
-                <MonochromeIcon
-                  name="chart"
-                  color={Colors.textSecondary}
-                  size={24}
-                />
-                <Text style={s.emptyTitle}>Sin datos en este período</Text>
-                <Text style={s.muted}>
-                  Ajusta los filtros de fecha o cliente.
+            {/* ─── BLOQUE 5: LISTADO DE CLIENTES Y FILTROS RÁPIDOS ─── */}
+            <View style={s.blockContainer}>
+              <View style={s.customerListHead}>
+                <Text style={s.customerListTitle}>Estado de tus clientes</Text>
+                <Text style={s.customerListCount}>
+                  {filteredRows.length} cliente{filteredRows.length === 1 ? '' : 's'}
                 </Text>
-              </Card>
-            )}
+              </View>
+
+              {/* Selector magnético de filtro de clientes (Efecto Imán) */}
+              <MagnetFilterBar
+                scrollable
+                options={customerFilterOptions}
+                selectedKey={quickFilter}
+                onSelect={setQuickFilter}
+              />
+
+              {/* Tarjetas de clientes */}
+              <View style={s.customersStack}>
+                {filteredRows.length === 0 ? (
+                  <Card style={s.emptyCustomersCard}>
+                    <Text style={s.emptyCustomersText}>No hay clientes en esta categoría.</Text>
+                  </Card>
+                ) : (
+                  filteredRows.map(row => {
+                    const isAlDia = row.current_balance <= 0;
+                    const hasAbonoInPeriod = row.period_payments > 0;
+
+                    const badgeBg = isAlDia ? '#DCFCE7' : hasAbonoInPeriod ? '#E0F2FE' : '#FEF3C7';
+                    const badgeFg = isAlDia ? '#16A34A' : hasAbonoInPeriod ? '#0284C7' : '#D97706';
+                    const badgeLabel = isAlDia ? 'Al día' : hasAbonoInPeriod ? 'Abonó en período' : 'Con deuda';
+
+                    return (
+                      <Card key={row.customer_id} style={s.itemCard}>
+                        {/* Cabecera: Nombre + Badge */}
+                        <View style={s.itemHead}>
+                          <View style={{flex: 1, minWidth: 0}}>
+                            <Text style={s.itemName} numberOfLines={1}>
+                              {row.alias || row.name}
+                            </Text>
+                            {row.alias && (
+                              <Text style={s.itemRealName} numberOfLines={1}>
+                                {row.name}
+                              </Text>
+                            )}
+                          </View>
+
+                          <View style={[s.badgeBox, {backgroundColor: badgeBg}]}>
+                            <Text style={[s.badgeText, {color: badgeFg}]}>
+                              {badgeLabel}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Saldo pendiente actual */}
+                        <View style={s.itemBalanceBox}>
+                          <View>
+                            <Text style={s.itemBalanceLabel}>Saldo pendiente actual</Text>
+                            <Text
+                              style={[
+                                s.itemBalanceValue,
+                                {color: row.current_balance > 0 ? Colors.destructive : Colors.success},
+                              ]}>
+                              {formatCOP(row.current_balance)}
+                            </Text>
+                          </View>
+
+                          <View style={{alignItems: 'flex-end'}}>
+                            <Text style={s.itemAgeLabel}>
+                              {isAlDia ? 'Sin deuda' : `Deuda viva: ${row.debt_days} días`}
+                            </Text>
+                            <Text style={s.itemAgeSub}>
+                              {row.days_since_last_payment !== null
+                                ? `Últ. abono: hace ${row.days_since_last_payment}d`
+                                : 'Sin abonos'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Resumen del período */}
+                        <View style={s.itemPeriodRow}>
+                          <Text style={s.itemPeriodTitle}>En este período:</Text>
+                          <Text style={s.itemPeriodNumbers}>
+                            Fiado: <Text style={{color: Colors.text, fontWeight: '700'}}>{formatCOP(row.period_credits)}</Text>
+                            {' · '}
+                            Abonado: <Text style={{color: Colors.success, fontWeight: '700'}}>{formatCOP(row.period_payments)}</Text>
+                          </Text>
+                        </View>
+
+                        {/* Acciones directas */}
+                        <View style={s.itemActionsRow}>
+                          <TouchableOpacity
+                            onPress={() => navigation.navigate('CustomerDetail', {id: row.customer_id})}
+                            style={s.actionBtnSecondary}
+                            activeOpacity={0.8}>
+                            <Ionicons name="receipt-outline" size={14} color={Colors.text} />
+                            <Text style={s.actionBtnSecondaryText}>Ver cuenta</Text>
+                          </TouchableOpacity>
+
+                          {row.current_balance > 0 && (
+                            <TouchableOpacity
+                              onPress={() => navigation.navigate('NewPayment', {customerId: row.customer_id})}
+                              style={s.actionBtnPrimary}
+                              activeOpacity={0.8}>
+                              <Ionicons name="cash-outline" size={14} color={Colors.primaryDark} />
+                              <Text style={s.actionBtnPrimaryText}>Abonar</Text>
+                            </TouchableOpacity>
+                          )}
+
+                          {row.current_balance > 0 && row.phone ? (
+                            <TouchableOpacity
+                              onPress={() =>
+                                openWhatsAppCustomerReminder(
+                                  row.phone,
+                                  row.alias || row.name,
+                                  row.current_balance,
+                                  profile?.store_name,
+                                )
+                              }
+                              style={s.actionBtnWa}
+                              activeOpacity={0.8}>
+                              <Ionicons name="logo-whatsapp" size={18} color="#16A34A" />
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+                      </Card>
+                    );
+                  })
+                )}
+              </View>
+            </View>
           </>
         )}
       </ScrollView>
 
-      {/* ── Modal multi-select clientes ── */}
+      {/* ── Modal selector de clientes ── */}
       <Modal
         visible={showCustomerPicker}
         animationType="slide"
-        presentationStyle="pageSheet"
+        transparent
         onRequestClose={() => setShowCustomerPicker(false)}>
-        <View style={[s.pickerSheet, {paddingTop: insets.top + 8}]}>
-          <View style={s.pickerHeader}>
-            <Text style={s.pickerTitle}>Seleccionar clientes</Text>
-            <Pressable onPress={() => setShowCustomerPicker(false)}>
-              <Ionicons name="close" size={24} color={Colors.text} />
-            </Pressable>
-          </View>
-          <Pressable
-            style={s.pickerAll}
-            onPress={() => setSelectedIds([])}>
-            <View style={[s.pickerCheck, selectedIds.length === 0 && s.pickerCheckActive]}>
-              {selectedIds.length === 0 && (
-                <Ionicons name="checkmark" size={14} color="#fff" />
-              )}
+        <View style={s.modalOverlay}>
+          <View style={s.modalBox}>
+            <View style={s.modalHead}>
+              <Text style={s.modalTitle}>Filtrar clientes</Text>
+              <Pressable onPress={() => setShowCustomerPicker(false)}>
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </Pressable>
             </View>
-            <Text style={s.pickerAllText}>Todos los clientes</Text>
-          </Pressable>
-          <FlatList
-            data={allCustomers}
-            keyExtractor={c => c.id}
-            contentContainerStyle={{paddingHorizontal: 16, paddingBottom: 24}}
-            renderItem={({item}) => {
-              const sel = selectedIds.includes(item.id);
-              return (
-                <Pressable style={s.pickerRow} onPress={() => toggleCustomer(item.id)}>
-                  <View style={[s.pickerCheck, sel && s.pickerCheckActive]}>
-                    {sel && <Ionicons name="checkmark" size={14} color="#fff" />}
-                  </View>
-                  <View style={{flex: 1}}>
-                    <Text style={s.pickerName}>{item.alias || item.name}</Text>
-                    {item.alias ? (
-                      <Text style={s.pickerSub}>{item.name}</Text>
-                    ) : null}
-                  </View>
-                  <Text style={s.pickerBalance}>
-                    {formatCOP(Number(item.current_balance))}
+
+            <FlatList
+              data={allCustomers}
+              keyExtractor={item => item.id}
+              contentContainerStyle={{padding: 16}}
+              ListHeaderComponent={
+                <Pressable
+                  onPress={() => setSelectedIds([])}
+                  style={[
+                    s.modalItem,
+                    selectedIds.length === 0 && {backgroundColor: Colors.primaryLight},
+                  ]}>
+                  <Text
+                    style={[
+                      s.modalItemText,
+                      selectedIds.length === 0 && {color: Colors.primary, fontWeight: '800'},
+                    ]}>
+                    ✓ Todos los clientes
                   </Text>
                 </Pressable>
-              );
-            }}
-          />
-          <View style={[s.pickerFooter, {paddingBottom: insets.bottom + 12}]}>
-            <Pressable
-              style={s.pickerDoneBtn}
-              onPress={() => {
-                setShowCustomerPicker(false);
-                refetch();
-              }}>
-              <Text style={s.pickerDoneText}>
-                {selectedIds.length === 0
-                  ? 'Ver todos'
-                  : `Ver ${selectedIds.length} seleccionado${selectedIds.length > 1 ? 's' : ''}`}
-              </Text>
-            </Pressable>
+              }
+              renderItem={({item}) => {
+                const selected = selectedIds.includes(item.id);
+                return (
+                  <Pressable
+                    onPress={() => toggleCustomer(item.id)}
+                    style={[s.modalItem, selected && {backgroundColor: Colors.primaryLight}]}>
+                    <Text
+                      style={[
+                        s.modalItemText,
+                        selected && {color: Colors.primary, fontWeight: '700'},
+                      ]}>
+                      {item.alias || item.name}
+                    </Text>
+                    {selected && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
+                  </Pressable>
+                );
+              }}
+            />
+
+            <View style={s.modalFooter}>
+              <TouchableOpacity
+                onPress={() => setShowCustomerPicker(false)}
+                style={s.modalCloseBtn}
+                activeOpacity={0.85}>
+                <Text style={s.modalCloseBtnText}>Listo</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -456,321 +559,513 @@ export function StatsScreen({navigation}: any) {
 }
 
 const s = StyleSheet.create({
-  wrap: {flex: 1, backgroundColor: Colors.background, overflow: 'hidden'},
-  content: {paddingHorizontal: 20, paddingTop: 4, gap: 14},
-  // Customer selector
+  wrap: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  content: {
+    paddingHorizontal: 20,
+    gap: 16,
+  },
   customerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: '#142033',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  customerBtnText: {flex: 1, fontSize: 14, color: Colors.text, fontWeight: '700'},
-  // Summary cards (compactos para aprovechar espacio)
-  summaryGrid: {flexDirection: 'row', gap: 10},
+  customerBtnText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  loadingCard: {
+    padding: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  blockContainer: {
+    gap: 10,
+  },
+  blockTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textSecondary,
+    letterSpacing: 0.6,
+  },
+  mainReceivableCard: {
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1.5,
+    borderColor: Colors.primaryMid,
+    borderRadius: 18,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    ...Platform.select({
+      ios: {shadowColor: '#EA580C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.1, shadowRadius: 8},
+      android: {elevation: 2},
+    }),
+  },
+  mainReceivableIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mainReceivableLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.primaryDark,
+    letterSpacing: 0.8,
+  },
+  mainReceivableValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: Colors.primaryDark,
+    marginTop: 2,
+  },
+  mainReceivableSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.primary,
+    marginTop: 2,
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   summaryCard: {
     flex: 1,
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    gap: 6,
-    shadowColor: '#142033',
-    shadowOffset: {width: 0, height: 3},
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 1,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
   },
-  summaryDebt: {backgroundColor: Colors.destructiveAlt, borderColor: '#FECACA'},
-  summaryPaid: {backgroundColor: Colors.successAlt, borderColor: '#BBF7D0'},
-  summaryTopRow: {flexDirection: 'row', alignItems: 'center', gap: 6},
+  summaryDebt: {
+    backgroundColor: '#FFF1F0',
+    borderColor: '#FCE0DE',
+  },
+  summaryPaid: {
+    backgroundColor: Colors.successAlt,
+    borderColor: '#BBF7D0',
+  },
+  summaryTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
   summaryIconCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   summaryLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.textSecondary,
-    letterSpacing: 0.5,
-  },
-  summaryValue: {
-    fontSize: 19,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  // Net card (compacto)
-  netCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: Colors.border,
-    borderWidth: 1,
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    shadowColor: '#142033',
-    shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  netRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
-  netIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  netLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.primary,
-    letterSpacing: 0.5,
-  },
-  netValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.text,
-    letterSpacing: -0.5,
-    marginTop: 2,
-  },
-  countBadge: {
-    alignItems: 'center',
-    paddingLeft: 14,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: Colors.border,
-  },
-  countText: {fontSize: 19, fontWeight: '800', color: Colors.text},
-  countSub: {fontSize: 11, color: Colors.textSecondary, fontWeight: '500'},
-  // Section Por cliente
-  customerSection: {gap: 12, marginTop: 4},
-  sectionHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitle: {fontSize: 17, fontWeight: '800', color: Colors.text},
-  sectionCountBadge: {
-    backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  sectionCountText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: Colors.primary,
-  },
-  legend: {flexDirection: 'row', alignItems: 'center', gap: 8},
-  dot: {width: 8, height: 8, borderRadius: 4},
-  legendText: {fontSize: 12, color: Colors.textSecondary, fontWeight: '500'},
-  // Customer cards list
-  customerList: {gap: 12},
-  customerCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 12,
-    shadowColor: '#142033',
-    shadowOffset: {width: 0, height: 3},
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  customerCardPressed: {
-    opacity: 0.88,
-    backgroundColor: '#F8FAFC',
-  },
-  custTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  custAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  custInitial: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: Colors.primary,
-  },
-  custNameCol: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  custName: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  custSubName: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-    marginTop: 1,
-  },
-  custBalanceCol: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  custBalanceLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: Colors.textSecondary,
-    letterSpacing: 0.5,
-  },
-  custBalanceVal: {
-    fontSize: 15,
-    fontWeight: '800',
-    marginTop: 1,
-  },
-  custBalanceDebt: {
+    letterSpacing: 0.6,
     color: Colors.destructive,
   },
-  custBalanceZero: {
-    color: Colors.success,
-  },
-  custMetricsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  custMetricBox: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    gap: 3,
-  },
-  metricBoxFiado: {
-    backgroundColor: Colors.destructiveAlt,
-    borderColor: '#FECACA',
-  },
-  metricBoxAbonado: {
-    backgroundColor: Colors.successAlt,
-    borderColor: '#BBF7D0',
-  },
-  metricTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metricDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  metricLabel: {
-    fontSize: 9,
+  summaryValue: {
+    fontSize: 17,
     fontWeight: '800',
+  },
+  summarySub: {
+    fontSize: 11,
+    fontWeight: '600',
     color: Colors.textSecondary,
-    letterSpacing: 0.4,
-  },
-  metricValue: {
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  metricTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-    overflow: 'hidden',
     marginTop: 2,
   },
-  metricFill: {
-    height: '100%',
-    borderRadius: 2,
-    minWidth: 0,
+  comparisonCard: {
+    padding: 16,
   },
-  loadingCard: {
-    padding: 20,
+  comparisonHead: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
-  // Empty
-  emptyCard: {alignItems: 'center', gap: 8, paddingVertical: 24},
-  emptyTitle: {fontWeight: '800', color: Colors.text, fontSize: 15},
-  muted: {fontSize: 12, color: Colors.textSecondary, textAlign: 'center'},
-  // Customer picker modal
-  pickerSheet: {flex: 1, backgroundColor: Colors.card},
-  pickerHeader: {
+  comparisonTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  comparisonPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  comparisonPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  emptyFlowText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 10,
+  },
+  barTrack: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#F1F5F9',
+    flexDirection: 'row',
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  barSegment: {
+    height: '100%',
+  },
+  legendRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
   },
-  pickerTitle: {fontSize: 20, fontWeight: '800', color: Colors.text},
-  pickerAll: {
+  legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
+    gap: 6,
   },
-  pickerAllText: {fontSize: 15, fontWeight: '700', color: Colors.text},
-  pickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
-  pickerCheck: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    borderWidth: 1.5,
+  legendLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  alertCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
     borderColor: Colors.border,
+    borderLeftWidth: 4,
+    borderRadius: 16,
+    padding: 14,
+    gap: 8,
+  },
+  alertTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  alertTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  alertTagText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.primaryDark,
+  },
+  daysBadge: {
+    backgroundColor: '#FFF7ED',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  daysBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.primaryDark,
+  },
+  alertMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  alertCustomerName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  alertCustomerSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  alertBalanceLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  alertBalanceValue: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: Colors.destructive,
+  },
+  alertWaBtn: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    marginTop: 4,
   },
-  pickerCheckActive: {
+  alertWaText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#16A34A',
+  },
+  customerListHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  customerListTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  customerListCount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  chipsRow: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  chipActiveAll: {
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
-  pickerName: {fontSize: 14, fontWeight: '700', color: Colors.text},
-  pickerSub: {fontSize: 11, color: Colors.textSecondary},
-  pickerBalance: {fontSize: 13, fontWeight: '800', color: Colors.destructive},
-  pickerFooter: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
-    backgroundColor: Colors.card,
+  chipActiveDebt: {
+    backgroundColor: Colors.destructive,
+    borderColor: Colors.destructive,
   },
-  pickerDoneBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
+  chipActivePending: {
+    backgroundColor: '#D97706',
+    borderColor: '#D97706',
+  },
+  chipActiveUptodate: {
+    backgroundColor: Colors.success,
+    borderColor: Colors.success,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  chipTextActive: {
+    color: '#FFFFFF',
+  },
+  customersStack: {
+    gap: 10,
+  },
+  emptyCustomersCard: {
+    padding: 24,
     alignItems: 'center',
   },
-  pickerDoneText: {color: '#fff', fontWeight: '800', fontSize: 15},
+  emptyCustomersText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  itemCard: {
+    padding: 16,
+    gap: 10,
+  },
+  itemHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  itemName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  itemRealName: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  badgeBox: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  itemBalanceBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  itemBalanceLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  itemBalanceValue: {
+    fontSize: 17,
+    fontWeight: '900',
+    marginTop: 1,
+  },
+  itemAgeLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  itemAgeSub: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  itemPeriodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+  },
+  itemPeriodTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  itemPeriodNumbers: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  itemActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  actionBtnSecondary: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  actionBtnSecondaryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  actionBtnPrimary: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.primaryLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  actionBtnPrimaryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primaryDark,
+  },
+  actionBtnWa: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalBox: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+  },
+  modalHead: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  modalItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  modalItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  modalFooter: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  modalCloseBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalCloseBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 14,
+  },
 });

@@ -24,11 +24,12 @@ import {FooterMenu} from '../components/ui/FooterMenu';
 import {StoreHistoryLockNotice} from '../components/ui/StoreHistoryLockNotice';
 import {MagnetFilterBar} from '../components/ui/MagnetFilterBar';
 import {showAlert} from '../utils/alert';
-import {fetchCreditsByCustomer} from '../services/credits';
+import {fetchCreditsByCustomer, voidMovement} from '../services/credits';
 import {fetchCustomerById} from '../services/customers';
 import {fetchPaymentsByCustomer} from '../services/payments';
 import {canCreateCreditForCustomer} from '../services/portfolio';
 import {calculateSubscriptionStatus} from '../services/plans';
+import {queryClient} from '../lib/queryClient';
 import {useStore} from '../store/useStore';
 import {Colors, Radius, formatCOP} from '../theme';
 import {useResponsive} from '../hooks/useResponsive';
@@ -233,6 +234,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
       amount: Number(c.amount || 0),
       date: c.created_at,
       dueDate: c.due_date,
+      status: c.status,
       estadoServidor: c.estadoServidor,
       notes: null,
     }));
@@ -244,6 +246,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
       amount: Number(p.amount || 0),
       date: p.payment_date,
       dueDate: null,
+      status: (p as any).status || 'completed',
       estadoServidor: p.estadoServidor,
       notes: p.notes,
     }));
@@ -281,11 +284,12 @@ export function CustomerDetailScreen({route, navigation}: any) {
     );
   }, [allMovements, selectedMonth]);
 
-  // Totales de movimientos del mes seleccionado
+  // Totales de movimientos del mes seleccionado (excluye cancelados)
   const monthTotals = useMemo(() => {
     let creditsSum = 0;
     let paymentsSum = 0;
     monthMovements.forEach(m => {
+      if (m.status === 'cancelled') return;
       if (m.kind === 'credit') {
         creditsSum += m.amount;
       }
@@ -355,6 +359,71 @@ export function CustomerDetailScreen({route, navigation}: any) {
     const cleanPhone = phone.replace(/[^0-9+]/g, '');
     Linking.openURL(`tel:${cleanPhone}`).catch(() => {
       showAlert('No se pudo abrir el teléfono', `Número: ${phone}`);
+    });
+  };
+
+  const handleVoidMovement = (item: any) => {
+    const isCredit = item.kind === 'credit';
+    const tipo = isCredit ? 'este fiado' : 'este abono';
+
+    // Validación obligatoria: no dejar cancelar más saldo del que actualmente debe el cliente
+    // para evitar saldos a favor (deuda negativa oculta).
+    if (isCredit && item.amount > currentBalance) {
+      showAlert({
+        title: 'No es posible anular este fiado',
+        message: `El valor de este fiado (${formatCOP(item.amount)}) supera la deuda actual del cliente (${formatCOP(currentBalance)}). No puedes anular más saldo del que actualmente debe para no generar saldo a favor.\n\nSi deseas anularlo, primero debes anular los abonos correspondientes.`,
+        type: 'destructive',
+      });
+      return;
+    }
+
+    showAlert({
+      title: isCredit ? '¿Anular fiado?' : '¿Anular abono?',
+      message: `¿Estás seguro de anular ${tipo} por ${formatCOP(item.amount)} ("${item.title}")? El saldo del cliente se recalculará automáticamente. Esta acción no se puede deshacer.`,
+      type: 'destructive',
+      buttons: [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Sí, anular',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await voidMovement({
+                id: item.id,
+                kind: item.kind,
+                customerId: id!,
+                amount: item.amount,
+              });
+              await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['credits', id] }),
+                queryClient.invalidateQueries({ queryKey: ['payments', id] }),
+                queryClient.invalidateQueries({ queryKey: ['customer', id] }),
+                queryClient.invalidateQueries({ queryKey: ['customers'] }),
+                queryClient.invalidateQueries({ queryKey: ['stats'] }),
+              ]);
+              await Promise.all([
+                credits.refetch(),
+                payments.refetch(),
+                customer.refetch(),
+              ]);
+              showAlert({
+                title: 'Movimiento anulado',
+                message: `Se canceló el ${isCredit ? 'fiado' : 'abono'} y el saldo fue recalculado.`,
+                type: 'success',
+              });
+            } catch (err: any) {
+              showAlert({
+                title: 'Error al anular',
+                message: err?.message || 'No se pudo anular el movimiento.',
+                type: 'destructive',
+              });
+            }
+          },
+        },
+      ],
     });
   };
 
@@ -716,42 +785,75 @@ export function CustomerDetailScreen({route, navigation}: any) {
         }
         renderItem={({item, index}) => {
           const isCredit = item.kind === 'credit';
-          const overdue = isCredit && isOverdue(item.dueDate);
+          const isCancelled = item.status === 'cancelled';
+          const overdue = isCredit && !isCancelled && isOverdue(item.dueDate);
 
           return (
             <View
-              style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlt]}>
+              style={[
+                styles.tableRow,
+                index % 2 === 1 && styles.tableRowAlt,
+                isCancelled && styles.tableRowCancelled,
+              ]}>
               {/* Columna Fecha */}
               <View style={[styles.colDate, isSmall && styles.colDateSmall]}>
-                <Text style={styles.rowDateText}>
+                <Text
+                  style={[
+                    styles.rowDateText,
+                    isCancelled && styles.textCancelled,
+                  ]}>
                   {formatDateDisplay(item.date)}
                 </Text>
               </View>
 
               {/* Columna Detalle */}
               <View style={styles.colConcept}>
-                <Text style={styles.rowConceptTitle} numberOfLines={2}>
+                <Text
+                  style={[
+                    styles.rowConceptTitle,
+                    isCancelled && styles.textCancelled,
+                  ]}
+                  numberOfLines={2}>
                   {item.title}
                 </Text>
 
                 <View style={styles.rowBadgeWrap}>
-                  <View
-                    style={[
-                      styles.kindBadge,
-                      isCredit
-                        ? styles.kindBadgeCredit
-                        : styles.kindBadgePayment,
-                    ]}>
-                    <Text
+                  {isCancelled ? (
+                    <>
+                      <View style={[styles.kindBadge, styles.kindBadgeCancelled]}>
+                        <Text style={[styles.kindBadgeText, styles.kindBadgeTextCancelled]}>
+                          Cancelado
+                        </Text>
+                      </View>
+                      <View style={[styles.kindBadge, { backgroundColor: '#F1F5F9' }]}>
+                        <Text
+                          style={[
+                            styles.kindBadgeText,
+                            { color: '#94A3B8', textDecorationLine: 'line-through' },
+                          ]}>
+                          {isCredit ? 'Compra fiada (+)' : 'Abono recibido (-)'}
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
+                    <View
                       style={[
-                        styles.kindBadgeText,
+                        styles.kindBadge,
                         isCredit
-                          ? styles.kindBadgeTextCredit
-                          : styles.kindBadgeTextPayment,
+                          ? styles.kindBadgeCredit
+                          : styles.kindBadgePayment,
                       ]}>
-                      {isCredit ? 'Compra fiada (+)' : 'Abono recibido (-)'}
-                    </Text>
-                  </View>
+                      <Text
+                        style={[
+                          styles.kindBadgeText,
+                          isCredit
+                            ? styles.kindBadgeTextCredit
+                            : styles.kindBadgeTextPayment,
+                        ]}>
+                        {isCredit ? 'Compra fiada (+)' : 'Abono recibido (-)'}
+                      </Text>
+                    </View>
+                  )}
                   <SyncBadge estadoServidor={item.estadoServidor} />
                 </View>
 
@@ -761,13 +863,18 @@ export function CustomerDetailScreen({route, navigation}: any) {
                       name="calendar-outline"
                       size={12}
                       color={
-                        overdue ? Colors.destructive : Colors.textSecondary
+                        isCancelled
+                          ? '#94A3B8'
+                          : overdue
+                          ? Colors.destructive
+                          : Colors.textSecondary
                       }
                     />
                     <Text
                       style={[
                         styles.rowDueDate,
                         overdue && styles.rowDueDateOverdue,
+                        isCancelled && styles.textCancelled,
                       ]}>
                       {overdue
                         ? `Vencido el: ${formatDateDisplay(item.dueDate)}`
@@ -783,10 +890,28 @@ export function CustomerDetailScreen({route, navigation}: any) {
                   style={[
                     styles.rowAmountText,
                     isCredit ? styles.rowAmountCredit : styles.rowAmountPayment,
+                    isCancelled && styles.textCancelled,
                   ]}>
                   {isCredit ? '+' : '−'}
                   {formatCOP(item.amount)}
                 </Text>
+              </View>
+
+              {/* Botón Anular Movimiento */}
+              <View style={{ width: 28, alignItems: 'center', justifyContent: 'center' }}>
+                {!isCancelled && (
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => handleVoidMovement(item)}
+                    hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+                    style={styles.voidBtn}>
+                    <Ionicons
+                      name="trash-outline"
+                      size={16}
+                      color={Colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           );
@@ -1243,6 +1368,13 @@ const styles = StyleSheet.create({
   colAmountSmall: {
     width: 82,
   },
+  voidBtn: {
+    padding: 6,
+    marginLeft: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
 
   // Filtro de mes en cabecera
   headerMonthBtn: {
@@ -1381,6 +1513,22 @@ const styles = StyleSheet.create({
   },
   rowAmountPayment: {
     color: '#15803D',
+  },
+  tableRowCancelled: {
+    backgroundColor: '#F1F5F9',
+    opacity: 0.72,
+  },
+  textCancelled: {
+    color: '#94A3B8',
+    textDecorationLine: 'line-through',
+  },
+  kindBadgeCancelled: {
+    backgroundColor: '#E2E8F0',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  kindBadgeTextCancelled: {
+    color: '#64748B',
   },
 
   // Estado vacío de la tabla

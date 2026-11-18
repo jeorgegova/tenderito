@@ -311,6 +311,7 @@ export function CustomerHomeScreen() {
         amount: Number(c.amount || 0),
         date: c.created_at,
         dueDate: c.due_date,
+        status: c.status,
         notes: null,
       }));
 
@@ -323,6 +324,7 @@ export function CustomerHomeScreen() {
         amount: Number(p.amount || 0),
         date: p.payment_date,
         dueDate: null,
+        status: p.status || 'completed',
         notes: p.notes,
       }));
 
@@ -331,11 +333,12 @@ export function CustomerHomeScreen() {
     );
   }, [data, selectedStoreId]);
 
-  // Totales de la tienda seleccionada
+  // Totales de la tienda seleccionada (excluye cancelados)
   const storeTotals = useMemo(() => {
     let creditsSum = 0;
     let paymentsSum = 0;
     storeMovements.forEach(m => {
+      if (m.status === 'cancelled') return;
       if (m.kind === 'credit') {
         creditsSum += m.amount;
       }
@@ -738,6 +741,7 @@ export function CustomerHomeScreen() {
             ) : (
               filteredStoreMovements.map((item, index) => {
                 const isCredit = item.kind === 'credit';
+                const isCancelled = item.status === 'cancelled';
                 return (
                   <View
                     key={item.id}
@@ -746,44 +750,77 @@ export function CustomerHomeScreen() {
                       index % 2 === 1 && styles.tableRowAlt,
                       index === filteredStoreMovements.length - 1 &&
                       styles.tableRowLast,
+                      isCancelled && styles.tableRowCancelled,
                     ]}>
                     {/* Columna Fecha */}
                     <View style={[styles.colDate, isSmall && styles.colDateSmall]}>
-                      <Text style={styles.rowDateText}>
+                      <Text
+                        style={[
+                          styles.rowDateText,
+                          isCancelled && styles.textCancelled,
+                        ]}>
                         {formatDateDisplay(item.date)}
                       </Text>
                     </View>
 
                     {/* Columna Detalle */}
                     <View style={styles.colConcept}>
-                      <Text style={styles.rowConceptTitle} numberOfLines={2}>
+                      <Text
+                        style={[
+                          styles.rowConceptTitle,
+                          isCancelled && styles.textCancelled,
+                        ]}
+                        numberOfLines={2}>
                         {item.title}
                       </Text>
 
                       <View style={styles.rowBadgeWrap}>
-                        <View
-                          style={[
-                            styles.kindBadge,
-                            isCredit
-                              ? styles.kindBadgeCredit
-                              : styles.kindBadgePayment,
-                          ]}>
-                          <Text
+                        {isCancelled ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <View style={[styles.kindBadge, styles.kindBadgeCancelled]}>
+                              <Text style={[styles.kindBadgeText, styles.kindBadgeTextCancelled]}>
+                                Cancelado
+                              </Text>
+                            </View>
+                            <View style={[styles.kindBadge, { backgroundColor: '#F1F5F9' }]}>
+                              <Text
+                                style={[
+                                  styles.kindBadgeText,
+                                  { color: '#94A3B8', textDecorationLine: 'line-through' },
+                                ]}>
+                                {isCredit ? 'Compra fiada (+)' : 'Abono realizado (-)'}
+                              </Text>
+                            </View>
+                          </View>
+                        ) : (
+                          <View
                             style={[
-                              styles.kindBadgeText,
+                              styles.kindBadge,
                               isCredit
-                                ? styles.kindBadgeTextCredit
-                                : styles.kindBadgeTextPayment,
+                                ? styles.kindBadgeCredit
+                                : styles.kindBadgePayment,
                             ]}>
-                            {isCredit
-                              ? 'Compra fiada (+)'
-                              : 'Abono realizado (-)'}
-                          </Text>
-                        </View>
+                            <Text
+                              style={[
+                                styles.kindBadgeText,
+                                isCredit
+                                  ? styles.kindBadgeTextCredit
+                                  : styles.kindBadgeTextPayment,
+                              ]}>
+                              {isCredit
+                                ? 'Compra fiada (+)'
+                                : 'Abono realizado (-)'}
+                            </Text>
+                          </View>
+                        )}
                       </View>
 
                       {item.dueDate ? (
-                        <Text style={styles.rowDueDate}>
+                        <Text
+                          style={[
+                            styles.rowDueDate,
+                            isCancelled && styles.textCancelled,
+                          ]}>
                           Pagar antes de: {formatDateDisplay(item.dueDate)}
                         </Text>
                       ) : null}
@@ -797,6 +834,7 @@ export function CustomerHomeScreen() {
                           isCredit
                             ? styles.rowAmountCredit
                             : styles.rowAmountPayment,
+                          isCancelled && styles.textCancelled,
                         ]}>
                         {isCredit ? '+' : '−'}
                         {formatCOP(item.amount)}
@@ -1170,16 +1208,23 @@ export function CustomerHomeScreen() {
                   {/* Información de la tienda */}
                   <View style={styles.flexOne}>
                     <Text style={styles.storeCardName}>{storeName}</Text>
+                    {store?.phone ? (
+                      <View style={styles.storeCardPhoneRow}>
+                        <Ionicons
+                          name="call-outline"
+                          size={12}
+                          color={Colors.primary}
+                        />
+                        <Text style={styles.storeCardPhoneText}>
+                          {store.phone}
+                        </Text>
+                      </View>
+                    ) : null}
                     {store?.address ? (
                       <Text style={styles.storeCardMeta} numberOfLines={1}>
                         {store.address}
                       </Text>
                     ) : null}
-                    {/* {creditLimit > 0 ? (
-                      <Text style={styles.storeCardLimit}>
-                        Tope de fiado: {formatCOP(creditLimit)}
-                      </Text>
-                    ) : null} */}
                   </View>
 
                   {/* Saldo de la tienda */}
@@ -1398,6 +1443,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     marginTop: 2,
+  },
+  storeCardPhoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  storeCardPhoneText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
   },
   storeCardLimit: {
     fontSize: 11,
@@ -1763,6 +1819,22 @@ const styles = StyleSheet.create({
   },
   rowAmountPayment: {
     color: '#15803D',
+  },
+  tableRowCancelled: {
+    backgroundColor: '#F1F5F9',
+    opacity: 0.72,
+  },
+  textCancelled: {
+    color: '#94A3B8',
+    textDecorationLine: 'line-through',
+  },
+  kindBadgeCancelled: {
+    backgroundColor: '#E2E8F0',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  kindBadgeTextCancelled: {
+    color: '#64748B',
   },
 
   // Estado vacío de la tabla

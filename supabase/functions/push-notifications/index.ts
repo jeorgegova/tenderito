@@ -171,7 +171,22 @@ serve(async (req: Request) => {
       const currentBalance = formatCOP(Number(customerStore?.current_balance || 0));
       const amountFormatted = formatCOP(Number(record.amount || 0));
 
-      if (table === "payments") {
+      if (record.status === "cancelled") {
+        if (table === "credits") {
+          title = "Fiado anulado ❌";
+          const concept = record.concept ? ` (${record.concept})` : "";
+          messageBody = `Se anuló el fiado de ${amountFormatted}${concept} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
+          customData.type = "credit_cancelled";
+          customData.credit_id = String(record.id);
+          customData.amount = String(record.amount);
+        } else {
+          title = "Abono anulado ❌";
+          messageBody = `Se anuló el abono de ${amountFormatted} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
+          customData.type = "payment_cancelled";
+          customData.payment_id = String(record.id);
+          customData.amount = String(record.amount);
+        }
+      } else if (table === "payments") {
         title = "Abono registrado 💳";
         messageBody = `Se registró un abono de ${amountFormatted} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
         customData.type = "payment";
@@ -246,6 +261,33 @@ serve(async (req: Request) => {
             notification: {
               channelId: "mensajes",
               sound: "default",
+            },
+          },
+          webpush: {
+            headers: {
+              Urgency: "high",
+            },
+            notification: {
+              title,
+              body: messageBody,
+              icon: "/logo.png",
+              badge: "/favicon.svg",
+              vibrate: [200, 100, 200],
+            },
+            fcm_options: {
+              link: "/",
+            },
+          },
+          apns: {
+            payload: {
+              aps: {
+                alert: {
+                  title,
+                  body: messageBody,
+                },
+                sound: "default",
+                badge: 1,
+              },
             },
           },
         },

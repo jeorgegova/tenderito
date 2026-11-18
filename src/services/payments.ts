@@ -33,6 +33,7 @@ export async function fetchPaymentsByCustomer(
       store_id: r.store_id || '',
       amount: Number(r.amount),
       notes: r.notes,
+      status: (r.status || 'completed') as any,
       payment_date: r.payment_date,
       estadoServidor: (r.sync_status || r.estadoServidor || 'synced') as any,
       created_by: r.created_by || '',

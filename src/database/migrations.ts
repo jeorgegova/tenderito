@@ -114,6 +114,15 @@ const MIGRATIONS: Migration[] = [
       } catch (_e) {}
     },
   },
+  {
+    version: '1.5',
+    description: 'Soporte para trazabilidad de anulación: columna status en payments',
+    up: async (db: any) => {
+      try {
+        await db.executeAsync("ALTER TABLE payments ADD COLUMN status TEXT DEFAULT 'completed';");
+      } catch (_e) {}
+    },
+  },
 ];
 
 /**

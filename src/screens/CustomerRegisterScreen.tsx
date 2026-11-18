@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   Image,
   Keyboard,
@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -28,15 +29,65 @@ export function CustomerRegisterScreen({ navigation }: any) {
   const [document, setDocument] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [customer, setCustomer] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+
+  // Validación estilo Formik (touched + errors en tiempo real)
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const phoneRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmPasswordRef = useRef<TextInput>(null);
 
   const logoW = isSmall ? 175 : isCompact ? 200 : 220;
   const logoH = Math.round(logoW * (120 / 220));
 
+  const errors = useMemo(() => {
+    const errs: Record<string, string> = {};
+    if (!document.trim()) {
+      errs.document = 'Ingresa tu cédula';
+    }
+    const cleanPhone = phone.trim().replace(/\D/g, '');
+    if (!phone.trim()) {
+      errs.phone = 'Ingresa tu número celular';
+    } else if (cleanPhone.length < 10) {
+      errs.phone = 'El celular debe tener al menos 10 dígitos';
+    }
+    if (!password) {
+      errs.password = 'La contraseña es requerida';
+    } else if (password.length < 6) {
+      errs.password = 'Mínimo 6 caracteres';
+    }
+    if (!confirmPassword) {
+      errs.confirmPassword = 'Debes confirmar tu contraseña';
+    } else if (confirmPassword !== password) {
+      errs.confirmPassword = 'Las contraseñas no coinciden';
+    }
+    return errs;
+  }, [document, phone, password, confirmPassword]);
+
+  const handleBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+  };
+
+  // Al digitar confirmar contraseña, valida inmediatamente si no coincide
+  const confirmPasswordError =
+    (touched.confirmPassword || confirmPassword.length > 0) && errors.confirmPassword
+      ? errors.confirmPassword
+      : undefined;
+
+  const passwordError =
+    (touched.password || (password.length > 0 && password.length < 6 && (touched.confirmPassword || confirmPassword.length > 0))) && errors.password
+      ? errors.password
+      : touched.password && errors.password
+      ? errors.password
+      : undefined;
+
   async function checkDocument() {
     Keyboard.dismiss();
     if (!document.trim()) {
+      setTouched(prev => ({ ...prev, document: true }));
       return showAlert({
         title: 'Faltan datos',
         message: 'Ingresa tu cédula',
@@ -45,7 +96,8 @@ export function CustomerRegisterScreen({ navigation }: any) {
     }
     setLoading(true);
     try {
-      const result = await findCustomerForActivation(document);
+      const cleanDoc = document.trim();
+      const result = await findCustomerForActivation(cleanDoc);
       if (!result) {
         return showAlert({
           title: 'No te encontramos',
@@ -53,6 +105,64 @@ export function CustomerRegisterScreen({ navigation }: any) {
           type: 'warning',
         });
       }
+
+      // Si la cuenta ya fue activada previamente
+      if (result.is_activated) {
+        return showAlert({
+          title: 'Cuenta ya registrada',
+          message: 'Esta cuenta ya existe y se encuentra activa. Puedes iniciar sesión o restablecer tu contraseña.',
+          type: 'info',
+          buttons: [
+            {
+              text: 'Restablecer contraseña',
+              onPress: () =>
+                navigation.navigate('ForgotPassword', {
+                  role: 'customer',
+                  document: cleanDoc,
+                }),
+            },
+            {
+              text: 'Iniciar sesión',
+              onPress: () =>
+                navigation.navigate('Login', {
+                  role: 'customer',
+                  document: cleanDoc,
+                }),
+            },
+          ],
+        });
+      }
+
+      // Validación complementaria contra auth.users
+      const { data: emailExists } = await supabase.rpc('check_user_email_exists', {
+        p_email: customerAuthEmail(cleanDoc),
+      });
+      if (emailExists) {
+        return showAlert({
+          title: 'Cuenta ya registrada',
+          message: 'Esta cuenta ya existe y se encuentra activa. Puedes iniciar sesión o restablecer tu contraseña.',
+          type: 'info',
+          buttons: [
+            {
+              text: 'Restablecer contraseña',
+              onPress: () =>
+                navigation.navigate('ForgotPassword', {
+                  role: 'customer',
+                  document: cleanDoc,
+                }),
+            },
+            {
+              text: 'Iniciar sesión',
+              onPress: () =>
+                navigation.navigate('Login', {
+                  role: 'customer',
+                  document: cleanDoc,
+                }),
+            },
+          ],
+        });
+      }
+
       setCustomer(result);
     } catch (error: any) {
       showAlert({
@@ -67,16 +177,26 @@ export function CustomerRegisterScreen({ navigation }: any) {
 
   async function activate() {
     Keyboard.dismiss();
-    if (!customer || !phone.trim() || password.length < 6) {
+    setTouched(prev => ({
+      ...prev,
+      phone: true,
+      password: true,
+      confirmPassword: true,
+    }));
+
+    if (errors.phone || errors.password || errors.confirmPassword) {
+      const firstError = errors.phone || errors.password || errors.confirmPassword;
       return showAlert({
-        title: 'Faltan datos',
-        message: 'Confirma tu teléfono y crea una contraseña de mínimo 6 caracteres.',
+        title: 'Verifica los campos',
+        message: firstError,
         type: 'warning',
       });
     }
+
     setLoading(true);
+    const cleanDoc = document.trim();
     const { data, error } = await supabase.auth.signUp({
-      email: customerAuthEmail(document),
+      email: customerAuthEmail(cleanDoc),
       password,
       options: {
         data: { user_type: 'customer', customer_id: customer.customer_id, phone },
@@ -84,6 +204,36 @@ export function CustomerRegisterScreen({ navigation }: any) {
     });
     setLoading(false);
     if (error || !data.user) {
+      const errMsg = (error?.message || '').toLowerCase();
+      if (
+        errMsg.includes('already registered') ||
+        errMsg.includes('ya está registrado') ||
+        errMsg.includes('already exists')
+      ) {
+        return showAlert({
+          title: 'Cuenta ya registrada',
+          message: 'Tu cuenta ya fue activada anteriormente. Si no recuerdas tu contraseña, puedes restablecerla.',
+          type: 'info',
+          buttons: [
+            {
+              text: 'Restablecer contraseña',
+              onPress: () =>
+                navigation.navigate('ForgotPassword', {
+                  role: 'customer',
+                  document: cleanDoc,
+                }),
+            },
+            {
+              text: 'Iniciar sesión',
+              onPress: () =>
+                navigation.navigate('Login', {
+                  role: 'customer',
+                  document: cleanDoc,
+                }),
+            },
+          ],
+        });
+      }
       return showAlert({
         title: 'No se pudo activar',
         message: error?.message ?? 'Intenta de nuevo',
@@ -163,6 +313,8 @@ export function CustomerRegisterScreen({ navigation }: any) {
             label="Número de identificación"
             value={document}
             onChangeText={setDocument}
+            onBlur={() => handleBlur('document')}
+            error={touched.document ? errors.document : undefined}
             keyboardType="number-pad"
             placeholder="Tu cédula"
           />
@@ -191,20 +343,46 @@ export function CustomerRegisterScreen({ navigation }: any) {
               </View>
 
               <Input
+                ref={phoneRef}
                 label="Confirma tu teléfono"
                 value={phone}
                 onChangeText={setPhone}
+                onBlur={() => handleBlur('phone')}
+                error={touched.phone ? errors.phone : undefined}
                 keyboardType="phone-pad"
                 placeholder="Ingresa tu celular"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+                blurOnSubmit={false}
               />
 
               <Input
+                ref={passwordRef}
                 label="Crea tu contraseña"
                 value={password}
                 onChangeText={setPassword}
+                onBlur={() => handleBlur('password')}
+                error={passwordError}
                 secureTextEntry
                 editable={!!phone.trim()}
                 placeholder="Mínimo 6 caracteres"
+                returnKeyType="next"
+                onSubmitEditing={() => confirmPasswordRef.current?.focus()}
+                blurOnSubmit={false}
+              />
+
+              <Input
+                ref={confirmPasswordRef}
+                label="Confirmar contraseña"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                onBlur={() => handleBlur('confirmPassword')}
+                error={confirmPasswordError}
+                secureTextEntry
+                editable={!!phone.trim()}
+                placeholder="Repite tu contraseña"
+                returnKeyType="done"
+                onSubmitEditing={activate}
               />
 
               <Button

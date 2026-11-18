@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import React, {useState, forwardRef} from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -19,18 +19,21 @@ interface Props extends TextInputProps {
   pill?: boolean;
 }
 
-export function Input({
-  label,
-  error,
-  leadingIcon,
-  trailingIcon,
-  onTrailingPress,
-  pill,
-  secureTextEntry,
-  onFocus,
-  onBlur,
-  ...rest
-}: Props) {
+export const Input = forwardRef<TextInput, Props>(function Input(
+  {
+    label,
+    error,
+    leadingIcon,
+    trailingIcon,
+    onTrailingPress,
+    pill,
+    secureTextEntry,
+    onFocus,
+    onBlur,
+    ...rest
+  },
+  ref,
+) {
   const [showPassword, setShowPassword] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const isPill = pill || leadingIcon === 'search' || leadingIcon === 'search-outline';
@@ -61,6 +64,7 @@ export function Input({
           />
         ) : null}
         <TextInput
+          ref={ref}
           placeholderTextColor={Colors.textMuted}
           style={[styles.input, Boolean(iconName) ? {paddingLeft: 0} : null]}
           secureTextEntry={isPassword ? !showPassword : false}
@@ -107,7 +111,7 @@ export function Input({
       {error && <Text style={styles.error}>{error}</Text>}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {gap: 6},

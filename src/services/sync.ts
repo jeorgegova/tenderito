@@ -232,6 +232,52 @@ async function pushPendingCredits(db: any) {
       [item.local_id],
     );
 
+    // Si el crédito fue anulado/cancelado localmente, sincronizar la anulación sin recrearlo
+    if (item.status === 'cancelled') {
+      try {
+        const targetServerId =
+          item.server_id ||
+          (item.local_id && item.local_id.length === 36 && item.local_id.includes('-')
+            ? item.local_id
+            : null);
+
+        if (targetServerId) {
+          const { error: updErr } = await supabase
+            .from('credits')
+            .update({ status: 'cancelled' })
+            .eq('id', targetServerId);
+          if (updErr) throw updErr;
+
+          notifyCustomerMovement({
+            customerId: targetCustomerId,
+            storeId: item.store_id || activeStoreId,
+            type: 'credit',
+            status: 'cancelled',
+            amount: Number(item.amount),
+            concept: item.concept,
+            movementId: targetServerId,
+          }).catch(() => {});
+        }
+
+        const now = new Date().toISOString();
+        await executeQuery(
+          db,
+          `UPDATE credits
+           SET estadoServidor = 'synced', sync_status = 'synced', last_synced_at = ?, updated_at = ?
+           WHERE local_id = ?;`,
+          [now, now, item.local_id],
+        );
+      } catch (err: any) {
+        console.warn(`[Sync] Error sincronizando anulación de crédito ${item.local_id}:`, err?.message);
+        await executeQuery(
+          db,
+          `UPDATE credits SET sync_status = 'error', estadoServidor = 'error' WHERE local_id = ?;`,
+          [item.local_id],
+        );
+      }
+      return;
+    }
+
     try {
       let serverId: string | null = null;
       try {
@@ -356,6 +402,52 @@ async function pushPendingPayments(db: any) {
       `UPDATE payments SET sync_status = 'syncing', estadoServidor = 'syncing' WHERE local_id = ?;`,
       [item.local_id],
     );
+
+    // Si el abono fue anulado/cancelado localmente, sincronizar la anulación sin recrearlo
+    if (item.status === 'cancelled') {
+      try {
+        const targetServerId =
+          item.server_id ||
+          (item.local_id && item.local_id.length === 36 && item.local_id.includes('-')
+            ? item.local_id
+            : null);
+
+        if (targetServerId) {
+          const { error: updErr } = await supabase
+            .from('payments')
+            .update({ status: 'cancelled' })
+            .eq('id', targetServerId);
+          if (updErr) throw updErr;
+
+          notifyCustomerMovement({
+            customerId: targetCustomerId,
+            storeId: item.store_id || activeStoreId,
+            type: 'payment',
+            status: 'cancelled',
+            amount: Number(item.amount),
+            notes: item.notes,
+            movementId: targetServerId,
+          }).catch(() => {});
+        }
+
+        const now = new Date().toISOString();
+        await executeQuery(
+          db,
+          `UPDATE payments
+           SET estadoServidor = 'synced', sync_status = 'synced', last_synced_at = ?, updated_at = ?
+           WHERE local_id = ?;`,
+          [now, now, item.local_id],
+        );
+      } catch (err: any) {
+        console.warn(`[Sync] Error sincronizando anulación de abono ${item.local_id}:`, err?.message);
+        await executeQuery(
+          db,
+          `UPDATE payments SET sync_status = 'error', estadoServidor = 'error' WHERE local_id = ?;`,
+          [item.local_id],
+        );
+      }
+      return;
+    }
 
     try {
       let serverId: string | null = null;
@@ -570,9 +662,9 @@ export async function insertOrReplacePayment(db: any, p: any) {
     db,
     `INSERT OR REPLACE INTO payments (
        local_id, server_id, customer_id, credit_id, store_id,
-       amount, notes, payment_date, estadoServidor, sync_status,
+       amount, notes, status, payment_date, estadoServidor, sync_status,
        last_synced_at, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       localId,
       p.id,
@@ -581,6 +673,7 @@ export async function insertOrReplacePayment(db: any, p: any) {
       p.store_id || '',
       Number(p.amount),
       p.notes || null,
+      p.status || 'completed',
       p.payment_date || now,
       'synced',
       'synced',
@@ -658,7 +751,7 @@ async function pullRemoteData(db: any): Promise<boolean> {
     let payQuery = supabase
       .from('payments')
       .select(
-        'id, store_id, customer_id, credit_id, amount, notes, payment_date, created_at',
+        'id, store_id, customer_id, credit_id, amount, notes, status, payment_date, created_at',
       )
       .eq('store_id', activeStoreId)
       .order('created_at', {ascending: true})

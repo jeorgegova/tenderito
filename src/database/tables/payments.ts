@@ -12,6 +12,7 @@ export async function createPaymentsTable(db: any) {
       store_id TEXT,
       amount REAL NOT NULL,
       notes TEXT,
+      status TEXT DEFAULT 'completed',
       payment_date TEXT,
       estadoServidor TEXT NOT NULL DEFAULT 'sincronizado',
       sync_status TEXT NOT NULL DEFAULT 'sincronizado',
