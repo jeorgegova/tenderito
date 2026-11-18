@@ -26,6 +26,7 @@ import {MagnetFilterBar} from '../components/ui/MagnetFilterBar';
 import {showAlert} from '../utils/alert';
 import {fetchCreditsByCustomer, voidMovement} from '../services/credits';
 import {fetchCustomerById} from '../services/customers';
+import {fetchProfile} from '../services/profile';
 import {fetchPaymentsByCustomer} from '../services/payments';
 import {canCreateCreditForCustomer} from '../services/portfolio';
 import {calculateSubscriptionStatus} from '../services/plans';
@@ -138,7 +139,13 @@ const generateAvailableMonths = (createdAt?: string | null) => {
 export function CustomerDetailScreen({route, navigation}: any) {
   const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
   const {id} = route.params as {id: string};
-  const profile = useStore(s => s.profile);
+  const profileFromStore = useStore(s => s.profile);
+  const {data: profileQuery} = useQuery({
+    queryKey: ['profile'],
+    queryFn: fetchProfile,
+    staleTime: 60000,
+  });
+  const profile = profileQuery || profileFromStore;
   const subStatus = calculateSubscriptionStatus(profile);
   const [creditEligibility, setCreditEligibility] =
     useState<CreditEligibility | null>(null);
@@ -149,6 +156,62 @@ export function CustomerDetailScreen({route, navigation}: any) {
   const [isMonthModalVisible, setIsMonthModalVisible] = useState(false);
   const [searchConcept, setSearchConcept] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () =>
+        profile?.merchant_name ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#FFFFFF',
+              borderWidth: 1.5,
+              borderColor: Colors.border,
+              paddingVertical: 4,
+              paddingHorizontal: 10,
+              borderRadius: 20,
+              maxWidth: 150,
+              marginRight: 6,
+            }}>
+            <View
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: 10,
+                backgroundColor: Colors.primaryLight,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 5,
+              }}>
+              <Ionicons name="person-outline" size={11} color={Colors.primary} />
+            </View>
+            <View style={{flexShrink: 1, minWidth: 0}}>
+              <Text
+                style={{
+                  fontSize: 7.5,
+                  fontWeight: '800',
+                  color: Colors.primary,
+                  textTransform: 'uppercase',
+                  lineHeight: 9,
+                }}>
+                TENDERO
+              </Text>
+              <Text
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: '800',
+                  color: Colors.text,
+                  lineHeight: 13,
+                }}
+                numberOfLines={1}>
+                {profile.merchant_name}
+              </Text>
+            </View>
+          </View>
+        ) : null,
+    });
+  }, [navigation, profile?.merchant_name]);
 
   // Animaciones suaves para la apertura y cierre del buscador
   const searchInputRef = useRef<TextInput>(null);
@@ -366,7 +429,18 @@ export function CustomerDetailScreen({route, navigation}: any) {
     const isCredit = item.kind === 'credit';
     const tipo = isCredit ? 'este fiado' : 'este abono';
 
-    // Validación obligatoria: no dejar cancelar más saldo del que actualmente debe el cliente
+    // 1. Validación de ventana temporal: solo en sus primeras 24 horas de generado
+    const diffHours = (Date.now() - new Date(item.date).getTime()) / (1000 * 60 * 60);
+    if (diffHours > 24) {
+      showAlert({
+        title: 'Tiempo límite superado',
+        message: 'Solo es posible anular movimientos dentro de las primeras 24 horas posteriores a su registro.',
+        type: 'destructive',
+      });
+      return;
+    }
+
+    // 2. Validación obligatoria: no dejar cancelar más saldo del que actualmente debe el cliente
     // para evitar saldos a favor (deuda negativa oculta).
     if (isCredit && item.amount > currentBalance) {
       showAlert({
@@ -899,19 +973,24 @@ export function CustomerDetailScreen({route, navigation}: any) {
 
               {/* Botón Anular Movimiento */}
               <View style={{ width: 28, alignItems: 'center', justifyContent: 'center' }}>
-                {!isCancelled && (
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => handleVoidMovement(item)}
-                    hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
-                    style={styles.voidBtn}>
-                    <Ionicons
-                      name="trash-outline"
-                      size={16}
-                      color={Colors.textSecondary}
-                    />
-                  </TouchableOpacity>
-                )}
+                {!isCancelled && (() => {
+                  const diffHours = (Date.now() - new Date(item.date).getTime()) / (1000 * 60 * 60);
+                  if (diffHours > 24) return null;
+
+                  return (
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => handleVoidMovement(item)}
+                      hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+                      style={styles.voidBtn}>
+                      <Ionicons
+                        name="trash-outline"
+                        size={16}
+                        color={Colors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  );
+                })()}
               </View>
             </View>
           );

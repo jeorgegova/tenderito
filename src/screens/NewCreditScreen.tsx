@@ -16,7 +16,7 @@ import {Input} from '../components/ui/Input';
 import {showAlert} from '../components/ui/AlertModal';
 import {CreateCustomerModal} from '../components/CreateCustomerModal';
 import {createCredit} from '../services/credits';
-import {fetchCustomers} from '../services/customers';
+import {fetchCustomers, fetchCustomerById} from '../services/customers';
 import {canCreateCreditForCustomer} from '../services/portfolio';
 import {useStore} from '../store/useStore';
 import {Colors, Radius, formatCOP} from '../theme';
@@ -24,7 +24,7 @@ import {FormatMoney, parseMoney, getBogotaTodayYMD} from '../utils/format';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useMutationWithSync} from '../hooks/useMutationWithSync';
 import {useResponsive} from '../hooks/useResponsive';
-import type {CreditEligibility} from '../types';
+import type {CreditEligibility, Customer} from '../types';
 
 const QUICK_CONCEPTS = [
   'Mercado semanal',
@@ -40,7 +40,13 @@ const QUICK_AMOUNTS = [5000, 10000, 20000, 50000, 100000];
 export function NewCreditScreen({route, navigation}: any) {
   const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
   const initialId = route.params?.customerId as string | undefined;
-  const [customer_id, setCustomerId] = useState(initialId ?? '');
+  const initialCustomer = route.params?.customer as Customer | undefined;
+  const [customer_id, setCustomerId] = useState(
+    initialId ?? initialCustomer?.id ?? initialCustomer?.server_id ?? initialCustomer?.local_id ?? '',
+  );
+  const [createdCustomerFallback, setCreatedCustomerFallback] = useState<Customer | null>(
+    initialCustomer || null,
+  );
   const [concept, setConcept] = useState('');
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -50,12 +56,45 @@ export function NewCreditScreen({route, navigation}: any) {
   const insets = useSafeAreaInsets();
   const profile = useStore(s => s.profile);
 
+  useEffect(() => {
+    if (initialId && initialId !== customer_id) {
+      setCustomerId(initialId);
+    }
+    if (route.params?.customer) {
+      setCreatedCustomerFallback(route.params.customer);
+      const cid = route.params.customer.id || route.params.customer.server_id || route.params.customer.local_id;
+      if (cid && cid !== customer_id) {
+        setCustomerId(cid);
+      }
+    }
+  }, [initialId, route.params?.customer]);
+
   const {data: customers} = useQuery({
     queryKey: ['customers-all'],
     queryFn: () => fetchCustomers(),
   });
 
-  const selectedCustomer = customers?.find(c => c.id === customer_id);
+  const {data: customerById} = useQuery({
+    queryKey: ['customer', customer_id],
+    queryFn: () => fetchCustomerById(customer_id),
+    enabled: Boolean(customer_id),
+  });
+
+  const selectedCustomer =
+    customers?.find(
+      c =>
+        c.id === customer_id ||
+        (c.local_id && c.local_id === customer_id) ||
+        (c.server_id && c.server_id === customer_id),
+    ) ||
+    customerById ||
+    (createdCustomerFallback &&
+    (createdCustomerFallback.id === customer_id ||
+      createdCustomerFallback.server_id === customer_id ||
+      createdCustomerFallback.local_id === customer_id ||
+      !customer_id)
+      ? createdCustomerFallback
+      : undefined);
   const numericAmount = parseMoney(amount);
   const currentBalance = Number(selectedCustomer?.current_balance ?? 0);
   const creditLimit = Number(selectedCustomer?.credit_limit ?? 0);
@@ -506,8 +545,11 @@ export function NewCreditScreen({route, navigation}: any) {
         onClose={() => setShowNewCustomerModal(false)}
         existingCustomers={customers}
         onCustomerCreated={newCust => {
-          setCustomerId(newCust.id);
+          setCreatedCustomerFallback(newCust);
+          const cid = newCust.id || newCust.server_id || newCust.local_id || '';
+          setCustomerId(cid);
           setCustomerSearch('');
+          setShowNewCustomerModal(false);
         }}
       />
     </View>

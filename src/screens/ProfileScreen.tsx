@@ -25,53 +25,8 @@ import {
   fetchUserStores,
 } from '../services/storeContext';
 import {syncAll} from '../services/sync';
+import {fetchProfile} from '../services/profile';
 import type {SubscriptionPlanItem} from '../types';
-
-async function fetchProfile() {
-  const {
-    data: {user},
-  } = await supabase.auth.getUser();
-  if (!user) {
-    throw new Error('No autenticado');
-  }
-  const {data, error} = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
-  if (error) {
-    throw error;
-  }
-
-  // Integrar datos de la tienda activa actual
-  try {
-    const activeStoreId = await getActiveStoreId();
-    let storeQuery = supabase
-      .from('stores')
-      .select('store_name, subscription_plan, subscription_start_date, subscription_end_date, subscription_status');
-
-    if (activeStoreId) {
-      storeQuery = storeQuery.eq('id', activeStoreId);
-    } else {
-      storeQuery = storeQuery.eq('owner_id', user.id).limit(1);
-    }
-
-    const {data: storeData} = await storeQuery.maybeSingle();
-
-    if (storeData) {
-      return {
-        ...data,
-        store_name: storeData.store_name || data.store_name,
-        subscription_plan: data.subscription_plan || storeData.subscription_plan || 'free',
-        subscription_start_date: data.subscription_start_date || storeData.subscription_start_date,
-        subscription_end_date: data.subscription_end_date || storeData.subscription_end_date,
-        subscription_status: data.subscription_status || storeData.subscription_status,
-      };
-    }
-  } catch (_e) {}
-
-  return data;
-}
 
 export function ProfileScreen({navigation}: any) {
   const {isSmall, isTablet, tabletContainerStyle} = useResponsive();

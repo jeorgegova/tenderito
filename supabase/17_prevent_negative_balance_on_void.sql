@@ -1,12 +1,13 @@
 -- ============================================================
 -- 17_prevent_negative_balance_on_void.sql
--- Tenderito: Protección contra saldos a favor al anular fiados
--- y corrección del mensaje de notificación push en anulaciones.
+-- Tenderito: Protección contra saldos a favor al anular fiados,
+-- restricción de anulación a 24 horas y corrección de notificaciones.
 -- ============================================================
 
--- 1. Función y trigger para evitar anular un fiado si el cliente tiene
--- abonos aplicados que superarían los fiados activos restantes (lo cual
--- generaría un saldo a favor oculto).
+-- 1. Función y trigger para créditos:
+--    a) Validar que no hayan pasado más de 24 horas desde su creación.
+--    b) Validar que los abonos aplicados no superen los fiados activos restantes
+--       (evitando saldos a favor).
 create or replace function public.tg_validate_credit_cancellation()
 returns trigger language plpgsql security definer set search_path = public
 as $$
@@ -14,9 +15,13 @@ declare
   v_remaining_credits numeric;
   v_active_payments numeric;
 begin
-  -- Solo validar cuando se está cancelando un fiado que estaba activo
   if (tg_op = 'UPDATE' and new.status = 'cancelled' and coalesce(old.status, '') != 'cancelled') then
-    -- Suma de fiados activos del cliente excluyendo el que se está anulando
+    -- 1. Restricción temporal: solo en las primeras 24 horas
+    if (new.created_at < now() - interval '24 hours') then
+      raise exception 'No es posible anular este fiado porque ya han transcurrido más de 24 horas desde su registro.';
+    end if;
+
+    -- 2. Suma de fiados activos del cliente excluyendo el que se está anulando
     select coalesce(sum(amount), 0) into v_remaining_credits
     from public.credits
     where customer_id = new.customer_id
@@ -24,7 +29,7 @@ begin
       and status != 'cancelled'
       and id != new.id;
 
-    -- Suma de abonos activos del cliente
+    -- 3. Suma de abonos activos del cliente
     select coalesce(sum(amount), 0) into v_active_payments
     from public.payments
     where customer_id = new.customer_id
@@ -47,7 +52,28 @@ create trigger trg_validate_credit_cancel
   before update on public.credits
   for each row execute function public.tg_validate_credit_cancellation();
 
--- 2. Asegurar que el trigger de recálculo de saldo siga activo y consistente
+-- 2. Función y trigger para abonos (payments):
+--    Validar que no hayan pasado más de 24 horas desde su creación.
+create or replace function public.tg_validate_payment_cancellation()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  if (tg_op = 'UPDATE' and new.status = 'cancelled' and coalesce(old.status, '') != 'cancelled') then
+    if (new.created_at < now() - interval '24 hours') then
+      raise exception 'No es posible anular este abono porque ya han transcurrido más de 24 horas desde su registro.';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_validate_payment_cancel on public.payments;
+create trigger trg_validate_payment_cancel
+  before update on public.payments
+  for each row execute function public.tg_validate_payment_cancellation();
+
+-- 3. Asegurar que el trigger de recálculo de saldo siga activo y consistente
 create or replace function public.recalc_store_customer_balance(
   p_customer_id uuid, p_store_id uuid
 )

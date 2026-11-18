@@ -461,6 +461,20 @@ export function CustomerHomeScreen() {
             <Ionicons name="arrow-back" size={20} color={Colors.primary} />
             <Text style={styles.backBtnText}>Volver a mis tiendas</Text>
           </TouchableOpacity>
+
+          {customerName ? (
+            <View style={styles.sessionBadge}>
+              <View style={styles.sessionAvatar}>
+                <Ionicons name="person-outline" size={13} color="#059669" />
+              </View>
+              <View style={styles.sessionCol}>
+                <Text style={styles.sessionRole}>CLIENTE</Text>
+                <Text style={styles.sessionName} numberOfLines={1}>
+                  {customerName}
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </View>
 
         <ScrollView
@@ -1087,7 +1101,12 @@ export function CustomerHomeScreen() {
           isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' },
         ]}>
         <View style={styles.flexOne}>
-          <Text style={styles.headerGreeting}>¡Hola, {customerName}!</Text>
+          <View style={styles.headerTitleRow}>
+            <Text style={styles.headerGreeting}>¡Hola, {customerName}!</Text>
+            <View style={styles.customerRoleTag}>
+              <Text style={styles.customerRoleTagText}>Cliente</Text>
+            </View>
+          </View>
           <Text style={styles.headerSubtitle}>
             Tus cuentas en tiendas de barrio
           </Text>
@@ -1315,6 +1334,27 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.text,
   },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  customerRoleTag: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  customerRoleTagText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#059669',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   headerSubtitle: {
     fontSize: 13,
     color: Colors.textSecondary,
@@ -1533,6 +1573,53 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sessionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    maxWidth: 160,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  sessionAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  sessionCol: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  sessionRole: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#059669',
+    lineHeight: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sessionName: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.text,
+    lineHeight: 14,
+    marginTop: 1,
   },
   backBtn: {
     flexDirection: 'row',

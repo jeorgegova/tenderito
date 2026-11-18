@@ -8,6 +8,7 @@ import {useStore} from '../store/useStore';
 import {notifyCustomerMovement} from './deviceService';
 import {refreshSubscriptionLifecycle} from './portfolio';
 import {getActiveStoreId, clearStoreContext} from './storeContext';
+import {fetchProfile} from './profile';
 
 export {getActiveStoreId, clearStoreContext};
 
@@ -804,19 +805,7 @@ async function pullRemoteData(db: any): Promise<boolean> {
 
     // 6. Actualización de perfil del usuario
     try {
-      const {
-        data: {user},
-      } = await supabase.auth.getUser();
-      if (user) {
-        const {data: profileData} = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .maybeSingle();
-        if (profileData) {
-          useStore.getState().setProfile(profileData as any);
-        }
-      }
+      await fetchProfile();
     } catch (_profErr) {}
 
     // Marcar descarga inicial completada con éxito

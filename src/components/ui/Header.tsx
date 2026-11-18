@@ -1,5 +1,8 @@
+import React from 'react';
 import {StyleSheet, Text, View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import Ionicons from '@react-native-vector-icons/ionicons';
+import {useStore} from '../../store/useStore';
 import {Colors} from '../../theme';
 import {useResponsive} from '../../hooks/useResponsive';
 
@@ -8,14 +11,21 @@ export function Header({
   subtitle,
   showCurve = false,
   rightElement,
+  sessionName,
+  sessionRole,
 }: {
   title: string;
   subtitle?: string;
   showCurve?: boolean;
   rightElement?: React.ReactNode;
+  sessionName?: string;
+  sessionRole?: string;
 }) {
   const insets = useSafeAreaInsets();
   const {isSmall, isTablet, maxContentWidth} = useResponsive();
+  const profile = useStore(s => s.profile);
+  const activeName = sessionName || profile?.merchant_name;
+  const activeRole = sessionRole || (profile ? 'Tendero' : '');
 
   return (
     <View
@@ -62,7 +72,23 @@ export function Header({
             </Text>
           ) : null}
         </View>
-        {rightElement ? <View style={styles.rightWrap}>{rightElement}</View> : null}
+        {rightElement ? (
+          <View style={styles.rightWrap}>{rightElement}</View>
+        ) : activeName ? (
+          <View style={styles.sessionBadge}>
+            <View style={styles.sessionAvatar}>
+              <Ionicons name="person-outline" size={13} color={Colors.primary} />
+            </View>
+            <View style={styles.sessionCol}>
+              {activeRole ? (
+                <Text style={styles.sessionRole}>{activeRole}</Text>
+              ) : null}
+              <Text style={styles.sessionName} numberOfLines={1}>
+                {activeName}
+              </Text>
+            </View>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -161,6 +187,53 @@ const styles = StyleSheet.create({
   subtitleSmall: {
     fontSize: 12.5,
     marginTop: 2,
+  },
+  sessionBadge: {
+    marginLeft: 12,
+    alignSelf: 'flex-start',
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    maxWidth: 160,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  sessionAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  sessionCol: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  sessionRole: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: Colors.primary,
+    lineHeight: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sessionName: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: Colors.text,
+    lineHeight: 14,
+    marginTop: 1,
   },
 });
 

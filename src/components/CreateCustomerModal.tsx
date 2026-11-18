@@ -9,12 +9,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { Input } from './ui/Input';
@@ -26,6 +27,7 @@ import {
   findCustomerByDocument,
   linkCustomerToStore,
 } from '../services/customers';
+import { fetchProfile } from '../services/profile';
 import { useStore } from '../store/useStore';
 import { calculateSubscriptionStatus } from '../services/plans';
 import { Colors, formatCOP } from '../theme';
@@ -59,7 +61,13 @@ export function CreateCustomerModal({
   const navigation = useNavigation<any>();
   const { isSmall, isTablet } = useResponsive();
   const queryClient = useQueryClient();
-  const profile = useStore(s => s.profile);
+  const profileFromStore = useStore(s => s.profile);
+  const { data: profileQuery } = useQuery({
+    queryKey: ['profile'],
+    queryFn: fetchProfile,
+    staleTime: 60000,
+  });
+  const profile = profileQuery || profileFromStore;
   const subStatus = calculateSubscriptionStatus(profile);
 
   const [name, setName] = useState('');
@@ -93,7 +101,8 @@ export function CreateCustomerModal({
   }
 
   function handleDocumentChange(value: string) {
-    setDocumentNumber(value);
+    const val = value.replace(/[^0-9]/g, '');
+    setDocumentNumber(val);
     if (verified) {
       setVerified(false);
       setFoundCustomer(null);
@@ -152,16 +161,27 @@ export function CreateCustomerModal({
     }
   }, [verified, fadeAnim, slideAnim]);
 
-  const isAlreadyLinked = React.useMemo(() => {
-    if (!foundCustomer) return false;
-    if (foundCustomer.isLinkedToMyStore) return true;
-    const docClean = (documentNumber || '').trim();
-    return existingCustomers.some(
-      c =>
-        (c.document_number && c.document_number.trim() === docClean) ||
-        c.id === foundCustomer.id,
-    );
+  const matchedCustomer = React.useMemo(() => {
+    const docClean = (documentNumber || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+    if (!docClean && !foundCustomer) return null;
+    return existingCustomers.find(c => {
+      const cDocClean = (c.document_number || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+      const matchDoc = Boolean(docClean && cDocClean && docClean === cDocClean);
+      const matchId = Boolean(
+        foundCustomer && (
+          (c.id && (c.id === foundCustomer.id || c.id === foundCustomer.server_id || c.id === foundCustomer.local_id)) ||
+          (c.server_id && (c.server_id === foundCustomer.id || c.server_id === foundCustomer.server_id)) ||
+          (c.local_id && (c.local_id === foundCustomer.id || c.local_id === foundCustomer.local_id))
+        )
+      );
+      return matchDoc || matchId;
+    });
   }, [foundCustomer, documentNumber, existingCustomers]);
+
+  const isAlreadyLinked = Boolean(
+    foundCustomer?.isLinkedToMyStore || matchedCustomer,
+  );
+  const targetCustomer = matchedCustomer || foundCustomer;
 
   async function onCheckDocument() {
     if (!documentNumber.trim()) {
@@ -172,27 +192,24 @@ export function CreateCustomerModal({
       const customer = await findCustomerByDocument(documentNumber.trim());
       setFoundCustomer(customer);
       setVerified(true);
-      if (customer) {
-        setName(customer.name);
-        setPhone(customer.phone ?? '');
-        setEmail(customer.email ?? '');
-
-        const alreadyLinked =
-          customer.isLinkedToMyStore ||
-          existingCustomers.some(
-            c =>
-              (c.document_number &&
-                c.document_number.trim() === documentNumber.trim()) ||
-              c.id === customer.id,
-          );
-
-        if (alreadyLinked) {
-          showAlert({
-            title: 'Cliente ya vinculado',
-            message: `"${customer.alias || customer.name}" ya se encuentra registrado y vinculado a tu tienda.`,
-            type: 'warning',
-          });
-        } else {
+      const docClean = documentNumber.replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+      const localMatch = existingCustomers.find(c => {
+        const cDocClean = (c.document_number || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+        return Boolean(docClean && cDocClean && docClean === cDocClean);
+      });
+      const target = localMatch || customer;
+      if (target) {
+        setName(target.name);
+        setPhone(target.phone ?? '');
+        setEmail(target.email ?? '');
+        if (target.credit_limit) {
+          setCreditLimit(FormatMoney(String(target.credit_limit)));
+        }
+        if (target.alias) {
+          setAlias(target.alias);
+        }
+        const alreadyLinked = Boolean(customer?.isLinkedToMyStore || localMatch);
+        if (!alreadyLinked) {
           showAlert(
             'Cliente encontrado',
             'El cliente está registrado en Tenderito. Revisa sus datos y define el tope de crédito para vincularlo a tu tienda.',
@@ -210,6 +227,10 @@ export function CreateCustomerModal({
   }
 
   async function onCreate() {
+    if (isAlreadyLinked) {
+      return;
+    }
+
     const check = await canCreateCustomer(profile);
     if (!check.allowed) {
       return showAlert({
@@ -317,7 +338,13 @@ export function CreateCustomerModal({
                     label="Identificación"
                     value={documentNumber}
                     onChangeText={handleDocumentChange}
-                    keyboardType="number-pad"
+                    keyboardType="numeric"
+                    returnKeyType="search"
+                    onSubmitEditing={() => {
+                      if (!checkingDocument && documentNumber.trim()) {
+                        onCheckDocument();
+                      }
+                    }}
                     placeholder="123456789"
                   />
                 </View>
@@ -341,9 +368,18 @@ export function CreateCustomerModal({
                     transform: [{ translateY: slideAnim }],
                     gap: 12,
                   }}>
-                  {foundCustomer ? (
-                    isAlreadyLinked ? (
-                      <View style={styles.alreadyLinkedCard}>
+                  {isAlreadyLinked && targetCustomer ? (
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        const custId = targetCustomer.id || targetCustomer.server_id || targetCustomer.local_id;
+                        resetForm();
+                        onClose();
+                        navigation.navigate('CustomerDetail', {
+                          id: custId,
+                        });
+                      }}
+                      style={styles.alreadyLinkedCard}>
                         <View style={styles.alreadyLinkedHeader}>
                           <View style={styles.alreadyLinkedIconWrap}>
                             <Ionicons
@@ -360,20 +396,31 @@ export function CreateCustomerModal({
                               Este cliente ya forma parte de tu libreta de fiados.
                             </Text>
                           </View>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={18}
+                            color={Colors.primary}
+                          />
                         </View>
                         <View style={styles.alreadyLinkedDivider} />
                         <View style={styles.alreadyLinkedInfo}>
                           <Text style={styles.alreadyLinkedName}>
-                            {foundCustomer.alias || foundCustomer.name}
+                            {targetCustomer.alias || targetCustomer.name}
                           </Text>
                           <Text style={styles.alreadyLinkedSub}>
-                            {foundCustomer.document_type || 'CC'}{' '}
-                            {foundCustomer.document_number} ·{' '}
-                            {foundCustomer.phone || 'Sin teléfono'}
+                            {targetCustomer.document_type || 'CC'}{' '}
+                            {targetCustomer.document_number} ·{' '}
+                            {targetCustomer.phone || 'Sin teléfono'}
                           </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                            <Text style={{ fontSize: 11.5, fontWeight: '800', color: Colors.primary }}>
+                              Ver cartera y detalles
+                            </Text>
+                            <Ionicons name="chevron-forward" size={12} color={Colors.primary} />
+                          </View>
                         </View>
-                      </View>
-                    ) : (
+                      </TouchableOpacity>
+                    ) : foundCustomer ? (
                       <>
                         <Card style={{ gap: 4 }}>
                           <Text style={styles.name}>{foundCustomer.name}</Text>
@@ -412,9 +459,8 @@ export function CreateCustomerModal({
                           placeholder="Ej. Juan de la esquina"
                         />
                       </>
-                    )
-                  ) : (
-                    <>
+                    ) : (
+                      <>
                       <Input
                         label="Nombre completo"
                         value={name}
@@ -461,29 +507,36 @@ export function CreateCustomerModal({
                 { paddingBottom: insets.bottom + 12 },
               ]}>
               {verified ? (
-                isAlreadyLinked ? (
+                isAlreadyLinked && targetCustomer ? (
                   <View style={{ gap: 8 }}>
                     <Button
-                      title="Ver detalles del cliente"
+                      title="Usar este cliente"
                       onPress={() => {
+                        const cust = targetCustomer;
+                        const custId = cust?.id || cust?.server_id || cust?.local_id;
                         resetForm();
                         onClose();
-                        navigation.navigate('CustomerDetail', {
-                          id: foundCustomer?.id,
+                        if (onCustomerCreated && cust) {
+                          onCustomerCreated(cust);
+                        }
+                        navigation.navigate('NewCredit', {
+                          customerId: custId,
+                          customer: cust,
                         });
                       }}
                     />
-                    {onCustomerCreated ? (
-                      <Button
-                        title="Usar este cliente"
-                        variant="secondary"
-                        onPress={() => {
-                          resetForm();
-                          onClose();
-                          onCustomerCreated(foundCustomer);
-                        }}
-                      />
-                    ) : null}
+                    <Button
+                      title="Ver detalles del cliente"
+                      variant="secondary"
+                      onPress={() => {
+                        const custId = targetCustomer?.id || targetCustomer?.server_id || targetCustomer?.local_id;
+                        resetForm();
+                        onClose();
+                        navigation.navigate('CustomerDetail', {
+                          id: custId,
+                        });
+                      }}
+                    />
                   </View>
                 ) : (
                   <Button

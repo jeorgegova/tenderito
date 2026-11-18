@@ -234,8 +234,7 @@ export async function voidMovement(params: {
   const now = new Date().toISOString();
 
   if (kind === 'credit') {
-    // 1. Validar que no se cancele más saldo del que el cliente debe actualmente
-    // para evitar saldos a favor (deuda negativa oculta).
+    // 1. Validar ventana de 24 horas y saldo deudor del cliente
     const custRows = await getData(
       db,
       'SELECT current_balance, server_id FROM customers WHERE (local_id = ? OR server_id = ?) LIMIT 1;',
@@ -253,9 +252,18 @@ export async function voidMovement(params: {
     await executeInTransaction(db, async () => {
       const rows = await getData(
         db,
-        'SELECT server_id, local_id FROM credits WHERE (server_id = ? OR local_id = ?) LIMIT 1;',
+        'SELECT server_id, local_id, created_at FROM credits WHERE (server_id = ? OR local_id = ?) LIMIT 1;',
         [id, id],
       );
+
+      const createdAt = rows[0]?.created_at;
+      if (createdAt) {
+        const hours = (Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60);
+        if (hours > 24) {
+          throw new Error('Solo es posible anular fiados dentro de sus primeras 24 horas de registro.');
+        }
+      }
+
       const serverId = rows[0]?.server_id || (id.includes('-') && id.length === 36 ? id : null);
 
       await executeQuery(
@@ -310,9 +318,18 @@ export async function voidMovement(params: {
     await executeInTransaction(db, async () => {
       const rows = await getData(
         db,
-        'SELECT server_id, local_id FROM payments WHERE (server_id = ? OR local_id = ?) LIMIT 1;',
+        'SELECT server_id, local_id, created_at FROM payments WHERE (server_id = ? OR local_id = ?) LIMIT 1;',
         [id, id],
       );
+
+      const createdAt = rows[0]?.created_at;
+      if (createdAt) {
+        const hours = (Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60);
+        if (hours > 24) {
+          throw new Error('Solo es posible anular abonos dentro de sus primeras 24 horas de registro.');
+        }
+      }
+
       const serverId = rows[0]?.server_id || (id.includes('-') && id.length === 36 ? id : null);
 
       await executeQuery(

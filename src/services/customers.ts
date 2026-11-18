@@ -254,12 +254,15 @@ export async function findCustomerByDocument(
   documentNumber: string,
 ): Promise<Customer | null> {
   const activeStoreId = await getActiveStoreId();
+  const cleanDoc = (documentNumber || '').trim();
+  const digitsOnly = cleanDoc.replace(/[^0-9A-Za-z]/g, '');
 
   // 1. Buscar en SQLite local
   try {
     const db = await getDbConnection();
-    let query = 'SELECT * FROM customers WHERE document_number = ?';
-    const params: any[] = [documentNumber];
+    let query =
+      'SELECT * FROM customers WHERE (document_number = ? OR replace(replace(replace(document_number, ".", ""), "-", ""), " ", "") = ?)';
+    const params: any[] = [cleanDoc, digitsOnly];
     if (activeStoreId) {
       query +=
         ' AND (store_id = ? OR store_id IS NULL OR store_id = "" OR store_id = "null")';
@@ -271,6 +274,8 @@ export async function findCustomerByDocument(
       const r = rows[0];
       return {
         id: r.server_id || r.local_id,
+        server_id: r.server_id,
+        local_id: r.local_id,
         name: r.name,
         document_type: r.document_type,
         document_number: r.document_number,
@@ -289,7 +294,7 @@ export async function findCustomerByDocument(
   // 2. Buscar en Supabase si hay red
   try {
     const {data, error} = await supabase.rpc('find_customer_by_document', {
-      p_document_number: documentNumber,
+      p_document_number: cleanDoc,
     });
     if (!error && data && data.length > 0) {
       const found = data[0] as any;
@@ -298,22 +303,39 @@ export async function findCustomerByDocument(
       try {
         let storeLinkQuery = supabase
           .from('customer_stores')
-          .select('alias, credit_limit, current_balance')
+          .select('alias, credit_limit, current_balance, store_id')
           .eq('customer_id', found.id);
 
         if (activeStoreId) {
           storeLinkQuery = storeLinkQuery.eq('store_id', activeStoreId);
         }
 
-        const {data: storeLink} = await storeLinkQuery.maybeSingle();
-        if (storeLink) {
+        const {data: storeLinks} = await storeLinkQuery.limit(5);
+        if (storeLinks && storeLinks.length > 0) {
           isLinked = true;
-          extraData = storeLink;
+          extraData = storeLinks[0];
         }
       } catch (_linkErr) {}
 
+      // Verificación cruzada con SQLite local
+      if (!isLinked) {
+        try {
+          const db = await getDbConnection();
+          const localCheck = await getData(
+            db,
+            'SELECT local_id, alias, credit_limit, current_balance FROM customers WHERE (server_id = ? OR local_id = ?) LIMIT 1;',
+            [found.id, found.id],
+          );
+          if (localCheck.length > 0) {
+            isLinked = true;
+            extraData = { ...extraData, ...localCheck[0] };
+          }
+        } catch (_localErr) {}
+      }
+
       return {
         id: found.id,
+        server_id: found.id,
         name: found.name,
         document_type: found.document_type,
         document_number: found.document_number,

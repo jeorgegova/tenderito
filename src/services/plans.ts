@@ -225,8 +225,10 @@ export function calculateSubscriptionStatus(
   const daysDiff = Math.round((tToday - tEnd) / (1000 * 60 * 60 * 24));
 
   // Si pasaron más de los días de gracia (10 días), vuelve automáticamente al plan Free
-  const isDowngradedToFree = isExpired && daysDiff > gracePeriodDays;
-  const inGracePeriod = isExpired && daysDiff <= gracePeriodDays;
+  const statusStr = (profile?.subscription_status || '').toLowerCase();
+  const isExplicitlyActive = statusStr === 'active';
+  const isDowngradedToFree = !isExplicitlyActive && isExpired && daysDiff > gracePeriodDays;
+  const inGracePeriod = !isExplicitlyActive && isExpired && daysDiff <= gracePeriodDays;
 
   // El plan efectivo es el contratado a menos que ya hayan pasado los 10 días de gracia
   const effectivePlan = isDowngradedToFree ? 'free' : planId;

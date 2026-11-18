@@ -101,6 +101,25 @@ export async function getActiveStoreId(): Promise<string | null> {
         } catch (_dbErr) {}
         return memoryStoreId;
       }
+
+      // 3b. Fallback: Buscar en stores donde owner_id = user.id
+      const { data: storeOwner } = await supabase
+        .from('stores')
+        .select('id')
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (storeOwner?.id) {
+        memoryStoreId = storeOwner.id;
+        await AsyncStorage.setItem(ACTIVE_STORE_KEY, storeOwner.id);
+        try {
+          const db = await getDbConnection();
+          await saveConfigParam(db, 'active_store_id', storeOwner.id);
+        } catch (_dbErr) {}
+        return memoryStoreId;
+      }
     } catch (_e) {
       // Sin red o error al consultar Supabase
     } finally {

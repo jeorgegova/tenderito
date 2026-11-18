@@ -2,6 +2,7 @@ import {Linking} from 'react-native';
 import {getDbConnection, getData} from '../database/db';
 import {getActiveStoreId} from './storeContext';
 import {BOGOTA_TZ} from '../utils/format';
+import {formatCOP} from '../theme';
 import {showAlert} from '../components/ui/AlertModal';
 
 export interface StatsFilters {
@@ -21,6 +22,7 @@ export interface CustomerStatRow {
   current_balance: number; // Saldo pendiente actual vivo
   period_credits: number;  // Fiado en el período
   period_payments: number; // Abonado en el período
+  period_pending_credits: number; // Cuánto de lo fiado en el período sigue pendiente hoy
   period_credits_count: number;
   period_payments_count: number;
   status: CustomerDebtStatus;
@@ -28,6 +30,21 @@ export interface CustomerStatRow {
   oldest_debt_date: string | null;
   last_payment_date: string | null;
   days_since_last_payment: number | null;
+}
+
+export interface AttentionCustomer extends CustomerStatRow {
+  attention_reason: 'oldest_debt' | 'top_debtor' | 'no_payments' | 'long_time_no_payment';
+  attention_badge: string;
+}
+
+export interface CustomerConsolidation {
+  selectedCount: number;
+  selectedCreditsTotal: number;
+  selectedPaymentsTotal: number;
+  selectedCreditsPendingTotal: number;
+  selectedCurrentBalance: number;
+  selectedCreditsCount: number;
+  selectedPaymentsCount: number;
 }
 
 export interface StatsAlerts {
@@ -45,25 +62,30 @@ export interface PeriodComparison {
 
 export interface StatsResult {
   // 1. Estado Actual de la Cartera (Estático frente al filtro de fechas)
-  currentTotalReceivable: number; // Dinero que te deben hoy
-  customersWithDebtCount: number; // Cantidad de clientes con deuda
-  customersUpToDateCount: number; // Cantidad de clientes al día
+  currentTotalReceivable: number; // Dinero que te deben hoy (Global negocio)
+  customersWithDebtCount: number; // Cantidad de clientes con deuda (Global negocio)
+  customersUpToDateCount: number; // Cantidad de clientes al día (Global negocio)
   totalCustomersCount: number;    // Total clientes registrados
 
   // 2. Flujo del Período (Dinámico, obedece al filtro de fechas)
-  periodCreditsTotal: number;     // Total fiado durante el período
-  periodPaymentsTotal: number;    // Total recibido en abonos durante el período
-  periodCreditsCount: number;     // Cantidad de fiados registrados
-  periodPaymentsCount: number;    // Cantidad de abonos registrados
+  periodCreditsTotal: number;        // Total fiado durante el período (Global negocio)
+  periodPaymentsTotal: number;       // Total recibido en abonos durante el período (Global negocio)
+  periodCreditsPendingTotal: number; // Total fiado en el período que sigue pendiente hoy
+  periodCreditsCount: number;        // Cantidad de fiados registrados
+  periodPaymentsCount: number;       // Cantidad de abonos registrados
   periodComparison: PeriodComparison;
 
-  // 3. Alertas y Consejos determinísticos
+  // 3. Alertas y Atención Prioritaria
   alerts: StatsAlerts;
+  attentionList: AttentionCustomer[];
   insights: {
     messages: string[];
   };
 
-  // 4. Filas de clientes
+  // 4. Consolidado de clientes filtrados/seleccionados (Para Sección 3)
+  consolidation: CustomerConsolidation;
+
+  // 5. Filas de clientes
   rows: CustomerStatRow[];
 
   // Compatibilidad hacia atrás
@@ -158,6 +180,7 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
     totalCustomersCount: 0,
     periodCreditsTotal: 0,
     periodPaymentsTotal: 0,
+    periodCreditsPendingTotal: 0,
     periodCreditsCount: 0,
     periodPaymentsCount: 0,
     periodComparison: {
@@ -171,7 +194,17 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
       topPayerCustomer: null,
       topDebtorCustomer: null,
     },
+    attentionList: [],
     insights: { messages: [] },
+    consolidation: {
+      selectedCount: 0,
+      selectedCreditsTotal: 0,
+      selectedPaymentsTotal: 0,
+      selectedCreditsPendingTotal: 0,
+      selectedCurrentBalance: 0,
+      selectedCreditsCount: 0,
+      selectedPaymentsCount: 0,
+    },
     rows: [],
     totalCredits: 0,
     totalPayments: 0,
@@ -348,9 +381,10 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
         }
       }
 
-      // 1. Antigüedad de la deuda viva mediante FIFO
+      // 1. Antigüedad de la deuda viva mediante FIFO y dinero fiado del período pendiente
       let debtDays = 0;
       let oldestDebtDate: string | null = null;
+      let custPeriodPendingCredits = 0;
 
       if (balance > 0) {
         const sortedCredits = [...custCredits].sort((a, b) => {
@@ -375,6 +409,20 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
         } else if (cust.created_at) {
           oldestDebtDate = cust.created_at;
           debtDays = calculateDaysDifference(todayYMD, oldestDebtDate);
+        }
+
+        // Cálculo exacto del dinero fiado en este período que sigue pendiente hoy
+        let remDebt = balance;
+        for (const cr of sortedCredits) {
+          if (remDebt <= 0) break;
+          const crAmt = Number(cr.amount || 0);
+          const pendingThisCr = Math.min(crAmt, remDebt);
+          remDebt -= pendingThisCr;
+
+          const ymd = toBogotaYMD(cr.created_at);
+          if ((!from || ymd >= from) && (!to || ymd <= to)) {
+            custPeriodPendingCredits += pendingThisCr;
+          }
         }
       }
 
@@ -415,6 +463,7 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
         current_balance: balance,
         period_credits: custPeriodCredits,
         period_payments: custPeriodPayments,
+        period_pending_credits: custPeriodPendingCredits,
         period_credits_count: custPeriodCreditsCount,
         period_payments_count: custPeriodPaymentsCount,
         status,
@@ -425,7 +474,38 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
       });
     }
 
-    // Ordenamiento recomendado:
+    // Cálculo global del dinero fiado en el período que sigue pendiente en todo el negocio
+    let periodCreditsPendingTotal = 0;
+    for (const cust of custRows) {
+      const balance = Math.max(0, Number(cust.current_balance || 0));
+      if (balance <= 0) continue;
+
+      const custCredits = [
+        ...(creditsByCustomer.get(cust.local_id) ?? []),
+        ...(cust.server_id ? (creditsByCustomer.get(cust.server_id) ?? []) : []),
+      ];
+
+      const sortedCredits = [...custCredits].sort((a, b) => {
+        const tA = new Date(a.created_at || '').getTime() || 0;
+        const tB = new Date(b.created_at || '').getTime() || 0;
+        return tB - tA;
+      });
+
+      let remDebt = balance;
+      for (const cr of sortedCredits) {
+        if (remDebt <= 0) break;
+        const crAmt = Number(cr.amount || 0);
+        const pendingThisCr = Math.min(crAmt, remDebt);
+        remDebt -= pendingThisCr;
+
+        const ymd = toBogotaYMD(cr.created_at);
+        if ((!from || ymd >= from) && (!to || ymd <= to)) {
+          periodCreditsPendingTotal += pendingThisCr;
+        }
+      }
+    }
+
+    // Ordenamiento recomendado de filas:
     // 1. Clientes con deuda de mayor antigüedad
     // 2. Clientes con mayor saldo pendiente
     // 3. Clientes al día
@@ -439,7 +519,34 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
       return a.name.localeCompare(b.name);
     });
 
-    // Alertas determinísticas
+    // Consolidado de clientes filtrados/seleccionados (Para la Sección 3)
+    let selectedCreditsTotal = 0;
+    let selectedPaymentsTotal = 0;
+    let selectedCreditsPendingTotal = 0;
+    let selectedCurrentBalance = 0;
+    let selectedCreditsCount = 0;
+    let selectedPaymentsCount = 0;
+
+    for (const row of rows) {
+      selectedCreditsTotal += row.period_credits;
+      selectedPaymentsTotal += row.period_payments;
+      selectedCreditsPendingTotal += row.period_pending_credits;
+      selectedCurrentBalance += row.current_balance;
+      selectedCreditsCount += row.period_credits_count;
+      selectedPaymentsCount += row.period_payments_count;
+    }
+
+    const consolidation: CustomerConsolidation = {
+      selectedCount: rows.length,
+      selectedCreditsTotal,
+      selectedPaymentsTotal,
+      selectedCreditsPendingTotal,
+      selectedCurrentBalance,
+      selectedCreditsCount,
+      selectedPaymentsCount,
+    };
+
+    // Alertas determinísticas y Atención prioritaria
     const debtorRows = rows.filter(r => r.current_balance > 0);
     const oldestDebtCustomer = debtorRows.length > 0
       ? [...debtorRows].sort((a, b) => b.debt_days - a.debt_days)[0]
@@ -455,25 +562,166 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
       ? [...payingRows].sort((a, b) => b.period_payments - a.period_payments)[0]
       : null;
 
-    // Mensajes determinísticos de "Tenderito te cuenta"
+    // Construcción de la lista de clientes que requieren atención prioritaria (hasta 3-4 clientes distintos)
+    const allDebtorRows: CustomerStatRow[] = [];
+    for (const cust of custRows) {
+      const balance = Math.max(0, Number(cust.current_balance || 0));
+      if (balance <= 0) continue;
+      const cId = cust.server_id || cust.local_id;
+
+      const existingInRows = rows.find(r => r.customer_id === cId);
+      if (existingInRows) {
+        allDebtorRows.push(existingInRows);
+      } else {
+        const custCredits = [
+          ...(creditsByCustomer.get(cust.local_id) ?? []),
+          ...(cust.server_id ? (creditsByCustomer.get(cust.server_id) ?? []) : []),
+        ];
+        const custPayments = [
+          ...(paymentsByCustomer.get(cust.local_id) ?? []),
+          ...(cust.server_id ? (paymentsByCustomer.get(cust.server_id) ?? []) : []),
+        ];
+
+        let debtDays = 0;
+        let oldestDebtDate: string | null = null;
+        const sortedCredits = [...custCredits].sort((a, b) => {
+          const tA = new Date(a.created_at || '').getTime() || 0;
+          const tB = new Date(b.created_at || '').getTime() || 0;
+          return tB - tA;
+        });
+        let acc = 0;
+        let oldestUncovered: any = null;
+        for (const cr of sortedCredits) {
+          acc += Number(cr.amount || 0);
+          oldestUncovered = cr;
+          if (acc >= balance) break;
+        }
+        if (oldestUncovered && oldestUncovered.created_at) {
+          oldestDebtDate = oldestUncovered.created_at;
+          debtDays = calculateDaysDifference(todayYMD, oldestDebtDate);
+        } else if (cust.created_at) {
+          oldestDebtDate = cust.created_at;
+          debtDays = calculateDaysDifference(todayYMD, oldestDebtDate);
+        }
+
+        let lastPaymentDate: string | null = null;
+        let daysSinceLastPayment: number | null = null;
+        if (custPayments.length > 0) {
+          const sortedPayments = [...custPayments].sort((a, b) => {
+            const tA = new Date(a.payment_date || a.created_at || '').getTime() || 0;
+            const tB = new Date(b.payment_date || b.created_at || '').getTime() || 0;
+            return tB - tA;
+          });
+          const lp = sortedPayments[0];
+          lastPaymentDate = lp.payment_date || lp.created_at;
+          if (lastPaymentDate) {
+            daysSinceLastPayment = calculateDaysDifference(todayYMD, lastPaymentDate);
+          }
+        }
+
+        allDebtorRows.push({
+          customer_id: cId,
+          name: cust.name || 'Cliente',
+          alias: cust.alias || null,
+          phone: cust.phone || null,
+          current_balance: balance,
+          period_credits: 0,
+          period_payments: 0,
+          period_pending_credits: 0,
+          period_credits_count: 0,
+          period_payments_count: 0,
+          status: 'pendiente',
+          debt_days: debtDays,
+          oldest_debt_date: oldestDebtDate,
+          last_payment_date: lastPaymentDate,
+          days_since_last_payment: daysSinceLastPayment,
+        });
+      }
+    }
+
+    const attentionList: AttentionCustomer[] = [];
+    const usedIds = new Set<string>();
+
+    if (allDebtorRows.length > 0) {
+      // 1. Mayor tiempo con deuda viva
+      const sortedByDays = [...allDebtorRows].sort((a, b) => b.debt_days - a.debt_days);
+      const oldest = sortedByDays[0];
+      if (oldest && oldest.debt_days > 0) {
+        attentionList.push({
+          ...oldest,
+          attention_reason: 'oldest_debt',
+          attention_badge: `Mayor tiempo con deuda (${oldest.debt_days} días)`,
+        });
+        usedIds.add(oldest.customer_id);
+      }
+
+      // 2. Mayor saldo pendiente
+      const sortedByBalance = [...allDebtorRows].sort((a, b) => b.current_balance - a.current_balance);
+      const highest = sortedByBalance.find(r => !usedIds.has(r.customer_id));
+      if (highest && highest.current_balance > 0) {
+        attentionList.push({
+          ...highest,
+          attention_reason: 'top_debtor',
+          attention_badge: 'Mayor saldo pendiente',
+        });
+        usedIds.add(highest.customer_id);
+      }
+
+      // 3. Cliente sin abonos registrados
+      const noAbono = allDebtorRows.find(
+        r => !usedIds.has(r.customer_id) && (r.days_since_last_payment === null || !r.last_payment_date),
+      );
+      if (noAbono) {
+        attentionList.push({
+          ...noAbono,
+          attention_reason: 'no_payments',
+          attention_badge: 'Sin abonos registrados',
+        });
+        usedIds.add(noAbono.customer_id);
+      }
+
+      // 4. Cliente con más de 30 días sin abonar
+      const longTimeNoAbono = allDebtorRows.find(
+        r =>
+          !usedIds.has(r.customer_id) &&
+          r.days_since_last_payment !== null &&
+          r.days_since_last_payment >= 30,
+      );
+      if (longTimeNoAbono && attentionList.length < 3) {
+        attentionList.push({
+          ...longTimeNoAbono,
+          attention_reason: 'long_time_no_payment',
+          attention_badge: `Sin abonos hace ${longTimeNoAbono.days_since_last_payment} días`,
+        });
+        usedIds.add(longTimeNoAbono.customer_id);
+      }
+    }
+
+    // Mensajes determinísticos orientados a la toma de decisiones del tendero
     const messages: string[] = [];
     if (periodPaymentsTotal > periodCreditsTotal && periodPaymentsTotal > 0) {
-      messages.push('En este período has recaudado más en abonos de lo que has fiado.');
+      messages.push(`Has recuperado más dinero (${formatCOP(periodPaymentsTotal)}) del que has fiado (${formatCOP(periodCreditsTotal)}) en este período.`);
     } else if (periodCreditsTotal > periodPaymentsTotal && periodCreditsTotal > 0) {
-      messages.push('En este período has fiado más de lo que has recibido en abonos.');
+      messages.push(`Este período has fiado ${formatCOP(periodCreditsTotal)} y has recuperado ${formatCOP(periodPaymentsTotal)} en abonos.`);
+    }
+
+    if (customersWithDebtCount > 0) {
+      messages.push(`Tienes ${customersWithDebtCount} cliente${customersWithDebtCount === 1 ? '' : 's'} con saldo pendiente (${formatCOP(currentTotalReceivable)} en total).`);
+    } else {
+      messages.push('¡Excelente! Todos tus clientes están completamente al día con su cuenta.');
+    }
+
+    if (periodCreditsPendingTotal > 0) {
+      messages.push(`De lo fiado en este período, todavía tienes ${formatCOP(periodCreditsPendingTotal)} pendientes por recuperar.`);
+    }
+
+    const noPaymentsCount = allDebtorRows.filter(r => r.days_since_last_payment === null).length;
+    if (noPaymentsCount > 0) {
+      messages.push(`Hay ${noPaymentsCount} cliente${noPaymentsCount === 1 ? '' : 's'} con saldo pendiente que todavía no ${noPaymentsCount === 1 ? 'ha' : 'han'} realizado abonos.`);
     }
 
     if (prevPeriodPayments > 0 && periodPaymentsTotal > prevPeriodPayments) {
       messages.push(`Los abonos recibidos aumentaron un ${paymentsChangePct}% respecto al período anterior.`);
-    }
-
-    const customersWithOldDebt = debtorRows.filter(r => r.debt_days > 30);
-    if (customersWithOldDebt.length > 0) {
-      messages.push(`Tienes ${customersWithOldDebt.length} cliente${customersWithOldDebt.length > 1 ? 's' : ''} con deuda viva desde hace más de 30 días.`);
-    }
-
-    if (customersUpToDateCount > 0) {
-      messages.push(`${customersUpToDateCount} de tus clientes están totalmente al día con su cuenta.`);
     }
 
     return {
@@ -483,6 +731,7 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
       totalCustomersCount: custRows.length,
       periodCreditsTotal,
       periodPaymentsTotal,
+      periodCreditsPendingTotal,
       periodCreditsCount,
       periodPaymentsCount,
       periodComparison: {
@@ -496,9 +745,11 @@ async function fetchStatsOffline(filters: StatsFilters): Promise<StatsResult> {
         topPayerCustomer,
         topDebtorCustomer,
       },
+      attentionList,
       insights: {
         messages: messages.slice(0, 3),
       },
+      consolidation,
       rows,
       // Retrocompatibilidad
       totalCredits: periodCreditsTotal,
