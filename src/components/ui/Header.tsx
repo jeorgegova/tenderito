@@ -1,10 +1,18 @@
 import React from 'react';
-import {StyleSheet, Text, View} from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  Animated,
+  Easing,
+} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {useStore} from '../../store/useStore';
 import {Colors} from '../../theme';
 import {useResponsive} from '../../hooks/useResponsive';
+import {useSync} from '../../hooks/useSync';
 
 export function Header({
   title,
@@ -13,6 +21,7 @@ export function Header({
   rightElement,
   sessionName,
   sessionRole,
+  showSyncButton = true,
 }: {
   title: string;
   subtitle?: string;
@@ -20,12 +29,49 @@ export function Header({
   rightElement?: React.ReactNode;
   sessionName?: string;
   sessionRole?: string;
+  showSyncButton?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const {isSmall, isTablet, maxContentWidth} = useResponsive();
   const profile = useStore(s => s.profile);
   const activeName = sessionName || profile?.merchant_name;
   const activeRole = sessionRole || (profile ? 'Tendero' : '');
+  const {sync, isSyncing, isOnline} = useSync();
+
+  const spinAnim = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    let anim: Animated.CompositeAnimation | null = null;
+    if (isSyncing) {
+      spinAnim.setValue(0);
+      anim = Animated.loop(
+        Animated.timing(spinAnim, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      );
+      anim.start();
+    } else {
+      spinAnim.setValue(0);
+    }
+    return () => {
+      anim?.stop();
+    };
+  }, [isSyncing, spinAnim]);
+
+  const spin = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const handleManualSync = () => {
+    if (isSyncing) return;
+    sync({force: true}).catch(err =>
+      console.warn('[Header] Error en sincronización manual:', err),
+    );
+  };
 
   return (
     <View
@@ -72,23 +118,50 @@ export function Header({
             </Text>
           ) : null}
         </View>
-        {rightElement ? (
-          <View style={styles.rightWrap}>{rightElement}</View>
-        ) : activeName ? (
-          <View style={styles.sessionBadge}>
-            <View style={styles.sessionAvatar}>
-              <Ionicons name="person-outline" size={13} color={Colors.primary} />
+        <View style={styles.rightGroup}>
+          {showSyncButton && (
+            <TouchableOpacity
+              onPress={handleManualSync}
+              disabled={isSyncing}
+              activeOpacity={0.7}
+              style={[
+                styles.syncBtn,
+                isSyncing && styles.syncBtnActive,
+              ]}>
+              <Animated.View style={{transform: [{rotate: spin}]}}>
+                <Ionicons
+                  name="sync-outline"
+                  size={16}
+                  color={
+                    isSyncing
+                      ? Colors.primary
+                      : isOnline
+                      ? Colors.textSecondary
+                      : Colors.textMuted
+                  }
+                />
+              </Animated.View>
+            </TouchableOpacity>
+          )}
+
+          {rightElement ? (
+            <View style={styles.rightWrap}>{rightElement}</View>
+          ) : activeName ? (
+            <View style={styles.sessionBadge}>
+              <View style={styles.sessionAvatar}>
+                <Ionicons name="person-outline" size={13} color={Colors.primary} />
+              </View>
+              <View style={styles.sessionCol}>
+                {activeRole ? (
+                  <Text style={styles.sessionRole}>{activeRole}</Text>
+                ) : null}
+                <Text style={styles.sessionName} numberOfLines={1}>
+                  {activeName}
+                </Text>
+              </View>
             </View>
-            <View style={styles.sessionCol}>
-              {activeRole ? (
-                <Text style={styles.sessionRole}>{activeRole}</Text>
-              ) : null}
-              <Text style={styles.sessionName} numberOfLines={1}>
-                {activeName}
-              </Text>
-            </View>
-          </View>
-        ) : null}
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -188,9 +261,34 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     marginTop: 2,
   },
-  sessionBadge: {
+  rightGroup: {
     marginLeft: 12,
     alignSelf: 'flex-start',
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  syncBtnActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary,
+  },
+  sessionBadge: {
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',

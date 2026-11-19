@@ -1,5 +1,5 @@
 import {useQuery} from '@tanstack/react-query';
-import {useState} from 'react';
+import {useState, useMemo} from 'react';
 import {
   Pressable,
   ScrollView,
@@ -11,6 +11,7 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import {Card} from '../components/ui/Card';
 import {Button} from '../components/ui/Button';
 import {Input} from '../components/ui/Input';
+import {FastMoneyInput} from '../components/ui/FastMoneyInput';
 import {showAlert} from '../components/ui/AlertModal';
 import {fetchCustomerById, fetchCustomers} from '../services/customers';
 import {createPayment} from '../services/payments';
@@ -59,11 +60,15 @@ export function NewPaymentScreen({route, navigation}: any) {
   const remainingBalance = Math.max(0, currentBalance - numericAmount);
   const isTotalPayment = currentBalance > 0 && numericAmount === currentBalance;
 
-  const matchingCustomers = (customers ?? []).filter(c =>
-    `${c.alias ?? ''} ${c.name} ${c.document_number ?? ''}`
-      .toLocaleLowerCase('es-CO')
-      .includes(customerSearch.toLocaleLowerCase('es-CO')),
-  );
+  const matchingCustomers = useMemo(() => {
+    if (!customerSearch.trim()) return customers ?? [];
+    const query = customerSearch.toLocaleLowerCase('es-CO');
+    return (customers ?? []).filter(c =>
+      `${c.alias ?? ''} ${c.name} ${c.document_number ?? ''}`
+        .toLocaleLowerCase('es-CO')
+        .includes(query),
+    );
+  }, [customers, customerSearch]);
 
   const mutation = useMutationWithSync(createPayment, {
     customerId: customer_id,
@@ -227,11 +232,11 @@ export function NewPaymentScreen({route, navigation}: any) {
               </View>
             ) : (
               <View style={styles.inputSection}>
-                <Input
+                <FastMoneyInput
                   label="¿Cuánto te entregó o abonó?"
-                  value={amount ? FormatMoney(amount) : ''}
-                  onChangeText={value => setAmount(FormatMoney(value))}
-                  keyboardType="numeric"
+                  leadingIcon="cash-outline"
+                  value={amount}
+                  onChangeAmount={(_num, formatted) => setAmount(formatted)}
                   placeholder="$ 0"
                   error={
                     exceedsBalance

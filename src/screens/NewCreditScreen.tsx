@@ -1,5 +1,5 @@
 import {useQuery} from '@tanstack/react-query';
-import {useEffect, useState} from 'react';
+import {useEffect, useState, useMemo} from 'react';
 import {
   Pressable,
   ScrollView,
@@ -13,6 +13,7 @@ import {Button} from '../components/ui/Button';
 import {DatePicker} from '../components/ui/DatePicker';
 import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
 import {Input} from '../components/ui/Input';
+import {FastMoneyInput} from '../components/ui/FastMoneyInput';
 import {showAlert} from '../components/ui/AlertModal';
 import {CreateCustomerModal} from '../components/CreateCustomerModal';
 import {createCredit} from '../services/credits';
@@ -122,11 +123,15 @@ export function NewCreditScreen({route, navigation}: any) {
     };
   }, [customer_id, profile, customers]);
 
-  const matchingCustomers = (customers ?? []).filter(c =>
-    `${c.alias ?? ''} ${c.name} ${c.document_number ?? ''}`
-      .toLocaleLowerCase('es-CO')
-      .includes(customerSearch.toLocaleLowerCase('es-CO')),
-  );
+  const matchingCustomers = useMemo(() => {
+    if (!customerSearch.trim()) return customers ?? [];
+    const query = customerSearch.toLocaleLowerCase('es-CO');
+    return (customers ?? []).filter(c =>
+      `${c.alias ?? ''} ${c.name} ${c.document_number ?? ''}`
+        .toLocaleLowerCase('es-CO')
+        .includes(query),
+    );
+  }, [customers, customerSearch]);
 
   const mutation = useMutationWithSync(createCredit, {
     onSuccess: () => navigation.goBack(),
@@ -439,15 +444,12 @@ export function NewCreditScreen({route, navigation}: any) {
 
           {/* Input Valor con atajos de suma rápida */}
           <View style={styles.fieldBlock}>
-            <Input
+            <FastMoneyInput
               label="Valor del fiado"
               leadingIcon="cash-outline"
-              value={amount ? FormatMoney(amount) : ''}
-              onChangeText={value => setAmount(FormatMoney(value))}
-              keyboardType="numeric"
+              value={amount}
+              onChangeAmount={(_num, formatted) => setAmount(formatted)}
               placeholder="$ 0"
-              trailingIcon={amount ? 'close-circle' : undefined}
-              onTrailingPress={() => setAmount('')}
               error={
                 exceedsLimit
                   ? `Supera el tope de crédito (${formatCOP(creditLimit)})`

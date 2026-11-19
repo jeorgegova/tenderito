@@ -145,6 +145,26 @@ export function DashboardScreen({ navigation }: any) {
           </Pressable>
         )}
 
+        {/* Banner de suscripción por vencer pronto (próximos 5 días) */}
+        {!subStatus.isExpired && !subStatus.expiresToday && subStatus.remainingDays > 0 && subStatus.remainingDays <= 5 && (
+          <Pressable
+            onPress={() => navigation.navigate('Perfil')}
+            style={styles.toastBannerWarning}>
+            <View style={styles.toastBannerIconWarning}>
+              <Ionicons name="time" size={22} color="#D97706" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toastBannerTitleWarning}>
+                Tu suscripción vence en {subStatus.remainingDays} {subStatus.remainingDays === 1 ? 'día' : 'días'} ({subStatus.formattedEndDate})
+              </Text>
+              <Text style={styles.toastBannerSubtitle}>
+                Toca aquí para renovar tu plan antes de que venza
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#D97706" />
+          </Pressable>
+        )}
+
         {/* Banner de vencimiento el día de hoy */}
         {subStatus.expiresToday && (
           <Pressable
@@ -175,7 +195,7 @@ export function DashboardScreen({ navigation }: any) {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.toastBannerTitleWarning}>
-                Suscripción vencida ({Math.max(0, 10 - subStatus.daysSinceExpiration)} días de gracia restantes)
+                Suscripción vencida ({subStatus.remainingGraceDays} {subStatus.remainingGraceDays === 1 ? 'día de gracia restante' : 'días de gracia restantes'})
               </Text>
               <Text style={styles.toastBannerSubtitle}>
                 Toca para renovar antes de pasar al plan Free

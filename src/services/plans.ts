@@ -116,6 +116,7 @@ export interface SubscriptionStatusInfo {
   isExpired: boolean;
   daysSinceExpiration: number;
   remainingDays: number;
+  remainingGraceDays: number;
   inGracePeriod: boolean;
   isDowngradedToFree: boolean;
   needsRenewal: boolean;
@@ -153,6 +154,7 @@ export function calculateSubscriptionStatus(
       isExpired: false,
       daysSinceExpiration: 0,
       remainingDays: 0,
+      remainingGraceDays: 0,
       inGracePeriod: false,
       isDowngradedToFree: false,
       needsRenewal: false,
@@ -173,6 +175,7 @@ export function calculateSubscriptionStatus(
       isExpired: false,
       daysSinceExpiration: 0,
       remainingDays: 0,
+      remainingGraceDays: 0,
       inGracePeriod: false,
       isDowngradedToFree: false,
       needsRenewal: false,
@@ -193,6 +196,7 @@ export function calculateSubscriptionStatus(
       isExpired: false,
       daysSinceExpiration: 0,
       remainingDays: 0,
+      remainingGraceDays: 0,
       inGracePeriod: false,
       isDowngradedToFree: false,
       needsRenewal: false,
@@ -226,12 +230,13 @@ export function calculateSubscriptionStatus(
 
   // Si pasaron más de los días de gracia (10 días), vuelve automáticamente al plan Free
   const statusStr = (profile?.subscription_status || '').toLowerCase();
-  const isExplicitlyActive = statusStr === 'active';
-  const isDowngradedToFree = !isExplicitlyActive && isExpired && daysDiff > gracePeriodDays;
-  const inGracePeriod = !isExplicitlyActive && isExpired && daysDiff <= gracePeriodDays;
+  const isCancelled = statusStr === 'cancelled';
+  const isDowngradedToFree = isCancelled || (isExpired && daysDiff > gracePeriodDays);
+  const inGracePeriod = !isCancelled && isExpired && daysDiff <= gracePeriodDays;
 
   // El plan efectivo es el contratado a menos que ya hayan pasado los 10 días de gracia
   const effectivePlan = isDowngradedToFree ? 'free' : planId;
+  const remainingGraceDays = inGracePeriod ? Math.max(0, gracePeriodDays - daysDiff) : 0;
 
   // Formato legible de fecha de fin en Colombia
   const formattedEndDate = formatDateDisplay(endDate);
@@ -246,6 +251,7 @@ export function calculateSubscriptionStatus(
     isExpired,
     daysSinceExpiration: Math.max(0, daysDiff),
     remainingDays: isExpired ? 0 : Math.max(0, -daysDiff),
+    remainingGraceDays,
     inGracePeriod,
     isDowngradedToFree,
     needsRenewal: expiresToday || isExpired,

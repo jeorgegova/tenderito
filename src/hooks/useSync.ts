@@ -1,44 +1,60 @@
 import {useEffect, useState, useCallback} from 'react';
 import NetInfo, {NetInfoState} from '@react-native-community/netinfo';
 import {useQueryClient} from '@tanstack/react-query';
-import {syncAll, clearCachedStoreId} from '../services/sync';
+import {
+  syncAll,
+  clearCachedStoreId,
+  isSyncing as getIsSyncing,
+  subscribeSyncStatus,
+  onSyncComplete,
+} from '../services/sync';
 import {supabase} from '../lib/supabase';
 import {useAuth} from '../context/AuthContext';
 
 export function useSync() {
   const {isAuthenticated, userType} = useAuth();
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(getIsSyncing());
   const [isOnline, setIsOnline] = useState<boolean | null>(true);
   const [lastSyncDate, setLastSyncDate] = useState<Date | null>(null);
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    return subscribeSyncStatus(setIsSyncing);
+  }, []);
+
+  const invalidateDomainQueries = useCallback(async () => {
+    await queryClient.invalidateQueries();
+  }, [queryClient]);
+
+  useEffect(() => {
+    return onSyncComplete(async ({pushed, pulled}) => {
+      if (pushed || pulled) {
+        await invalidateDomainQueries();
+      }
+    });
+  }, [invalidateDomainQueries]);
+
   const runSync = useCallback(
     async (options?: {force?: boolean}) => {
       // Solo sincronizar SQLite local si el usuario es un tendero autenticado
-      if (isSyncing || !isAuthenticated || userType !== 'store') {
+      if (getIsSyncing() || !isAuthenticated || userType !== 'store') {
         return;
       }
       try {
-        setIsSyncing(true);
         const {pushed, pulled} = await syncAll(options);
         setLastSyncDate(new Date());
 
-        // La expiración de suscripción puede cambiar aunque no haya
-        // movimientos nuevos, así que refrescamos estos estados siempre.
-        await queryClient.invalidateQueries({queryKey: ['free-portfolio']});
-        await queryClient.invalidateQueries({queryKey: ['profile']});
-
-        // Solo invalidar si hubo subida o descarga de datos real
-        if (pushed || pulled) {
-          await queryClient.invalidateQueries();
+        if (options?.force || pushed || pulled) {
+          await invalidateDomainQueries();
+        } else {
+          await queryClient.invalidateQueries({queryKey: ['free-portfolio']});
+          await queryClient.invalidateQueries({queryKey: ['profile']});
         }
       } catch (e) {
         console.warn('Error durante sincronización:', e);
-      } finally {
-        setIsSyncing(false);
       }
     },
-    [isSyncing, isAuthenticated, userType, queryClient],
+    [isAuthenticated, userType, invalidateDomainQueries, queryClient],
   );
 
   useEffect(() => {

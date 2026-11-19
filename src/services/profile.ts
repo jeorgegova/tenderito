@@ -31,7 +31,7 @@ export async function fetchProfile(): Promise<Profile | null> {
       let storeQuery = supabase
         .from('stores')
         .select(
-          'id, store_name, subscription_plan, subscription_start_date, subscription_end_date, subscription_status',
+          'id, store_name, phone, subscription_plan, subscription_start_date, subscription_end_date, subscription_status',
         );
 
       if (activeStoreId) {
@@ -52,6 +52,7 @@ export async function fetchProfile(): Promise<Profile | null> {
         mergedProfile = {
           ...data,
           store_name: storeData.store_name || data.store_name,
+          phone: storeData.phone || data.phone,
           subscription_plan: plan,
           subscription_start_date:
             storeData.subscription_start_date || data.subscription_start_date,

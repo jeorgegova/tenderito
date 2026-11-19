@@ -15,6 +15,7 @@ interface Props extends TextInputProps {
   error?: string;
   leadingIcon?: string;
   trailingIcon?: string;
+  trailingElement?: React.ReactNode;
   onTrailingPress?: () => void;
   pill?: boolean;
 }
@@ -25,6 +26,7 @@ export const Input = forwardRef<TextInput, Props>(function Input(
     error,
     leadingIcon,
     trailingIcon,
+    trailingElement,
     onTrailingPress,
     pill,
     secureTextEntry,
@@ -78,7 +80,9 @@ export const Input = forwardRef<TextInput, Props>(function Input(
           }}
           {...rest}
         />
-        {trailingIcon ? (
+        {trailingElement ? (
+          <View style={{ marginLeft: 6 }}>{trailingElement}</View>
+        ) : trailingIcon ? (
           <Pressable
             onPress={onTrailingPress}
             hitSlop={10}

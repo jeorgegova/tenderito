@@ -13,6 +13,7 @@ import {fetchProfile} from './profile';
 export {getActiveStoreId, clearStoreContext};
 
 let syncInProgress: Promise<any> | null = null;
+let isSyncingState = false;
 let lastPullTimestamp = 0;
 let debounceTimer: NodeJS.Timeout | null = null;
 
@@ -25,6 +26,52 @@ const MIN_PULL_INTERVAL_MS = 60_000; // Mínimo 1 minuto entre descargas complet
 const DEBOUNCE_DELAY_MS = 2_500; // 2.5 segundos para agrupar múltiples escrituras consecutivas
 const MAX_CONCURRENT_PUSH = 3; // Límite estricto de peticiones simultáneas hacia Supabase
 const PULL_PAGE_LIMIT = 150; // Limitar tamaño de lote para minimizar egress
+
+export function isSyncing(): boolean {
+  return isSyncingState || syncInProgress !== null;
+}
+
+type SyncStatusListener = (syncing: boolean) => void;
+const syncStatusListeners = new Set<SyncStatusListener>();
+
+export function subscribeSyncStatus(listener: SyncStatusListener): () => void {
+  syncStatusListeners.add(listener);
+  listener(isSyncing());
+  return () => {
+    syncStatusListeners.delete(listener);
+  };
+}
+
+function notifySyncStatus(syncing: boolean) {
+  isSyncingState = syncing;
+  for (const listener of syncStatusListeners) {
+    try {
+      listener(syncing);
+    } catch (e) {
+      console.warn('[Sync] Error notificando syncStatusListener:', e);
+    }
+  }
+}
+
+type SyncCompleteListener = (result: { pushed: boolean; pulled: boolean }) => void;
+const syncCompleteListeners = new Set<SyncCompleteListener>();
+
+export function onSyncComplete(listener: SyncCompleteListener): () => void {
+  syncCompleteListeners.add(listener);
+  return () => {
+    syncCompleteListeners.delete(listener);
+  };
+}
+
+function notifySyncComplete(result: { pushed: boolean; pulled: boolean }) {
+  for (const listener of syncCompleteListeners) {
+    try {
+      listener(result);
+    } catch (e) {
+      console.warn('[Sync] Error notificando syncCompleteListener:', e);
+    }
+  }
+}
 
 export function clearCachedStoreId() {
   clearStoreContext();
@@ -66,15 +113,18 @@ export function withSyncLock<T>(work: () => Promise<T>): Promise<T> {
     return syncInProgress as Promise<T>;
   }
 
+  notifySyncStatus(true);
   syncInProgress = Promise.resolve()
     .then(work)
     .then(
       result => {
         syncInProgress = null;
+        notifySyncStatus(false);
         return result;
       },
       error => {
         syncInProgress = null;
+        notifySyncStatus(false);
         throw error;
       },
     );
@@ -838,6 +888,12 @@ export async function sincronizar(
     try {
       const now = Date.now();
 
+      // Si se fuerza la sincronización, limpiar cualquier temporizador diferido pendiente
+      if (options?.force && debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+
       // Control de backoff progresivo si hubo fallas consecutivas previas
       if (now < nextAllowedRetryTime && !options?.force) {
         return {pushed: false, pulled: false};
@@ -886,7 +942,9 @@ export async function sincronizar(
       consecutiveFailures = 0;
       nextAllowedRetryTime = 0;
 
-      return {pushed: didPush, pulled: didPull};
+      const result = {pushed: didPush, pulled: didPull};
+      notifySyncComplete(result);
+      return result;
     } catch (error: any) {
       consecutiveFailures++;
       const backoffMs = Math.min(30_000, 2000 * Math.pow(2, consecutiveFailures - 1));

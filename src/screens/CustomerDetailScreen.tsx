@@ -147,6 +147,12 @@ export function CustomerDetailScreen({route, navigation}: any) {
   });
   const profile = profileQuery || profileFromStore;
   const subStatus = calculateSubscriptionStatus(profile);
+  const hasProAccess =
+    Boolean(profile?.subscription_plan && profile.subscription_plan.toLowerCase() !== 'free') &&
+    (subStatus.effectivePlan !== 'free' ||
+      subStatus.inGracePeriod ||
+      !subStatus.isDowngradedToFree ||
+      (profile?.subscription_status || '').toLowerCase() === 'active');
   const [creditEligibility, setCreditEligibility] =
     useState<CreditEligibility | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'payment'>(
@@ -570,10 +576,15 @@ export function CustomerDetailScreen({route, navigation}: any) {
               ) : null}
 
               {/* Historial en otras tiendas (si aplica plan de pago) */}
-              {subStatus.effectivePlan !== 'free' ? (
+              {hasProAccess ? (
                 <TouchableOpacity
                   style={styles.historyBtn}
-                  onPress={() => navigation.navigate('CustomerHistory', {id})}>
+                  onPress={() =>
+                    navigation.navigate('CustomerHistory', {
+                      id,
+                      customer: customer.data,
+                    })
+                  }>
                   <Ionicons
                     name="storefront-outline"
                     size={15}

@@ -189,16 +189,68 @@ export function ProfileScreen({navigation}: any) {
                 : subStatus.expiresToday
                 ? `Plan ${subStatus.planId.toUpperCase()} · ¡Vence hoy!`
                 : subStatus.inGracePeriod
-                ? `Plan ${subStatus.planId.toUpperCase()} · Vencido (${Math.max(
-                    0,
-                    10 - subStatus.daysSinceExpiration,
-                  )}d gracia)`
+                ? `Plan ${subStatus.planId.toUpperCase()} · Vencido (${subStatus.remainingGraceDays}d de gracia)`
                 : subStatus.formattedEndDate
                 ? `Plan ${subStatus.planId.toUpperCase()} · Vence ${subStatus.formattedEndDate}`
                 : `Plan ${subStatus.planId.toUpperCase()} · Activo`}
             </Text>
           </View>
         </Card>
+
+        {/* Banner informativo de estado de suscripción */}
+        {subStatus.inGracePeriod && (
+          <Card
+            style={{
+              padding: 16,
+              backgroundColor: '#FEF3C7',
+              borderWidth: 1.5,
+              borderColor: '#F59E0B',
+              marginTop: 12,
+            }}>
+            <Text style={{fontSize: 14, fontWeight: '800', color: '#92400E', marginBottom: 4}}>
+              Tu suscripción {subStatus.planId.toUpperCase()} venció el {subStatus.formattedEndDate}
+            </Text>
+            <Text style={{fontSize: 13, color: '#B45309', lineHeight: 18}}>
+              Te quedan {subStatus.remainingGraceDays} {subStatus.remainingGraceDays === 1 ? 'día de gracia' : 'días de gracia'} para renovar tu suscripción o pasar a la versión Free conservando tus datos.
+            </Text>
+          </Card>
+        )}
+
+        {subStatus.expiresToday && (
+          <Card
+            style={{
+              padding: 16,
+              backgroundColor: '#FEE2E2',
+              borderWidth: 1.5,
+              borderColor: '#EF4444',
+              marginTop: 12,
+            }}>
+            <Text style={{fontSize: 14, fontWeight: '800', color: '#991B1B', marginBottom: 4}}>
+              ¡Tu suscripción {subStatus.planId.toUpperCase()} vence hoy!
+            </Text>
+            <Text style={{fontSize: 13, color: '#B91C1C', lineHeight: 18}}>
+              Renueva hoy mismo para evitar entrar en periodo de gracia o interrupciones en tus funciones avanzadas.
+            </Text>
+          </Card>
+        )}
+
+        {!subStatus.isExpired && !subStatus.expiresToday && subStatus.remainingDays > 0 && subStatus.remainingDays <= 5 && (
+          <Card
+            style={{
+              padding: 16,
+              backgroundColor: '#FEF3C7',
+              borderWidth: 1.5,
+              borderColor: '#F59E0B',
+              marginTop: 12,
+            }}>
+            <Text style={{fontSize: 14, fontWeight: '800', color: '#92400E', marginBottom: 4}}>
+              Tu suscripción vencerá pronto
+            </Text>
+            <Text style={{fontSize: 13, color: '#B45309', lineHeight: 18}}>
+              Tu plan {subStatus.planId.toUpperCase()} vence el {subStatus.formattedEndDate} (te quedan {subStatus.remainingDays} {subStatus.remainingDays === 1 ? 'día' : 'días'}). Renueva a tiempo para no perder tus beneficios.
+            </Text>
+          </Card>
+        )}
 
         {userStores.length > 1 && (
           <View style={{marginTop: 8}}>

@@ -19,6 +19,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { Input } from './ui/Input';
+import { FastMoneyInput } from './ui/FastMoneyInput';
 import { showAlert } from './ui/AlertModal';
 import { StoreHistoryLockNotice } from './ui/StoreHistoryLockNotice';
 import {
@@ -69,6 +70,12 @@ export function CreateCustomerModal({
   });
   const profile = profileQuery || profileFromStore;
   const subStatus = calculateSubscriptionStatus(profile);
+  const hasProAccess =
+    Boolean(profile?.subscription_plan && profile.subscription_plan.toLowerCase() !== 'free') &&
+    (subStatus.effectivePlan !== 'free' ||
+      subStatus.inGracePeriod ||
+      !subStatus.isDowngradedToFree ||
+      (profile?.subscription_status || '').toLowerCase() === 'active');
 
   const [name, setName] = useState('');
   const [documentType, setDocumentType] = useState('CC');
@@ -208,16 +215,8 @@ export function CreateCustomerModal({
         if (target.alias) {
           setAlias(target.alias);
         }
-        const alreadyLinked = Boolean(customer?.isLinkedToMyStore || localMatch);
-        if (!alreadyLinked) {
-          showAlert(
-            'Cliente encontrado',
-            'El cliente está registrado en Tenderito. Revisa sus datos y define el tope de crédito para vincularlo a tu tienda.',
-          );
-        }
       } else {
         setName('');
-        showAlert('Cliente nuevo', 'Completa los datos para registrarlo.');
       }
     } catch (error: any) {
       showAlert('No se pudo verificar', error?.message ?? 'Intenta de nuevo');
@@ -324,7 +323,7 @@ export function CreateCustomerModal({
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <View style={{ width: isSmall ? 85 : 110 }}>
+                <View style={{ width: isSmall ? 85 : 100 }}>
                   <Text style={styles.label}>Tipo</Text>
                   <Pressable
                     onPress={() => setShowTypePicker(true)}
@@ -346,15 +345,43 @@ export function CreateCustomerModal({
                       }
                     }}
                     placeholder="123456789"
+                    trailingElement={
+                      <TouchableOpacity
+                        onPress={onCheckDocument}
+                        disabled={checkingDocument || !documentNumber.trim()}
+                        style={[
+                          styles.searchDocBtn,
+                          (!documentNumber.trim() || checkingDocument) &&
+                          styles.searchDocBtnDisabled,
+                        ]}>
+                        <Ionicons
+                          name="search-outline"
+                          size={16}
+                          color={
+                            !documentNumber.trim() || checkingDocument
+                              ? Colors.primary
+                              : '#FFFFFF'
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.searchDocBtnText,
+                            (!documentNumber.trim() || checkingDocument) &&
+                            styles.searchDocBtnTextDisabled,
+                          ]}>
+                          Buscar
+                        </Text>
+                      </TouchableOpacity>
+                    }
                   />
                 </View>
               </View>
 
               <Button
-                title={checkingDocument ? 'Verificando...' : 'Verificar cédula'}
+                title={checkingDocument ? 'Verificando...' : 'Buscar en Tenderito'}
                 variant="secondary"
                 onPress={onCheckDocument}
-                disabled={checkingDocument}
+                disabled={checkingDocument || !documentNumber.trim()}
               />
 
               {!verified ? (
@@ -380,87 +407,86 @@ export function CreateCustomerModal({
                         });
                       }}
                       style={styles.alreadyLinkedCard}>
-                        <View style={styles.alreadyLinkedHeader}>
-                          <View style={styles.alreadyLinkedIconWrap}>
-                            <Ionicons
-                              name="checkmark-circle"
-                              size={22}
-                              color="#15803D"
-                            />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.alreadyLinkedTitle}>
-                              Cliente ya vinculado a tu tienda
-                            </Text>
-                            <Text style={styles.alreadyLinkedDesc}>
-                              Este cliente ya forma parte de tu libreta de fiados.
-                            </Text>
-                          </View>
+                      <View style={styles.alreadyLinkedHeader}>
+                        <View style={styles.alreadyLinkedIconWrap}>
                           <Ionicons
-                            name="chevron-forward"
-                            size={18}
-                            color={Colors.primary}
+                            name="checkmark-circle"
+                            size={22}
+                            color="#15803D"
                           />
                         </View>
-                        <View style={styles.alreadyLinkedDivider} />
-                        <View style={styles.alreadyLinkedInfo}>
-                          <Text style={styles.alreadyLinkedName}>
-                            {targetCustomer.alias || targetCustomer.name}
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.alreadyLinkedTitle}>
+                            Cliente ya vinculado a tu tienda
                           </Text>
-                          <Text style={styles.alreadyLinkedSub}>
-                            {targetCustomer.document_type || 'CC'}{' '}
-                            {targetCustomer.document_number} ·{' '}
-                            {targetCustomer.phone || 'Sin teléfono'}
+                          <Text style={styles.alreadyLinkedDesc}>
+                            Este cliente ya forma parte de tu libreta de fiados.
                           </Text>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                            <Text style={{ fontSize: 11.5, fontWeight: '800', color: Colors.primary }}>
-                              Ver cartera y detalles
-                            </Text>
-                            <Ionicons name="chevron-forward" size={12} color={Colors.primary} />
-                          </View>
                         </View>
-                      </TouchableOpacity>
-                    ) : foundCustomer ? (
-                      <>
-                        <Card style={{ gap: 4 }}>
-                          <Text style={styles.name}>{foundCustomer.name}</Text>
-                          <Text style={styles.sub}>
-                            {foundCustomer.phone ?? 'Sin teléfono'}
-                          </Text>
-                          <Text style={styles.sub}>
-                            Cliente registrado en Tenderito
-                          </Text>
-                          {subStatus.effectivePlan !== 'free' ? (
-                            <Button
-                              title="Ver historial entre tiendas"
-                              variant="ghost"
-                              onPress={() => {
-                                navigation.navigate('CustomerHistory', {
-                                  id: foundCustomer.id,
-                                  customer: foundCustomer,
-                                });
-                              }}
-                            />
-                          ) : (
-                            <StoreHistoryLockNotice />
-                          )}
-                        </Card>
-                        <Input
-                          label="Tope de crédito"
-                          value={creditLimit ? FormatMoney(creditLimit) : '$ 0'}
-                          onChangeText={handleCreditLimitChange}
-                          keyboardType="numeric"
-                          placeholder="$ 0"
+                        <Ionicons
+                          name="chevron-forward"
+                          size={18}
+                          color={Colors.primary}
                         />
-                        <Input
-                          label="Alias para mi tienda (opcional)"
-                          value={alias}
-                          onChangeText={setAlias}
-                          placeholder="Ej. Juan de la esquina"
-                        />
-                      </>
-                    ) : (
-                      <>
+                      </View>
+                      <View style={styles.alreadyLinkedDivider} />
+                      <View style={styles.alreadyLinkedInfo}>
+                        <Text style={styles.alreadyLinkedName}>
+                          {targetCustomer.alias || targetCustomer.name}
+                        </Text>
+                        <Text style={styles.alreadyLinkedSub}>
+                          {targetCustomer.document_type || 'CC'}{' '}
+                          {targetCustomer.document_number} ·{' '}
+                          {targetCustomer.phone || 'Sin teléfono'}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                          <Text style={{ fontSize: 11.5, fontWeight: '800', color: Colors.primary }}>
+                            Ver cartera y detalles
+                          </Text>
+                          <Ionicons name="chevron-forward" size={12} color={Colors.primary} />
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ) : foundCustomer ? (
+                    <>
+                      <Card style={{ gap: 4 }}>
+                        <Text style={styles.name}>{foundCustomer.name}</Text>
+                        <Text style={styles.sub}>
+                          {foundCustomer.phone ?? 'Sin teléfono'}
+                        </Text>
+                        <Text style={styles.sub}>
+                          Cliente registrado en Tenderito
+                        </Text>
+                        {hasProAccess ? (
+                          <Button
+                            title="Ver historial entre tiendas"
+                            variant="ghost"
+                            onPress={() => {
+                              navigation.navigate('CustomerHistory', {
+                                id: foundCustomer.id,
+                                customer: foundCustomer,
+                              });
+                            }}
+                          />
+                        ) : (
+                          <StoreHistoryLockNotice />
+                        )}
+                      </Card>
+                      <FastMoneyInput
+                        label="Tope de crédito"
+                        value={creditLimit}
+                        onChangeAmount={(_num, formatted) => setCreditLimit(formatted)}
+                        placeholder="$ 0"
+                      />
+                      <Input
+                        label="Alias para mi tienda (opcional)"
+                        value={alias}
+                        onChangeText={setAlias}
+                        placeholder="Ej. Juan de la esquina"
+                      />
+                    </>
+                  ) : (
+                    <>
                       <Input
                         label="Nombre completo"
                         value={name}
@@ -482,11 +508,10 @@ export function CreateCustomerModal({
                         keyboardType="email-address"
                         placeholder="cliente@correo.com"
                       />
-                      <Input
+                      <FastMoneyInput
                         label="Tope de crédito"
-                        value={creditLimit ? FormatMoney(creditLimit) : '$ 0'}
-                        onChangeText={handleCreditLimitChange}
-                        keyboardType="numeric"
+                        value={creditLimit}
+                        onChangeAmount={(_num, formatted) => setCreditLimit(formatted)}
                         placeholder="$ 0"
                       />
                       <Input
@@ -585,7 +610,7 @@ export function CreateCustomerModal({
                     style={[
                       styles.typeOptionText,
                       item.value === documentType &&
-                        styles.typeOptionTextSelected,
+                      styles.typeOptionTextSelected,
                     ]}>
                     {item.label}
                   </Text>
@@ -826,6 +851,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#CBD5E1',
     lineHeight: 17,
+  },
+  searchDocBtn: {
+    height: 34,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  searchDocBtnDisabled: {
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 1,
+    borderColor: Colors.primaryMid,
+  },
+  searchDocBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  searchDocBtnTextDisabled: {
+    color: Colors.primary,
   },
 });
 

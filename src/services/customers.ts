@@ -4,6 +4,7 @@ import {PLAN_LIMITS, type SubscriptionPlan} from '../theme';
 import {getDbConnection, getData, executeQuery} from '../database/db';
 import {ESTADO_SINCRONIZACION} from '../database/synchronizationStatus';
 import {generateLocalId} from '../utils/id';
+import {formatDateDisplay} from '../utils/format';
 import {calculateSubscriptionStatus} from './plans';
 import {getLocalSubscriptionPlans} from '../database/tables/plans';
 import {
@@ -496,6 +497,105 @@ export async function fetchGlobalCustomerHistory(customerId: string) {
   } catch (_localErr) {
     return {stores: [], credits: [], payments: []};
   }
+}
+
+/**
+ * Calcula de manera robusta el saldo de una tienda para un cliente,
+ * verificando `store.current_balance` o calculando la diferencia neta de fiados y abonos.
+ */
+export function getStoreBalance(
+  store: any,
+  allCredits: any[] = [],
+  allPayments: any[] = [],
+): number {
+  const storeId = store?.store_id;
+  const rawBal = Number(store?.current_balance ?? 0);
+
+  const storeCredits = (allCredits || []).filter((c: any) =>
+    (c.store_id === storeId || (!c.store_id && !storeId)) &&
+    c.status !== 'cancelled' &&
+    c.status !== 'anulado'
+  );
+  const storePayments = (allPayments || []).filter((p: any) =>
+    (p.store_id === storeId || (!p.store_id && !storeId)) &&
+    p.status !== 'cancelled' &&
+    p.status !== 'anulado'
+  );
+
+  const totalCredits = storeCredits.reduce(
+    (sum: number, c: any) => sum + Number(c.amount || 0),
+    0,
+  );
+  const totalPayments = storePayments.reduce(
+    (sum: number, p: any) => sum + Number(p.amount || 0),
+    0,
+  );
+  const computedBal = Math.max(0, totalCredits - totalPayments);
+
+  if (rawBal > 0) return rawBal;
+  return computedBal;
+}
+
+/**
+ * Formatea la fecha del último movimiento registrado con sanitización de valores infinitos.
+ */
+export function formatLastMovement(lastMovement?: string | null): string {
+  if (!lastMovement) return 'Sin movimientos';
+  const str = String(lastMovement).trim().toLowerCase();
+  if (str.includes('infinity') || str === 'null' || str === '' || str === 'undefined') {
+    return 'Sin movimientos';
+  }
+  const formatted = formatDateDisplay(lastMovement);
+  return formatted && formatted !== 'Sin fecha' ? formatted : 'Sin movimientos';
+}
+
+/**
+ * Obtiene la fecha legible del último movimiento de una tienda,
+ * consultando `store.last_movement` o infiriéndola de los créditos y pagos.
+ */
+export function getStoreLastMovement(
+  store: any,
+  allCredits: any[] = [],
+  allPayments: any[] = [],
+): string {
+  if (
+    store?.last_movement &&
+    !String(store.last_movement).includes('infinity') &&
+    store.last_movement !== 'null'
+  ) {
+    return formatLastMovement(store.last_movement);
+  }
+
+  const storeId = store?.store_id;
+  const dates: string[] = [];
+
+  (allCredits || []).forEach((c: any) => {
+    if (
+      (c.store_id === storeId || (!c.store_id && !storeId)) &&
+      c.created_at &&
+      !String(c.created_at).includes('infinity')
+    ) {
+      dates.push(c.created_at);
+    }
+  });
+
+  (allPayments || []).forEach((p: any) => {
+    const d = p.payment_date || p.created_at;
+    if (
+      (p.store_id === storeId || (!p.store_id && !storeId)) &&
+      d &&
+      !String(d).includes('infinity')
+    ) {
+      dates.push(d);
+    }
+  });
+
+  if (dates.length > 0) {
+    dates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    return formatLastMovement(dates[0]);
+  }
+
+  return 'Sin movimientos';
 }
 
 export async function deleteCustomer(id: string): Promise<void> {

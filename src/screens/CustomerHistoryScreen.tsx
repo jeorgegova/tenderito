@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Card } from '../components/ui/Card';
 import { FooterMenu } from '../components/ui/FooterMenu';
 import { MonochromeIcon } from '../components/ui/MonochromeIcon';
@@ -7,6 +7,8 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import {
   fetchGlobalCustomerHistory,
   fetchCustomerById,
+  getStoreBalance,
+  getStoreLastMovement,
 } from '../services/customers';
 import { Colors, formatCOP } from '../theme';
 import { useResponsive } from '../hooks/useResponsive';
@@ -45,17 +47,22 @@ export function CustomerHistoryScreen({ route }: any) {
     queryFn: () => fetchGlobalCustomerHistory(id),
   });
   const stores = history.data?.stores ?? [];
+  const credits = history.data?.credits ?? [];
+  const payments = history.data?.payments ?? [];
   const totalBalance = stores.reduce(
-    (sum: number, s: any) => sum + Number(s.current_balance ?? 0),
+    (sum: number, s: any) => sum + getStoreBalance(s, credits, payments),
     0,
   );
 
-  const customerData = customer.data || initialCustomer;
+  const customerData = customer.data || initialCustomer || (history.data as any)?.customer;
   const displayName =
     customerData?.alias || customerData?.name || (customer.isLoading ? 'Cargando…' : 'Cliente');
   const realName =
     customerData?.alias && customerData?.name ? customerData.name : null;
   const phone = customerData?.phone ?? 'Sin teléfono';
+  const documentInfo = customerData?.document_number
+    ? `${customerData.document_type || 'CC'} ${customerData.document_number}`
+    : null;
   const initialChar = (displayName || '?').charAt(0).toUpperCase();
 
   return (
@@ -75,7 +82,9 @@ export function CustomerHistoryScreen({ route }: any) {
               {realName ? (
                 <Text style={styles.subtitle}>{realName}</Text>
               ) : null}
-              <Text style={styles.subtitle}>{phone}</Text>
+              <Text style={styles.subtitle}>
+                {documentInfo ? `${documentInfo} · ${phone}` : phone}
+              </Text>
             </View>
 
             {/* Resumen total */}
@@ -109,38 +118,63 @@ export function CustomerHistoryScreen({ route }: any) {
             ) : null}
           </>
         }
-        renderItem={({ item }: any) => (
-          <Card style={styles.storeCard}>
-            <View style={styles.storeIconWrap}>
-              <MonochromeIcon name="store" color={Colors.primary} size={20} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.storeName}>{item.store_name}</Text>
-              <Text style={styles.storeMeta}>
-                Último mov.: {formatLastMovement(item.last_movement)}
-              </Text>
-            </View>
-            <View style={styles.balanceCol}>
-              <Text
-                style={[
-                  styles.balance,
-                  Number(item.current_balance) === 0 && styles.balancePaid,
-                ]}>
-                {formatCOP(Number(item.current_balance))}
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                {Number(item.current_balance) === 0 ? (
-                  <>
-                    <Ionicons name="checkmark-circle" size={12} color="#15803D" />
-                    <Text style={[styles.balanceLabel, styles.balancePaid]}>Al día</Text>
-                  </>
-                ) : (
-                  <Text style={styles.balanceLabel}>Pendiente</Text>
-                )}
+        renderItem={({ item }: any) => {
+          const bal = getStoreBalance(item, credits, payments);
+          const isPaid = bal === 0;
+          const lastMov = getStoreLastMovement(item, credits, payments);
+          return (
+            <Card style={styles.storeCard}>
+              <View style={styles.storeIconWrap}>
+                <MonochromeIcon name="store" color={Colors.primary} size={20} />
               </View>
-            </View>
-          </Card>
-        )}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.storeName}>{item.store_name}</Text>
+                {item.phone ? (
+                  <TouchableOpacity
+                    onPress={() => Linking.openURL(`tel:${item.phone}`).catch(() => {})}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      marginTop: 2,
+                    }}>
+                    <Ionicons name="call-outline" size={12} color={Colors.primary} />
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: Colors.primary,
+                        fontWeight: '600',
+                      }}>
+                      {item.phone}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+                <Text style={styles.storeMeta}>
+                  Último mov.: {lastMov}
+                </Text>
+              </View>
+              <View style={styles.balanceCol}>
+                <Text
+                  style={[
+                    styles.balance,
+                    isPaid && styles.balancePaid,
+                  ]}>
+                  {formatCOP(bal)}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  {isPaid ? (
+                    <>
+                      <Ionicons name="checkmark-circle" size={12} color="#15803D" />
+                      <Text style={[styles.balanceLabel, styles.balancePaid]}>Al día</Text>
+                    </>
+                  ) : (
+                    <Text style={styles.balanceLabel}>Pendiente</Text>
+                  )}
+                </View>
+              </View>
+            </Card>
+          );
+        }}
         ListFooterComponent={<View style={{ height: 32 }} />}
       />
       <FooterMenu active="Clientes" />

@@ -23,6 +23,7 @@ export function RegisterScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { isSmall, isCompact, isTablet } = useResponsive();
   const [storeName, setStoreName] = useState('');
+  const [phone, setPhone] = useState('');
   const [merchantName, setMerchantName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,6 +33,7 @@ export function RegisterScreen({ navigation }: any) {
   // Validación estilo Formik (touched + errors en tiempo real)
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
+  const phoneRef = useRef<TextInput>(null);
   const merchantNameRef = useRef<TextInput>(null);
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -44,6 +46,12 @@ export function RegisterScreen({ navigation }: any) {
     const errs: Record<string, string> = {};
     if (!storeName.trim()) {
       errs.storeName = 'El nombre de la tienda es requerido';
+    }
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (!cleanPhone) {
+      errs.phone = 'El teléfono de contacto es requerido';
+    } else if (cleanPhone.length < 7) {
+      errs.phone = 'Ingresa un número de teléfono válido (mínimo 7 dígitos)';
     }
     if (!merchantName.trim()) {
       errs.merchantName = 'Tu nombre completo es requerido';
@@ -87,6 +95,7 @@ export function RegisterScreen({ navigation }: any) {
   async function onRegister() {
     setTouched({
       storeName: true,
+      phone: true,
       merchantName: true,
       email: true,
       password: true,
@@ -96,6 +105,7 @@ export function RegisterScreen({ navigation }: any) {
     if (Object.keys(errors).length > 0) {
       const firstError =
         errors.storeName ||
+        errors.phone ||
         errors.merchantName ||
         errors.email ||
         errors.password ||
@@ -107,12 +117,15 @@ export function RegisterScreen({ navigation }: any) {
       });
     }
     setLoading(true);
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           store_name: storeName,
+          phone: cleanPhone,
+          store_phone: cleanPhone,
           merchant_name: merchantName,
           subscription_plan: 'free',
         },
@@ -126,6 +139,23 @@ export function RegisterScreen({ navigation }: any) {
         type: 'destructive',
       });
     }
+
+    if (data?.session && data?.user) {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ phone: cleanPhone })
+          .eq('id', data.user.id);
+      } catch (_pErr) {}
+
+      try {
+        await supabase
+          .from('stores')
+          .update({ phone: cleanPhone })
+          .eq('owner_id', data.user.id);
+      } catch (_sErr) {}
+    }
+
     setLoading(false);
 
     if (!data.session) {
@@ -195,6 +225,19 @@ export function RegisterScreen({ navigation }: any) {
             onBlur={() => handleBlur('storeName')}
             error={touched.storeName ? errors.storeName : undefined}
             placeholder="Ej: Tienda La Esquina"
+            returnKeyType="next"
+            onSubmitEditing={() => phoneRef.current?.focus()}
+            blurOnSubmit={false}
+          />
+          <Input
+            ref={phoneRef}
+            label="Teléfono de contacto"
+            value={phone}
+            onChangeText={t => setPhone(t.replace(/[^0-9]/g, ''))}
+            onBlur={() => handleBlur('phone')}
+            error={touched.phone ? errors.phone : undefined}
+            keyboardType="phone-pad"
+            placeholder="Ej: 300 123 4567"
             returnKeyType="next"
             onSubmitEditing={() => merchantNameRef.current?.focus()}
             blurOnSubmit={false}
