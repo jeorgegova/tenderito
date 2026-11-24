@@ -1,5 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import {showAlert} from '../components/ui/AlertModal';
+import {showLogoutConfirmModal} from '../components/ui/LogoutConfirmModal';
 import {clearLocalDatabase, getDbConnection} from '../database/db';
 import {useStore} from '../store/useStore';
 import {supabase} from './supabase';
@@ -7,6 +8,7 @@ import {unregister_fcm_token} from '../services/deviceService';
 import {queryClient} from './queryClient';
 import {clearStoreContext, setLastAuthUserId} from '../services/storeContext';
 import {countPendingLocalItems, syncAll} from '../services/sync';
+import {markExplicitLogout} from '../services/sessionPersistence';
 
 /** Mensaje de confirmación para el acceso de clientes (portal). */
 export const CUSTOMER_LOGOUT_MESSAGE =
@@ -49,6 +51,9 @@ export async function checkPendingSyncStatus(): Promise<{
  */
 export async function performLogout(clearLocalData = false): Promise<void> {
   try {
+    // 0. Registrar cierre de sesión explícito para evitar auto-reconexión offline
+    await markExplicitLogout();
+
     const db = await getDbConnection();
     const pendingCount = await countPendingLocalItems(db);
 
@@ -85,9 +90,9 @@ export async function performLogout(clearLocalData = false): Promise<void> {
  */
 export async function confirmLogout(options: LogoutOptions = {}): Promise<void> {
   const {
-    title = '¿Seguro que deseas cerrar sesión?',
-    message = 'Tendrás que volver a iniciar sesión para acceder a tu tienda.',
-    confirmText = 'Cerrar sesión',
+    title,
+    message,
+    confirmText,
     clearLocalData = false,
   } = options;
 
@@ -143,20 +148,13 @@ export async function confirmLogout(options: LogoutOptions = {}): Promise<void> 
     return;
   }
 
-  // Si no hay operaciones pendientes, diálogo estándar de confirmación
-  showAlert({
+  // Si no hay operaciones pendientes, diálogo específico de confirmación de cierre de sesión
+  showLogoutConfirmModal({
     title,
     message,
-    type: 'warning',
-    buttons: [
-      {text: 'Cancelar', style: 'cancel'},
-      {
-        text: confirmText,
-        style: 'destructive',
-        onPress: async () => {
-          await performLogout(clearLocalData);
-        },
-      },
-    ],
+    confirmText,
+    onConfirm: async () => {
+      await performLogout(clearLocalData);
+    },
   });
 }

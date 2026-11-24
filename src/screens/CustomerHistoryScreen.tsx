@@ -11,6 +11,7 @@ import {
   fetchCustomerById,
   getStoreBalance,
   getStoreLastMovement,
+  evaluateCustomerPaymentHabit,
 } from '../services/customers';
 import { Colors, formatCOP } from '../theme';
 import { useResponsive } from '../hooks/useResponsive';
@@ -62,6 +63,18 @@ export function CustomerHistoryScreen({ route }: any) {
     (sum: number, s: any) => sum + getStoreBalance(s, credits, payments),
     0,
   );
+  const paymentRating = evaluateCustomerPaymentHabit(stores, credits, payments);
+
+  const ratingIconName =
+    paymentRating.tier === 'excellent'
+      ? 'shield-checkmark'
+      : paymentRating.tier === 'good'
+        ? 'thumbs-up'
+        : paymentRating.tier === 'fair'
+          ? 'alert-circle'
+          : paymentRating.tier === 'risk'
+            ? 'warning'
+            : 'help-circle-outline';
 
   const customerData = customer.data || initialCustomer || (history.data as any)?.customer;
   const displayName =
@@ -111,6 +124,123 @@ export function CustomerHistoryScreen({ route }: any) {
                 </View>
               </View>
             </Card>
+
+            {/* Valoración de hábitos de pago */}
+            {!history.isLoading ? (
+              <Card
+                style={[
+                  styles.ratingCard,
+                  { borderColor: paymentRating.borderColor },
+                ]}>
+                <View style={styles.ratingHeaderRow}>
+                  <View style={styles.ratingTitleGroup}>
+                    <View
+                      style={[
+                        styles.ratingIconBox,
+                        { backgroundColor: paymentRating.bgColor },
+                      ]}>
+                      <Ionicons
+                        name={ratingIconName as any}
+                        size={20}
+                        color={paymentRating.color}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.ratingOverline}>
+                        VALORACIÓN DE PAGO
+                      </Text>
+                      <Text
+                        style={[
+                          styles.ratingLabel,
+                          { color: paymentRating.color },
+                        ]}>
+                        {paymentRating.label}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {paymentRating.score !== null ? (
+                    <View
+                      style={[
+                        styles.ratingScorePill,
+                        {
+                          backgroundColor: paymentRating.bgColor,
+                          borderColor: paymentRating.borderColor,
+                        },
+                      ]}>
+                      <Text
+                        style={[
+                          styles.ratingScoreText,
+                          { color: paymentRating.color },
+                        ]}>
+                        {paymentRating.score} / 100
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {paymentRating.score !== null ? (
+                  <View style={styles.ratingBarTrack}>
+                    <View
+                      style={[
+                        styles.ratingBarFill,
+                        {
+                          width: `${paymentRating.score}%`,
+                          backgroundColor: paymentRating.color,
+                        },
+                      ]}
+                    />
+                  </View>
+                ) : null}
+
+                <Text style={styles.ratingDesc}>
+                  {paymentRating.description}
+                </Text>
+
+                <View style={styles.ratingMetricsRow}>
+                  <View style={styles.ratingMetricBox}>
+                    <Text style={styles.ratingMetricLabel}>ABONADO</Text>
+                    <Text
+                      style={styles.ratingMetricValue}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}>
+                      {paymentRating.paymentPercentage}%
+                    </Text>
+                  </View>
+                  <View style={styles.ratingMetricBox}>
+                    <Text style={styles.ratingMetricLabel}>ABONOS / FIADOS</Text>
+                    <Text
+                      style={styles.ratingMetricValue}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}>
+                      {paymentRating.paymentsCount} / {paymentRating.creditsCount}
+                    </Text>
+                  </View>
+                  <View style={styles.ratingMetricBox}>
+                    <Text style={styles.ratingMetricLabel}>ATRASOS</Text>
+                    <Text
+                      style={[
+                        styles.ratingMetricValue,
+                        {
+                          color:
+                            paymentRating.overdueCount > 0
+                              ? Colors.destructive
+                              : '#15803D',
+                        },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}>
+                      {paymentRating.overdueCount === 0
+                        ? 'Sin atrasos'
+                        : `${paymentRating.overdueCount} vencido${paymentRating.overdueCount === 1 ? '' : 's'}`}
+                    </Text>
+                  </View>
+                </View>
+              </Card>
+            ) : null}
 
             <Text style={styles.sectionTitle}>Tiendas vinculadas</Text>
 
@@ -253,4 +383,93 @@ const styles = StyleSheet.create({
   emptyCard: { alignItems: 'center', flexDirection: 'row', gap: 10 },
   emptyText: { color: Colors.textSecondary, fontSize: 13 },
   muted: { color: Colors.textSecondary, fontSize: 13 },
+  ratingCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    gap: 10,
+  },
+  ratingHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  ratingTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 170,
+  },
+  ratingIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  ratingOverline: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+    color: Colors.textSecondary,
+  },
+  ratingLabel: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: 1,
+  },
+  ratingScorePill: {
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexShrink: 0,
+  },
+  ratingScoreText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
+  ratingBarTrack: {
+    width: '100%',
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: '#F1F5F9',
+    overflow: 'hidden',
+  },
+  ratingBarFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  ratingDesc: {
+    fontSize: 12.5,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  ratingMetricsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  ratingMetricBox: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 9,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  ratingMetricLabel: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  ratingMetricValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.text,
+    marginTop: 2,
+  },
 });

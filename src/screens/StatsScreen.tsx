@@ -503,7 +503,11 @@ export function StatsScreen({navigation}: any) {
                     {/* Fiados realizados */}
                     <View style={s.consolidationItem}>
                       <Text style={s.consolidationItemLabel}>FIADOS REALIZADOS</Text>
-                      <Text style={[s.consolidationItemValue, {color: Colors.text}]} numberOfLines={1}>
+                      <Text
+                        style={[s.consolidationItemValue, {color: Colors.text}]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}>
                         {stats?.consolidation.selectedCreditsCount ?? 0} movimiento{(stats?.consolidation.selectedCreditsCount ?? 0) === 1 ? '' : 's'}
                       </Text>
                     </View>
@@ -821,17 +825,21 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '900',
     color: Colors.primaryDark,
     letterSpacing: 0.8,
+    flexShrink: 1,
   },
   sectionSub: {
     fontSize: 11,
     fontWeight: '700',
     color: Colors.textSecondary,
+    flexShrink: 0,
   },
   mainReceivableCard: {
     backgroundColor: '#FFF7ED',
@@ -887,17 +895,21 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   periodTitle: {
     fontSize: 12,
     fontWeight: '800',
     color: Colors.text,
     letterSpacing: 0.5,
+    flexShrink: 1,
   },
   periodActiveLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: Colors.primary,
+    flexShrink: 0,
   },
   summaryTwoColsRow: {
     flexDirection: 'row',
@@ -1061,6 +1073,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 8,
   },
   alertBadgeBox: {
@@ -1085,6 +1098,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 10,
   },
   alertCustomerName: {
@@ -1187,18 +1201,22 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 2,
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 4,
   },
   consolidationTitle: {
     fontSize: 12,
     fontWeight: '800',
     color: Colors.text,
     letterSpacing: 0.5,
+    flexShrink: 1,
   },
   consolidationPresetLabel: {
     fontSize: 11,
     fontWeight: '600',
     color: Colors.textSecondary,
+    flexShrink: 0,
   },
   consolidationItem: {
     flex: 1,
@@ -1224,16 +1242,20 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   customerListTitle: {
     fontSize: 14,
     fontWeight: '800',
     color: Colors.text,
+    flexShrink: 1,
   },
   customerListCount: {
     fontSize: 12,
     fontWeight: '700',
     color: Colors.textSecondary,
+    flexShrink: 0,
   },
   customersStack: {
     gap: 10,
@@ -1297,6 +1319,8 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   itemBalanceLabel: {
     fontSize: 10,

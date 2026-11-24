@@ -303,26 +303,40 @@ export async function notifyCustomerMovement(params: {
       console.warn('[notifyCustomerMovement] Broadcast en realtime omitido:', bcErr);
     }
 
-    const payload = {
-      body: {
-        eventType,
-        table: params.type === 'payment' ? 'payments' : 'credits',
-        record: {
-          id: params.movementId,
-          customer_id: params.customerId,
-          store_id: params.storeId,
-          amount: params.amount,
-          concept: params.concept,
-          notes: params.notes,
-          status: params.status || 'active',
-        },
+    const rawPayload = {
+      eventType,
+      type: eventType,
+      table: params.type === 'payment' ? 'payments' : 'credits',
+      status: params.status || 'active',
+      customerId: params.customerId,
+      customer_id: params.customerId,
+      storeId: params.storeId,
+      store_id: params.storeId,
+      amount: params.amount,
+      concept: params.concept,
+      notes: params.notes,
+      movementId: params.movementId,
+      record: {
+        id: params.movementId,
+        customer_id: params.customerId,
+        store_id: params.storeId,
+        amount: params.amount,
+        concept: params.concept,
+        notes: params.notes,
+        status: params.status || 'active',
       },
     };
 
+    const payload = {
+      body: rawPayload,
+      ...rawPayload,
+    };
+
     // Invocar la Edge Function en Supabase (soporta push-notifications y push-notification)
-    let res = await supabase.functions.invoke('push-notifications', payload);
+    let res = await supabase.functions.invoke('push-notifications', { body: payload });
     if (res.error) {
-      res = await supabase.functions.invoke('push-notification', payload);
+      console.log('[notifyCustomerMovement] Fallback probando push-notification singular...');
+      res = await supabase.functions.invoke('push-notification', { body: payload });
     }
 
     if (res.error) {

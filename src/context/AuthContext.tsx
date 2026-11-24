@@ -10,8 +10,17 @@ import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { performLogout } from '../lib/session';
 import { handleUserSessionSwitch } from '../services/accountSync';
+import {
+  saveOfflineSession,
+  markExplicitLogout,
+  isExplicitLogout,
+  getPersistedOfflineSession,
+  buildSyntheticSession,
+  resolveUserType,
+  type UserType,
+} from '../services/sessionPersistence';
 
-export type UserType = 'store' | 'customer';
+export type { UserType };
 
 export interface AuthContextType {
   session: Session | null;
@@ -25,14 +34,6 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function resolveUserType(user: User | null): UserType {
-  if (!user) return 'store';
-  // app_metadata es seguro y no modificable por el cliente. user_metadata sirve de fallback.
-  const type =
-    user.app_metadata?.user_type || user.user_metadata?.user_type;
-  return type === 'customer' ? 'customer' : 'store';
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -40,85 +41,171 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const applySession = useCallback(async (nextSession: Session | null) => {
-    const currentUser = nextSession?.user ?? null;
-    const type = currentUser ? resolveUserType(currentUser) : null;
+    if (nextSession?.user) {
+      const currentUser = nextSession.user;
+      const type = resolveUserType(currentUser);
 
-    if (currentUser?.id) {
-      try {
-        await handleUserSessionSwitch(currentUser.id, type);
-      } catch (err) {
-        console.warn('[AuthContext] Error verificando usuario asociado:', err);
+      setSession(nextSession);
+      setUser(currentUser);
+      setUserType(type);
+
+      // Persistir de inmediato en almacenamiento offline (AsyncStorage y SQLite)
+      await saveOfflineSession({
+        session: nextSession,
+        user: currentUser,
+        userType: type,
+      });
+
+      if (currentUser.id) {
+        try {
+          await handleUserSessionSwitch(currentUser.id, type);
+        } catch (err) {
+          console.warn('[AuthContext] Error verificando usuario asociado:', err);
+        }
+      }
+    } else {
+      // Solo se nulifica la sesión si el usuario ejecutó un logout explícito
+      const loggedOut = await isExplicitLogout();
+      if (loggedOut) {
+        setSession(null);
+        setUser(null);
+        setUserType(null);
+      } else {
+        // Si Supabase emitió null (por ej: fallo de red o token expirado en segundo plano)
+        // pero NO hubo logout explícito, recuperamos o mantenemos la sesión offline
+        const offline = await getPersistedOfflineSession();
+        if (offline) {
+          console.log('[AuthContext] Manteniendo sesión offline para:', offline.userId);
+          const synth = buildSyntheticSession(offline);
+          setSession(synth);
+          setUser(synth.user);
+          setUserType(offline.userType);
+        } else {
+          setSession(null);
+          setUser(null);
+          setUserType(null);
+        }
       }
     }
-
-    setSession(nextSession);
-    setUser(currentUser);
-    setUserType(type);
   }, []);
 
   const refreshSession = useCallback(async () => {
     try {
       const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      await applySession(data.session);
+      if (!error && data?.session?.user) {
+        await applySession(data.session);
 
-      // Verificación en segundo plano con el servidor de Supabase
-      if (data.session) {
         const { data: userData, error: userError } =
           await supabase.auth.getUser();
-        if (userError) {
-          const status = (userError as any)?.status;
-          if (status === 401 || status === 403) {
-            await applySession(null);
-          }
-        } else if (userData.user) {
+        if (!userError && userData?.user) {
           setUser(userData.user);
           setUserType(resolveUserType(userData.user));
+          await saveOfflineSession({
+            session: data.session,
+            user: userData.user,
+          });
         }
       }
     } catch (err) {
-      console.warn('[AuthContext] Error refrescando sesión:', err);
+      console.warn('[AuthContext] Error refrescando sesión (manteniendo sesión offline):', err);
     }
   }, [applySession]);
 
   useEffect(() => {
     let mounted = true;
 
-    // 1. Obtener la sesión almacenada en AsyncStorage (funciona 100% offline)
-    supabase.auth.getSession().then(async ({ data: { session: initialSession } }) => {
-      if (!mounted) return;
-      await applySession(initialSession);
-      setIsLoading(false);
+    // 1. Inicialización resiliente: Supabase + Fallback Offline-First inmediato
+    const initAuth = async () => {
+      try {
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        if (!mounted) return;
 
-      // Verificación con el servidor en segundo plano
-      if (initialSession) {
-        supabase.auth.getUser().then(async ({ data: { user: verifiedUser }, error }) => {
-          if (!mounted) return;
-          if (error) {
-            // Solo invalidar si el servidor rechazó las credenciales (401 / 403).
-            // Si el error es de conexión o falta de internet, se mantiene la sesión
-            // persistida en AsyncStorage para continuar trabajando sin conexión.
-            const status = (error as any)?.status;
-            if (status === 401 || status === 403) {
-              await applySession(null);
+        if (initialSession?.user) {
+          await applySession(initialSession);
+          setIsLoading(false);
+
+          // Verificación no bloqueante en background (no tumba la sesión si hay 401 o falta de red)
+          supabase.auth.getUser().then(async ({ data: { user: verifiedUser }, error: userErr }) => {
+            if (!mounted) return;
+            if (!userErr && verifiedUser) {
+              setUser(verifiedUser);
+              setUserType(resolveUserType(verifiedUser));
+              await saveOfflineSession({
+                session: initialSession,
+                user: verifiedUser,
+              });
             }
-            return;
-          }
-          if (verifiedUser) {
-            setUser(verifiedUser);
-            setUserType(resolveUserType(verifiedUser));
-          }
-        });
+          }).catch(() => {});
+          return;
+        }
+
+        // Si Supabase no devolvió sesión (reinicio del dispositivo, app offline o token expirado):
+        // Consultar el almacenamiento persistente y la BD local
+        const offlineSession = await getPersistedOfflineSession();
+        if (!mounted) return;
+
+        if (offlineSession?.userId) {
+          console.log('[AuthContext] Sesión Supabase ausente al iniciar, restaurando sesión offline:', offlineSession.userId);
+          const synthetic = buildSyntheticSession(offlineSession);
+          await applySession(synthetic);
+          setIsLoading(false);
+
+          // Intentar refresh silencioso en background cuando haya red
+          supabase.auth.refreshSession().then(async ({ data: refreshed, error: refErr }) => {
+            if (!mounted) return;
+            if (!refErr && refreshed?.session) {
+              await applySession(refreshed.session);
+            }
+          }).catch(() => {});
+          return;
+        }
+
+        // Si no hay datos locales ni sesión previa: mostrar Login
+        await applySession(null);
+        setIsLoading(false);
+      } catch (e) {
+        console.warn('[AuthContext] Error en initAuth, intentando recuperar sesión offline:', e);
+        if (!mounted) return;
+        const offlineSession = await getPersistedOfflineSession();
+        if (offlineSession?.userId) {
+          const synthetic = buildSyntheticSession(offlineSession);
+          await applySession(synthetic);
+        } else {
+          await applySession(null);
+        }
+        setIsLoading(false);
       }
-    });
+    };
+
+    initAuth();
 
     // 2. Suscribirse a cambios de estado de autenticación de Supabase
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
+    } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       if (!mounted) return;
-      await applySession(currentSession);
-      setIsLoading(false);
+
+      if (currentSession?.user) {
+        await applySession(currentSession);
+        setIsLoading(false);
+      } else if (event === 'SIGNED_OUT') {
+        // Verificar si fue logout explícito del usuario
+        const loggedOut = await isExplicitLogout();
+        if (loggedOut) {
+          setSession(null);
+          setUser(null);
+          setUserType(null);
+          setIsLoading(false);
+        } else {
+          console.log('[AuthContext] Evento SIGNED_OUT descartado por no ser explícito. Conservando sesión local.');
+          const offline = await getPersistedOfflineSession();
+          if (offline) {
+            const synthetic = buildSyntheticSession(offline);
+            await applySession(synthetic);
+          }
+          setIsLoading(false);
+        }
+      }
     });
 
     // 3. Manejo del ciclo de vida de la app (AppState) para el refresco del token
@@ -143,9 +230,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [applySession]);
 
   const signOut = useCallback(async () => {
+    await markExplicitLogout();
     await performLogout();
-    await applySession(null);
-  }, [applySession]);
+    setSession(null);
+    setUser(null);
+    setUserType(null);
+  }, []);
 
   const value: AuthContextType = {
     session,
@@ -167,4 +257,3 @@ export function useAuth(): AuthContextType {
   }
   return context;
 }
-

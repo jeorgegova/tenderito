@@ -73,7 +73,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     minHeight: 48,
   },
@@ -82,7 +81,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     minHeight: 44,
     gap: 6,
-    flexWrap: 'wrap',
   },
   primary: {
     backgroundColor: Colors.primary,

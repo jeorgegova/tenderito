@@ -141,7 +141,7 @@ const generateAvailableMonths = (createdAt?: string | null) => {
 
 export function CustomerHomeScreen() {
   const insets = useSafeAreaInsets();
-  const { isSmall, isTablet, tabletContainerStyle } = useResponsive();
+  const { isSmall, isTablet, width, tabletContainerStyle } = useResponsive();
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'payment'>(
     'all',
@@ -1583,19 +1583,22 @@ export function CustomerHomeScreen() {
         transparent
         visible={menuVisible}
         animationType="fade"
+        statusBarTranslucent={true}
         onRequestClose={() => setMenuVisible(false)}>
-        <Pressable
-          style={styles.menuModalBackdrop}
-          onPress={() => setMenuVisible(false)}>
+        <View style={styles.menuModalBackdrop}>
           <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setMenuVisible(false)}
+          />
+          <View
             style={[
               styles.menuPopover,
               {
                 top: Math.max(insets.top, 14) + (isSmall ? 48 : 56),
                 right: isSmall ? 16 : isTablet ? 28 : 20,
+                width: Math.min(245, width - 32),
               },
-            ]}
-            onPress={e => e.stopPropagation()}>
+            ]}>
             {/* Encabezado del menú */}
             <View style={styles.menuHeader}>
               <View style={[styles.menuAvatarLarge, { backgroundColor: '#ECFDF5' }]}>
@@ -1634,8 +1637,8 @@ export function CustomerHomeScreen() {
                 Cerrar sesión
               </Text>
             </TouchableOpacity>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
 
       {/* Modal para editar datos personales del cliente */}
@@ -2252,12 +2255,13 @@ const styles = StyleSheet.create({
   },
   menuModalBackdrop: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.18)',
   },
   menuPopover: {
     position: 'absolute',
-    width: 235,
-    maxWidth: '85%',
+    width: 245,
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,

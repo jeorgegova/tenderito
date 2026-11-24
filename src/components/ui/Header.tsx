@@ -41,7 +41,7 @@ export function Header({
 }) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const {isSmall, isTablet, maxContentWidth} = useResponsive();
+  const {isSmall, isTablet, maxContentWidth, width} = useResponsive();
   const [menuVisible, setMenuVisible] = useState(false);
   const storeProfile = useStore(s => s.profile);
   const profileQuery = useQuery({
@@ -148,6 +148,8 @@ export function Header({
                 isSmall && styles.titleSmall,
               ]}
               numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
               ellipsizeMode="tail">
               {title}
             </Text>
@@ -229,19 +231,22 @@ export function Header({
         transparent
         visible={menuVisible}
         animationType="fade"
+        statusBarTranslucent={true}
         onRequestClose={() => setMenuVisible(false)}>
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setMenuVisible(false)}>
+        <View style={styles.modalBackdrop}>
           <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setMenuVisible(false)}
+          />
+          <View
             style={[
               styles.menuPopover,
               {
                 top: Math.max(insets.top, 14) + (isSmall ? 48 : 56),
                 right: isSmall ? 16 : isTablet ? 28 : 20,
+                width: Math.min(245, width - 32),
               },
-            ]}
-            onPress={e => e.stopPropagation()}>
+            ]}>
             {/* Encabezado del menú */}
             <View style={styles.menuHeader}>
               <View style={styles.menuAvatarLarge}>
@@ -291,8 +296,8 @@ export function Header({
                 Cerrar sesión
               </Text>
             </TouchableOpacity>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </>
   );
@@ -538,12 +543,13 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.18)',
   },
   menuPopover: {
     position: 'absolute',
-    width: 235,
-    maxWidth: '85%',
+    width: 245,
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,

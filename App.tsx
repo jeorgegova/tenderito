@@ -14,6 +14,7 @@ import {RootNavigator} from './src/navigation/RootNavigator';
 import {useDatabase} from './src/hooks/useDatabase';
 import {useSync} from './src/hooks/useSync';
 import {AlertModal} from './src/components/ui/AlertModal';
+import {LogoutConfirmModal} from './src/components/ui/LogoutConfirmModal';
 import {Toast} from './src/components/ui/Toast';
 import {supabase} from './src/lib/supabase';
 import {register_fcm_token, syncPendingDeviceToken} from './src/services/deviceService';
@@ -198,6 +199,7 @@ function AppContent() {
         <RootNavigator />
       </NavigationContainer>
       <AlertModal />
+      <LogoutConfirmModal />
       <Toast />
     </SwipeNavigationProvider>
   );

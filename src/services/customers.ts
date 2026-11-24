@@ -618,3 +618,249 @@ export async function deleteCustomer(id: string): Promise<void> {
     await query;
   } catch (_e) {}
 }
+
+export type PaymentRatingTier = 'excellent' | 'good' | 'fair' | 'risk' | 'none';
+
+export interface CustomerPaymentRating {
+  tier: PaymentRatingTier;
+  score: number | null;
+  label: string;
+  description: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  totalCreditsAmount: number;
+  totalPaymentsAmount: number;
+  paymentPercentage: number;
+  creditsCount: number;
+  paymentsCount: number;
+  overdueCount: number;
+  maxOverdueDays: number;
+  storesCount: number;
+  storesPaidCount: number;
+}
+
+/**
+ * Evalúa los hábitos de pago de un cliente a partir de su historial global
+ * en las tiendas (fiados, abonos, saldos pendientes y vencimientos).
+ */
+export function evaluateCustomerPaymentHabit(
+  stores: any[] = [],
+  credits: any[] = [],
+  payments: any[] = [],
+): CustomerPaymentRating {
+  const activeCredits = (credits || []).filter(
+    (c: any) => c.status !== 'cancelled' && c.status !== 'anulado',
+  );
+  const activePayments = (payments || []).filter(
+    (p: any) => p.status !== 'cancelled' && p.status !== 'anulado',
+  );
+
+  const totalCreditsAmount = activeCredits.reduce(
+    (sum: number, c: any) => sum + Number(c.amount || 0),
+    0,
+  );
+  const totalPaymentsAmount = activePayments.reduce(
+    (sum: number, p: any) => sum + Number(p.amount || 0),
+    0,
+  );
+
+  const storeBalances = new Map<string, number>();
+  let totalBalance = 0;
+  let storesPaidCount = 0;
+
+  (stores || []).forEach((s: any) => {
+    const bal = getStoreBalance(s, activeCredits, activePayments);
+    if (s?.store_id) {
+      storeBalances.set(String(s.store_id), bal);
+    }
+    totalBalance += bal;
+    if (bal === 0) {
+      storesPaidCount += 1;
+    }
+  });
+
+  const creditsCount = activeCredits.length;
+  const paymentsCount = activePayments.length;
+  const storesCount = (stores || []).length;
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayMs = todayStart.getTime();
+
+  let overdueCount = 0;
+  let maxOverdueDays = 0;
+
+  activeCredits.forEach((c: any) => {
+    if (c.status === 'paid') return;
+    const storeId = c.store_id ? String(c.store_id) : null;
+    const storeBal = storeId !== null && storeBalances.has(storeId) ? storeBalances.get(storeId)! : totalBalance;
+    if (storeBal <= 0) return;
+
+    if (c.due_date) {
+      const dueMs = new Date(c.due_date).getTime();
+      if (!Number.isNaN(dueMs) && dueMs < todayMs) {
+        overdueCount += 1;
+        const days = Math.max(1, Math.floor((todayMs - dueMs) / 86400000));
+        if (days > maxOverdueDays) {
+          maxOverdueDays = days;
+        }
+      }
+    } else if (c.status === 'overdue') {
+      overdueCount += 1;
+    }
+  });
+
+  const hasHistory = creditsCount > 0 || paymentsCount > 0 || totalBalance > 0;
+  if (!hasHistory) {
+    return {
+      tier: 'none',
+      score: null,
+      label: 'Sin historial',
+      description: 'Aún no registra fiados ni abonos en tiendas de Tenderito.',
+      color: '#475569',
+      bgColor: '#F1F5F9',
+      borderColor: '#CBD5E1',
+      totalCreditsAmount: 0,
+      totalPaymentsAmount: 0,
+      paymentPercentage: 0,
+      creditsCount: 0,
+      paymentsCount: 0,
+      overdueCount: 0,
+      maxOverdueDays: 0,
+      storesCount,
+      storesPaidCount,
+    };
+  }
+
+  let paymentRatio = 0;
+  if (totalCreditsAmount > 0) {
+    paymentRatio = Math.min(1, totalPaymentsAmount / totalCreditsAmount);
+  } else if (totalBalance > 0) {
+    const inferredTotal = totalBalance + totalPaymentsAmount;
+    paymentRatio = inferredTotal > 0 ? Math.min(1, totalPaymentsAmount / inferredTotal) : 0;
+  } else if (totalPaymentsAmount > 0) {
+    paymentRatio = 1;
+  }
+
+  const paymentPercentage = Math.round(paymentRatio * 100);
+
+  if (paymentsCount === 0 && overdueCount === 0 && totalBalance > 0 && creditsCount <= 2) {
+    return {
+      tier: 'good',
+      score: 68,
+      label: 'Historial reciente',
+      description: 'Tiene fiados recientes y aún no presenta atrasos en sus fechas de pago.',
+      color: '#0369A1',
+      bgColor: '#E0F2FE',
+      borderColor: '#7DD3FC',
+      totalCreditsAmount,
+      totalPaymentsAmount,
+      paymentPercentage,
+      creditsCount,
+      paymentsCount,
+      overdueCount,
+      maxOverdueDays,
+      storesCount,
+      storesPaidCount,
+    };
+  }
+
+  const ratioPts = Math.round(paymentRatio * 65);
+  const punctualityPts =
+    overdueCount === 0
+      ? 25
+      : Math.max(0, 25 - overdueCount * 8 - Math.min(15, Math.floor(maxOverdueDays / 3)));
+  const consistencyPts =
+    totalBalance === 0 && paymentsCount > 0
+      ? 10
+      : paymentsCount >= Math.max(1, Math.ceil(creditsCount * 0.5))
+        ? 6
+        : paymentsCount > 0
+          ? 3
+          : 0;
+
+  const score = Math.max(5, Math.min(100, ratioPts + punctualityPts + consistencyPts));
+
+  if (score >= 80 && overdueCount === 0) {
+    return {
+      tier: 'excellent',
+      score,
+      label: 'Excelente pagador',
+      description: 'Cumple puntualmente con sus abonos y no registra fiados vencidos.',
+      color: '#15803D',
+      bgColor: '#DCFCE7',
+      borderColor: '#86EFAC',
+      totalCreditsAmount,
+      totalPaymentsAmount,
+      paymentPercentage,
+      creditsCount,
+      paymentsCount,
+      overdueCount,
+      maxOverdueDays,
+      storesCount,
+      storesPaidCount,
+    };
+  }
+
+  if (score >= 60 && overdueCount <= 1 && maxOverdueDays <= 7) {
+    return {
+      tier: 'good',
+      score,
+      label: 'Buen pagador',
+      description: 'Mantiene un buen ritmo de abonos en las tiendas vinculadas.',
+      color: '#0369A1',
+      bgColor: '#E0F2FE',
+      borderColor: '#7DD3FC',
+      totalCreditsAmount,
+      totalPaymentsAmount,
+      paymentPercentage,
+      creditsCount,
+      paymentsCount,
+      overdueCount,
+      maxOverdueDays,
+      storesCount,
+      storesPaidCount,
+    };
+  }
+
+  if (score >= 35) {
+    return {
+      tier: 'fair',
+      score,
+      label: 'Pago irregular',
+      description: 'Presenta algunos atrasos o un nivel bajo de abonos frente a lo fiado.',
+      color: '#B45309',
+      bgColor: '#FEF3C7',
+      borderColor: '#FCD34D',
+      totalCreditsAmount,
+      totalPaymentsAmount,
+      paymentPercentage,
+      creditsCount,
+      paymentsCount,
+      overdueCount,
+      maxOverdueDays,
+      storesCount,
+      storesPaidCount,
+    };
+  }
+
+  return {
+    tier: 'risk',
+    score,
+    label: 'Riesgo de mora',
+    description: 'Acumula fiados vencidos o registra muy pocos abonos realizados.',
+    color: '#B91C1C',
+    bgColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
+    totalCreditsAmount,
+    totalPaymentsAmount,
+    paymentPercentage,
+    creditsCount,
+    paymentsCount,
+    overdueCount,
+    maxOverdueDays,
+    storesCount,
+    storesPaidCount,
+  };
+}
