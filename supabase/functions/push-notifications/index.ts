@@ -171,34 +171,50 @@ serve(async (req: Request) => {
       const currentBalance = formatCOP(Number(customerStore?.current_balance || 0));
       const amountFormatted = formatCOP(Number(record.amount || 0));
 
-      if (record.status === "cancelled") {
-        if (table === "credits") {
-          title = "Fiado anulado ❌";
+      const isCancelled =
+        record.status === "cancelled" ||
+        record.status === "anulado" ||
+        body.eventType === "credit_cancelled" ||
+        body.eventType === "payment_cancelled" ||
+        body.status === "cancelled";
+
+      const isCredit =
+        table === "credits" ||
+        body.eventType === "credit" ||
+        body.eventType === "credit_cancelled";
+
+      if (isCancelled) {
+        if (isCredit) {
+          title = "Fiado cancelado ❌";
           const concept = record.concept ? ` (${record.concept})` : "";
-          messageBody = `Se anuló el fiado de ${amountFormatted}${concept} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
+          messageBody = `Se canceló el fiado de ${amountFormatted}${concept} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
           customData.type = "credit_cancelled";
-          customData.credit_id = String(record.id);
-          customData.amount = String(record.amount);
+          customData.status = "cancelled";
+          customData.credit_id = String(record.id || "");
+          customData.amount = String(record.amount || "");
         } else {
-          title = "Abono anulado ❌";
-          messageBody = `Se anuló el abono de ${amountFormatted} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
+          title = "Abono cancelado ❌";
+          messageBody = `Se canceló el abono de ${amountFormatted} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
           customData.type = "payment_cancelled";
-          customData.payment_id = String(record.id);
-          customData.amount = String(record.amount);
+          customData.status = "cancelled";
+          customData.payment_id = String(record.id || "");
+          customData.amount = String(record.amount || "");
         }
-      } else if (table === "payments") {
+      } else if (table === "payments" || body.eventType === "payment") {
         title = "Abono registrado 💳";
         messageBody = `Se registró un abono de ${amountFormatted} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
         customData.type = "payment";
-        customData.payment_id = String(record.id);
-        customData.amount = String(record.amount);
-      } else if (table === "credits") {
+        customData.status = "active";
+        customData.payment_id = String(record.id || "");
+        customData.amount = String(record.amount || "");
+      } else if (isCredit) {
         title = "Nuevo fiado registrado 🛒";
         const concept = record.concept ? ` (${record.concept})` : "";
         messageBody = `Se registró un fiado de ${amountFormatted}${concept} en ${storeName}. Saldo pendiente: ${currentBalance}.`;
         customData.type = "credit";
-        customData.credit_id = String(record.id);
-        customData.amount = String(record.amount);
+        customData.status = "active";
+        customData.credit_id = String(record.id || "");
+        customData.amount = String(record.amount || "");
       }
     }
 

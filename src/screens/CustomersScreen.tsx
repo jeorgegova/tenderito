@@ -1,14 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   FlatList,
+  Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useScrollToTop } from '@react-navigation/native';
 import { Card } from '../components/ui/Card';
 import { Header } from '../components/ui/Header';
 import { Input } from '../components/ui/Input';
@@ -21,6 +23,7 @@ import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { Colors, Radius, formatCOP } from '../theme';
 import { useResponsive } from '../hooks/useResponsive';
 import { CreateCustomerModal } from '../components/CreateCustomerModal';
+import { FloatingActionButton } from '../components/ui/FloatingActionButton';
 
 export function CustomersScreen({ navigation }: any) {
   const { isSmall, isTablet, tabletContainerStyle } = useResponsive();
@@ -30,6 +33,17 @@ export function CustomersScreen({ navigation }: any) {
   );
   const [modal, setModal] = useState(false);
   const insets = useSafeAreaInsets();
+  const flatListRef = useRef<FlatList>(null);
+
+  // Al tocar el menú Clientes cuando ya está activo, desplazarse al inicio suavemente
+  useScrollToTop(flatListRef);
+
+  // Al ingresar a Clientes desde otro menú, garantizar inicio en coordenada 0
+  useFocusEffect(
+    useCallback(() => {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }, []),
+  );
 
   const { data, refetch, isLoading } = useQuery({
     queryKey: ['customers'],
@@ -118,6 +132,7 @@ export function CustomersScreen({ navigation }: any) {
         />
       </View>
       <FlatList
+        ref={flatListRef}
         contentContainerStyle={[styles.listContent, tabletContainerStyle(720)]}
         data={visibleCustomers}
         keyExtractor={i => i.id}
@@ -172,13 +187,13 @@ export function CustomersScreen({ navigation }: any) {
                   </View>
                   <View style={styles.flexOne}>
                     <View style={styles.nameHeaderRow}>
-                      <Text style={styles.name} numberOfLines={1}>
+                      <Text style={styles.name} numberOfLines={2}>
                         {item.alias || item.name}
                       </Text>
                       <SyncBadge estadoServidor={item.estadoServidor} />
                     </View>
                     {item.alias ? (
-                      <Text style={styles.sub} numberOfLines={1}>
+                      <Text style={styles.sub} numberOfLines={2}>
                         {item.name}
                       </Text>
                     ) : null}
@@ -207,7 +222,10 @@ export function CustomersScreen({ navigation }: any) {
                       style={[
                         styles.balance,
                         isOwing ? styles.balanceOwing : styles.balancePaid,
-                      ]}>
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.72}>
                       {formatCOP(balance)}
                     </Text>
                   </View>
@@ -229,13 +247,11 @@ export function CustomersScreen({ navigation }: any) {
           );
         }}
       />
-      <Pressable
+      <FloatingActionButton
         onPress={() => setModal(true)}
+        label="Nuevo cliente"
         accessibilityLabel="Nuevo cliente"
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}>
-        <Ionicons name="add-circle" size={22} color="#fff" />
-        <Text style={styles.fabText}>Nuevo cliente</Text>
-      </Pressable>
+      />
 
       <CreateCustomerModal
         visible={modal}
@@ -322,6 +338,7 @@ const styles = StyleSheet.create({
   customerCardMainRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 12,
   },
   avatar: {
@@ -375,6 +392,7 @@ const styles = StyleSheet.create({
   customerCardBalanceCol: {
     alignItems: 'flex-end',
     justifyContent: 'center',
+    minWidth: 100,
     flexShrink: 0,
   },
   balanceLabel: {
@@ -514,32 +532,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     padding: 24,
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.primary,
-    paddingVertical: 13,
-    paddingHorizontal: 20,
-    borderRadius: 999,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  fabPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.96 }],
-  },
-  fabText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
   },
 
   // Estilos para cliente ya vinculado

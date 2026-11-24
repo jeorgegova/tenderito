@@ -1,6 +1,7 @@
 import {useQuery} from '@tanstack/react-query';
-import {useMemo, useState} from 'react';
+import {useCallback, useMemo, useRef, useState} from 'react';
 import {FlatList, Pressable, StyleSheet, Text, View} from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {OverdueBadge} from '../components/ui/Badge';
 import {Card} from '../components/ui/Card';
 import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
@@ -15,6 +16,13 @@ import {useResponsive} from '../hooks/useResponsive';
 export function ReportsScreen({navigation}: any) {
   const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
   const [search, setSearch] = useState('');
+  const listRef = useRef<FlatList>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }, []),
+  );
   const {data, isLoading, refetch} = useQuery({
     queryKey: ['overdue'],
     queryFn: fetchOverdueCredits,
@@ -42,9 +50,7 @@ export function ReportsScreen({navigation}: any) {
             <Text style={styles.summaryLabel}>TOTAL VENCIDO</Text>
           </View>
           <Text
-            style={[styles.summaryValue, isSmall && { fontSize: 24 }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit>
+            style={[styles.summaryValue, isSmall && { fontSize: 24 }]}>
             {formatCOP(total)}
           </Text>
           <Text style={styles.summarySub}>{data?.length ?? 0} fiados vencidos por cobrar</Text>
@@ -58,6 +64,7 @@ export function ReportsScreen({navigation}: any) {
         <Input placeholder="Buscar cliente o fiado" value={search} onChangeText={setSearch} leadingIcon="search" returnKeyType="search" />
       </View>
       <FlatList
+        ref={listRef}
         contentContainerStyle={[styles.list, tabletContainerStyle(720)]}
         data={filtered}
         keyExtractor={item => item.id}
@@ -77,7 +84,7 @@ export function ReportsScreen({navigation}: any) {
               <View style={styles.alertIcon}><MonochromeIcon name="clock" color={Colors.destructive} size={18} /></View>
               <View style={{flex: 1}}>
                 <Text style={styles.name}>{item.customers?.name ?? 'Cliente'}</Text>
-                <Text style={styles.detail} numberOfLines={1}>{item.concept}</Text>
+                <Text style={styles.detail} numberOfLines={3}>{item.concept}</Text>
                 <Text style={styles.date}>Venció el {formatDateDisplay(item.due_date)}</Text>
               </View>
               <View style={styles.amountCol}>

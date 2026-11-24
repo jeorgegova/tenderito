@@ -168,6 +168,51 @@ export function formatDateDisplay(
   }).format(d);
 }
 
+const SPANISH_SHORT_MONTHS = [
+  'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+  'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+];
+
+/**
+ * Formato compacto de fecha para la libreta de cuentas (ej: '12/nov/2026')
+ * - Día numérico, mes abreviado en español y año completo
+ * - Optimizado para pantallas angostas
+ */
+export function formatDateCompact(
+  value: string | Date | null | undefined,
+  timeZone: string = BOGOTA_TZ,
+): string {
+  const d = toBogotaDate(value);
+  if (!d) return typeof value === 'string' && !value.toLowerCase().includes('infinity') ? value : 'Sin fecha';
+
+  try {
+    const parts = new Intl.DateTimeFormat('es-CO', {
+      timeZone,
+      day: 'numeric',
+      month: 'numeric',
+      year: 'numeric',
+    }).formatToParts(d);
+
+    let day = '';
+    let monthNum = 1;
+    let year = '';
+
+    for (const part of parts) {
+      if (part.type === 'day') day = part.value;
+      else if (part.type === 'month') monthNum = parseInt(part.value, 10);
+      else if (part.type === 'year') year = part.value;
+    }
+
+    const monthStr = SPANISH_SHORT_MONTHS[monthNum - 1] || 'mes';
+    return `${day}/${monthStr}/${year}`;
+  } catch {
+    const day = d.getDate();
+    const monthStr = SPANISH_SHORT_MONTHS[d.getMonth()] || 'mes';
+    const year = d.getFullYear();
+    return `${day}/${monthStr}/${year}`;
+  }
+}
+
 /**
  * Verifica si una fecha de vencimiento ('AAAA-MM-DD') ya venció según el día de hoy en Colombia
  */

@@ -1,12 +1,14 @@
 import {useQuery, useQueryClient} from '@tanstack/react-query';
-import {useCallback, useEffect} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
-import {useFocusEffect} from '@react-navigation/native';
+import Ionicons from '@react-native-vector-icons/ionicons';
+import {useFocusEffect, useScrollToTop} from '@react-navigation/native';
 import {Button} from '../components/ui/Button';
 import {Card} from '../components/ui/Card';
 import {Header} from '../components/ui/Header';
 import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
 import {MonochromeIcon} from '../components/ui/MonochromeIcon';
+import {EditStoreModal} from '../components/ui/EditStoreModal';
 import {showAlert} from '../components/ui/AlertModal';
 import {supabase} from '../lib/supabase';
 import {confirmLogout} from '../lib/session';
@@ -30,6 +32,7 @@ import type {SubscriptionPlanItem} from '../types';
 
 export function ProfileScreen({navigation}: any) {
   const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
+  const [isEditStoreOpen, setIsEditStoreOpen] = useState(false);
   const setProfile = useStore(s => s.setProfile);
   const queryClient = useQueryClient();
   const {data, refetch: refetchProfile} = useQuery({
@@ -51,6 +54,9 @@ export function ProfileScreen({navigation}: any) {
     queryKey: ['active-store-id'],
     queryFn: getActiveStoreId,
   });
+
+  const activeStore = userStores.find(s => s.store_id === currentStoreId) || userStores[0];
+  const currentAddress = (data as any)?.address || activeStore?.address || '';
 
   async function handleSwitchStore(storeId: string) {
     if (storeId === currentStoreId) return;
@@ -78,6 +84,21 @@ export function ProfileScreen({navigation}: any) {
   }, [data, setProfile]);
 
   const subStatus = calculateSubscriptionStatus(data as any);
+  const currentPlan = (plans || []).find(
+    (p: any) => p.id?.toLowerCase() === subStatus.effectivePlan?.toLowerCase(),
+  );
+  const customerLimit = currentPlan?.customer_limit ?? (subStatus.effectivePlan === 'pro' ? 999999 : 10);
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Al tocar el menú Perfil cuando ya está activo, desplaza suavemente al tope
+  useScrollToTop(scrollRef);
+
+  // Al ingresar a Perfil desde cualquier otro menú, garantiza inicio en coordenada 0
+  useFocusEffect(
+    useCallback(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }, []),
+  );
 
   // Botón físico "Atrás" en Perfil: vuelve a Inicio
   useFocusEffect(
@@ -145,9 +166,10 @@ export function ProfileScreen({navigation}: any) {
 
   return (
     <View style={styles.wrap}>
-      <DynamicBrandCurves position="top-left" />
-      <Header title="Mi negocio" subtitle="Perfil y suscripción" />
+      <DynamicBrandCurves position="bottom-left" />
+      <Header title="Mi negocio" subtitle="Perfil y suscripción" showCurve curveVariant="profile" />
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.content, tabletContainerStyle(620)]}
         showsVerticalScrollIndicator={false}>
         <Card style={styles.accountCard}>
@@ -155,7 +177,19 @@ export function ProfileScreen({navigation}: any) {
             <MonochromeIcon name="store" color={Colors.primary} size={22} />
           </View>
           <Text style={styles.store}>{(data as any)?.store_name ?? 'Cargando tienda…'}</Text>
-          <Text style={styles.merchant}>{(data as any)?.merchant_name ?? ''}</Text>
+          <Text style={styles.merchant}>
+            {(data as any)?.merchant_name ?? ''}
+            {(data as any)?.phone ? ` · Tel: ${(data as any).phone}` : ''}
+            {currentAddress ? ` · Dir: ${currentAddress}` : ''}
+          </Text>
+
+          <TouchableOpacity
+            style={styles.editStoreBtn}
+            onPress={() => setIsEditStoreOpen(true)}
+            activeOpacity={0.7}>
+            <Ionicons name="pencil" size={13} color={Colors.primary} />
+            <Text style={styles.editStoreBtnText}>Editar datos de la tienda</Text>
+          </TouchableOpacity>
           <View
             style={[
               styles.planPill,
@@ -391,9 +425,9 @@ export function ProfileScreen({navigation}: any) {
           );
         })}
 
-        {subStatus.effectivePlan === 'free' ? (
+        {customerLimit < 999999 ? (
           <Button
-            title="Gestionar cartera Free"
+            title="Gestionar cartera activa"
             icon="wallet"
             variant="secondary"
             onPress={() => navigation.navigate('FreePortfolio')}
@@ -402,13 +436,30 @@ export function ProfileScreen({navigation}: any) {
 
         <Button title="Cerrar sesión" icon="logout" variant="secondary" onPress={logout} style={styles.logout} />
       </ScrollView>
+
+      <EditStoreModal
+        visible={isEditStoreOpen}
+        onClose={() => setIsEditStoreOpen(false)}
+        initialStoreName={(data as any)?.store_name || ''}
+        initialPhone={(data as any)?.phone || ''}
+        initialMerchantName={(data as any)?.merchant_name || ''}
+        initialAddress={currentAddress}
+        onSaved={async () => {
+          await refetchProfile();
+          await refetchStores();
+          await refetchActiveStore();
+          queryClient.invalidateQueries({ queryKey: ['profile'] });
+          queryClient.invalidateQueries({ queryKey: ['user-stores'] });
+          queryClient.invalidateQueries({ queryKey: ['active-store'] });
+        }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {flex: 1, backgroundColor: Colors.background, overflow: 'hidden'},
-  content: {padding: 20, paddingTop: 4, paddingBottom: 32, gap: 12},
+  content: {padding: 20, paddingTop: 4, paddingBottom: 110, gap: 12},
   accountCard: {
     alignItems: 'center',
     paddingVertical: 24,
@@ -428,6 +479,23 @@ const styles = StyleSheet.create({
   },
   store: {fontSize: 22, fontWeight: '800', color: Colors.text},
   merchant: {color: Colors.textSecondary, fontSize: 14, marginTop: 2},
+  editStoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  editStoreBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.text,
+  },
   planPill: {
     flexDirection: 'row',
     alignItems: 'center',

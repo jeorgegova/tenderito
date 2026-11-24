@@ -110,8 +110,8 @@ export async function setFreePortfolioSelection(
         db,
         `UPDATE customers
          SET free_plan_selected = 1
-         WHERE (local_id = ? OR server_id = ?) AND (store_id = ? OR store_id IS NULL);`,
-        [id, id, activeStoreId || ''],
+         WHERE (local_id = ? OR server_id = ? OR id = ?) AND (store_id = ? OR store_id IS NULL);`,
+        [id, id, id, activeStoreId || ''],
       );
     }
 
@@ -119,22 +119,31 @@ export async function setFreePortfolioSelection(
   } catch (_localErr) {}
 }
 
-async function getFreeLimit(): Promise<number> {
+export async function getPlanCustomerLimit(planId: string): Promise<number> {
+  const normPlan = (planId || 'free').toLowerCase();
   try {
     const db = await getDbConnection();
     const plans = await getLocalSubscriptionPlans(db);
-    const freePlan = plans.find(p => p.id.toLowerCase() === 'free');
-    if (freePlan && Number.isFinite(freePlan.customer_limit)) {
-      return Number(freePlan.customer_limit);
+    const matched = plans.find(p => p.id.toLowerCase() === normPlan);
+    if (matched && Number.isFinite(matched.customer_limit)) {
+      return Number(matched.customer_limit);
     }
 
-    const storedLimit = await getConfigParam(db, 'free_portfolio_limit');
-    if (storedLimit && Number.isFinite(Number(storedLimit))) {
-      return Number(storedLimit);
+    if (normPlan === 'free') {
+      const storedLimit = await getConfigParam(db, 'free_portfolio_limit');
+      if (storedLimit && Number.isFinite(Number(storedLimit))) {
+        return Number(storedLimit);
+      }
     }
   } catch (_e) {}
 
+  if (normPlan === 'pro') return 999999;
+  if (normPlan === 'basic') return 100;
   return FREE_LIMIT_FALLBACK;
+}
+
+export async function getFreeLimit(): Promise<number> {
+  return getPlanCustomerLimit('free');
 }
 
 function blocked(
@@ -155,32 +164,28 @@ function blocked(
 }
 
 /**
- * Valida localmente si se puede crear un fiado para un cliente.
- * El servidor vuelve a validar con la misma regla.
+ * Valida localmente si se puede crear un fiado para un cliente según su cartera activa:
+ * 1. Clientes con saldo pendiente > 0 YA consumen cupo; darles otro fiado NO consume cupo adicional.
+ * 2. Clientes con saldo 0 consumen 1 cupo de cartera activa.
+ * 3. Planes con customer_limit >= 999999 no tienen límite de clientes.
  */
 export async function canCreateCreditForCustomer(
   customerId: string,
   profile: Profile | null,
 ): Promise<CreditEligibility> {
-  const limit = await getFreeLimit();
-
-  if (!profile) {
-    return {
-      allowed: true,
-      reason: 'unknown',
-      message: null,
-      limit,
-      active_count: 0,
-      portfolio_count: 0,
-    };
+  let effectivePlan = 'free';
+  if (profile) {
+    const status = calculateSubscriptionStatus(profile);
+    effectivePlan = status.effectivePlan;
   }
 
-  const status = calculateSubscriptionStatus(profile);
+  const limit = await getPlanCustomerLimit(effectivePlan);
 
-  if (status.effectivePlan !== 'free') {
+  // Planes ilimitados (como Pro con limit 999999) nunca tienen restricciones de cupos
+  if (limit >= 999999) {
     return {
       allowed: true,
-      reason: 'paid_plan',
+      reason: 'unlimited',
       message: null,
       limit,
       active_count: 0,
@@ -193,8 +198,8 @@ export async function canCreateCreditForCustomer(
     const db = await getDbConnection();
     let query = `SELECT current_balance, free_plan_selected
        FROM customers
-       WHERE (local_id = ? OR server_id = ?)`;
-    const params: any[] = [customerId, customerId];
+       WHERE (local_id = ? OR server_id = ? OR id = ?)`;
+    const params: any[] = [customerId, customerId, customerId];
     if (activeStoreId) {
       query += ` AND (store_id = ? OR store_id IS NULL OR store_id = "" OR store_id = "null")`;
       params.push(activeStoreId);
@@ -218,11 +223,8 @@ export async function canCreateCreditForCustomer(
     const isSelected = Number(row.free_plan_selected ?? 1) === 1;
 
     let countQuery = `SELECT
-         SUM(CASE WHEN current_balance > 0 THEN 1 ELSE 0 END) AS active_count,
-         SUM(CASE
-           WHEN current_balance > 0 AND free_plan_selected = 1 THEN 1
-           ELSE 0
-         END) AS portfolio_count
+         COUNT(DISTINCT CASE WHEN current_balance > 0 THEN COALESCE(server_id, local_id, id) END) AS active_count,
+         COUNT(DISTINCT CASE WHEN current_balance > 0 AND (free_plan_selected = 1 OR free_plan_selected IS NULL) THEN COALESCE(server_id, local_id, id) END) AS portfolio_count
        FROM customers`;
     const countParams: any[] = [];
     if (activeStoreId) {
@@ -235,21 +237,22 @@ export async function canCreateCreditForCustomer(
     const portfolioCount = Number(counts[0]?.portfolio_count || 0);
 
     const selectionDone = await getConfigParam(db, SELECTION_DONE_KEY);
-    if (selectionDone === '0') {
+    if (selectionDone === '0' && !isSelected) {
       return blocked(
         'selection_pending',
-        'Primero debes seleccionar los clientes que conservarán cartera activa en tu plan Free.',
+        'Primero debes seleccionar los clientes que conservarán cartera activa en tu plan.',
         limit,
         activeCount,
         portfolioCount,
       );
     }
 
+    // Si el cliente YA TIENE saldo pendiente > 0, otorgarle otro fiado NO consume un nuevo cupo
     if (balance > 0) {
       if (!isSelected) {
         return blocked(
           'not_selected',
-          'Este cliente quedó fuera de tu cartera Free. Solo puedes registrarle abonos. Cuando un cliente de tu cartera quede en $0, se liberará un cupo.',
+          'Este cliente quedó fuera de tu cartera activa seleccionada. Solo puedes registrarle abonos o volverlo a incluir desde la gestión de cartera en tu Perfil.',
           limit,
           activeCount,
           portfolioCount,
@@ -266,10 +269,11 @@ export async function canCreateCreditForCustomer(
       };
     }
 
-    if (portfolioCount >= limit) {
+    // El cliente tiene saldo 0. Darle un fiado activará su cartera y consumirá 1 cupo.
+    if (activeCount >= limit) {
       return blocked(
         'no_slots',
-        `Ya tienes ${limit} clientes con cartera activa en el plan Free. Registra abonos para liberar un cupo antes de dar un nuevo fiado.`,
+        `Ya tienes ${activeCount} de ${limit} clientes con cartera activa (saldo pendiente > 0) permitidos por tu suscripción. Registra abonos para liberar un cupo antes de dar un nuevo fiado.`,
         limit,
         activeCount,
         portfolioCount,

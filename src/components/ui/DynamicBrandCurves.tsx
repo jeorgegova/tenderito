@@ -140,32 +140,22 @@ const DROPLET_CONFIGS: Record<CurvePosition, DropletDef[]> = {
 };
 
 const SATELLITE_CONFIGS: Record<CurvePosition, DropletDef[]> = {
-  'bottom-left': [
-    {size: 14, color: PEACH, position: {top: 70, right: 28}, opacity: 0.9},
-    {size: 7, color: ORANGE, position: {top: 96, right: 46}, opacity: 0.85},
-    {size: 11, color: PEACH, position: {top: 180, right: 18}, opacity: 0.75},
-  ],
+  'bottom-left': [],
   'top-right': [
     {size: 15, color: PEACH, position: {bottom: 85, left: 24}, opacity: 0.9},
     {size: 8, color: ORANGE, position: {bottom: 115, left: 42}, opacity: 0.85},
     {size: 10, color: PEACH, position: {bottom: 190, left: 20}, opacity: 0.75},
   ],
-  'bottom-right': [
-    {size: 14, color: PEACH, position: {top: 70, left: 28}, opacity: 0.9},
-    {size: 7, color: ORANGE, position: {top: 96, left: 46}, opacity: 0.85},
-    {size: 11, color: PEACH, position: {top: 180, left: 18}, opacity: 0.75},
-  ],
+  'bottom-right': [],
   'top-left': [
     {size: 15, color: PEACH, position: {bottom: 85, right: 24}, opacity: 0.9},
     {size: 8, color: ORANGE, position: {bottom: 115, right: 42}, opacity: 0.85},
     {size: 10, color: PEACH, position: {bottom: 190, right: 20}, opacity: 0.75},
   ],
   'center-left': [
-    {size: 14, color: PEACH, position: {top: 60, right: 30}, opacity: 0.85},
     {size: 7, color: ORANGE, position: {bottom: 80, right: 30}, opacity: 0.8},
   ],
   'center-right': [
-    {size: 14, color: PEACH, position: {top: 60, left: 30}, opacity: 0.85},
     {size: 7, color: ORANGE, position: {bottom: 80, left: 30}, opacity: 0.8},
   ],
 };

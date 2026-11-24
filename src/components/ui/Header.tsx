@@ -1,23 +1,28 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
+  TouchableWithoutFeedback,
+  Modal,
   Animated,
   Easing,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {useNavigation} from '@react-navigation/native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {useStore} from '../../store/useStore';
 import {Colors} from '../../theme';
 import {useResponsive} from '../../hooks/useResponsive';
 import {useSync} from '../../hooks/useSync';
+import {confirmLogout} from '../../lib/session';
 
 export function Header({
   title,
   subtitle,
   showCurve = false,
+  curveVariant = 'default',
   rightElement,
   sessionName,
   sessionRole,
@@ -26,17 +31,34 @@ export function Header({
   title: string;
   subtitle?: string;
   showCurve?: boolean;
+  curveVariant?: 'default' | 'profile';
   rightElement?: React.ReactNode;
   sessionName?: string;
   sessionRole?: string;
   showSyncButton?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const {isSmall, isTablet, maxContentWidth} = useResponsive();
+  const [menuVisible, setMenuVisible] = useState(false);
   const profile = useStore(s => s.profile);
   const activeName = sessionName || profile?.merchant_name;
   const activeRole = sessionRole || (profile ? 'Tendero' : '');
   const {sync, isSyncing, isOnline} = useSync();
+
+  const handleGoToProfile = () => {
+    setMenuVisible(false);
+    try {
+      navigation.navigate('Perfil');
+    } catch {
+      navigation.navigate('Main', { screen: 'Perfil' });
+    }
+  };
+
+  const handleLogout = () => {
+    setMenuVisible(false);
+    confirmLogout();
+  };
 
   const spinAnim = React.useRef(new Animated.Value(0)).current;
 
@@ -87,10 +109,21 @@ export function Header({
       ]}>
       {/* Formas curvas decorativas de la marca en la esquina superior derecha */}
       {showCurve && (
-        <View pointerEvents="none" style={styles.curveContainer}>
-          <View style={styles.curveOuter} />
-          <View style={styles.curveInner} />
-        </View>
+        curveVariant === 'profile' ? (
+          <View pointerEvents="none" style={styles.waveProfileContainer}>
+            <View style={styles.waveProfileOuterSec} />
+            <View style={styles.waveProfileOuterMain} />
+            <View style={styles.waveProfileInnerSec} />
+            <View style={styles.waveProfileInnerMain} />
+            <View style={styles.waveProfileDropPeach} />
+            <View style={styles.waveProfileDropOrange} />
+          </View>
+        ) : (
+          <View pointerEvents="none" style={styles.curveContainer}>
+            <View style={styles.curveOuter} />
+            <View style={styles.curveInner} />
+          </View>
+        )
       )}
 
       <View style={styles.contentRow}>
@@ -103,20 +136,13 @@ export function Header({
           <Text
             style={[
               styles.title,
+              isTablet && styles.titleTablet,
               isSmall && styles.titleSmall,
             ]}
-            numberOfLines={2}
-            adjustsFontSizeToFit
-            minimumFontScale={0.85}>
+            numberOfLines={1}
+            ellipsizeMode="tail">
             {title}
           </Text>
-          {subtitle ? (
-            <Text
-              style={[styles.subtitle, isSmall && styles.subtitleSmall]}
-              numberOfLines={2}>
-              {subtitle}
-            </Text>
-          ) : null}
         </View>
         <View style={styles.rightGroup}>
           {showSyncButton && (
@@ -147,7 +173,17 @@ export function Header({
           {rightElement ? (
             <View style={styles.rightWrap}>{rightElement}</View>
           ) : activeName ? (
-            <View style={styles.sessionBadge}>
+            <TouchableOpacity
+              style={[
+                styles.sessionBadge,
+                isSmall && styles.sessionBadgeSmall,
+                isTablet && styles.sessionBadgeTablet,
+                menuVisible && styles.sessionBadgeActive,
+              ]}
+              onPress={() => setMenuVisible(prev => !prev)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Usuario ${activeName}. Tocar para abrir menú de perfil`}>
               <View style={styles.sessionAvatar}>
                 <Ionicons name="person-outline" size={13} color={Colors.primary} />
               </View>
@@ -159,10 +195,90 @@ export function Header({
                   {activeName}
                 </Text>
               </View>
-            </View>
+              <Ionicons
+                name={menuVisible ? 'chevron-up' : 'chevron-down'}
+                size={12}
+                color={Colors.textMuted}
+                style={{ marginLeft: 2 }}
+              />
+            </TouchableOpacity>
           ) : null}
         </View>
       </View>
+
+      {subtitle ? (
+        <Text
+          style={[styles.subtitle, isSmall && styles.subtitleSmall]}
+          numberOfLines={2}>
+          {subtitle}
+        </Text>
+      ) : null}
+
+      {/* Menú flotante al dar clic en el nombre de usuario */}
+      <Modal
+        transparent
+        visible={menuVisible}
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
+          <View style={styles.modalBackdrop}>
+            <TouchableWithoutFeedback>
+              <View
+                style={[
+                  styles.menuPopover,
+                  {
+                    top: insets.top + (isSmall ? 48 : 56),
+                    right: isSmall ? 16 : isTablet ? 28 : 20,
+                  },
+                ]}>
+                {/* Encabezado del menú */}
+                <View style={styles.menuHeader}>
+                  <View style={styles.menuAvatarLarge}>
+                    <Ionicons name="person" size={15} color={Colors.primary} />
+                  </View>
+                  <View style={styles.menuHeaderCol}>
+                    <Text style={styles.menuNameText} numberOfLines={1}>
+                      {activeName}
+                    </Text>
+                    <Text style={styles.menuRoleText}>
+                      {activeRole || 'Sesión activa'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.menuDivider} />
+
+                {/* Opción 1: Perfil */}
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={handleGoToProfile}
+                  activeOpacity={0.7}>
+                  <View style={[styles.menuItemIcon, { backgroundColor: Colors.primaryLight }]}>
+                    <Ionicons name="person-circle-outline" size={18} color={Colors.primary} />
+                  </View>
+                  <Text style={styles.menuItemText}>Perfil</Text>
+                  <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
+                </TouchableOpacity>
+
+                <View style={styles.menuDivider} />
+
+                {/* Opción 2: Cerrar sesión */}
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={handleLogout}
+                  activeOpacity={0.7}>
+                  <View style={[styles.menuItemIcon, { backgroundColor: '#FEE2E2' }]}>
+                    <Ionicons name="log-out-outline" size={18} color={Colors.destructive} />
+                  </View>
+                  <Text style={[styles.menuItemText, { color: Colors.destructive }]}>
+                    Cerrar sesión
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </View>
   );
 }
@@ -182,6 +298,78 @@ const styles = StyleSheet.create({
     width: 220,
     height: 140,
     overflow: 'hidden',
+  },
+  waveProfileContainer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 250,
+    height: 155,
+    overflow: 'hidden',
+  },
+  waveProfileOuterSec: {
+    position: 'absolute',
+    top: -20,
+    right: 90,
+    width: 95,
+    height: 95,
+    borderRadius: 48,
+    backgroundColor: '#FFE4D0',
+    transform: [{rotate: '8deg'}],
+  },
+  waveProfileOuterMain: {
+    position: 'absolute',
+    top: -40,
+    right: -20,
+    width: 220,
+    height: 145,
+    borderBottomLeftRadius: 135,
+    borderBottomRightRadius: 60,
+    borderTopLeftRadius: 50,
+    backgroundColor: '#FFE4D0',
+    transform: [{rotate: '-12deg'}],
+  },
+  waveProfileInnerSec: {
+    position: 'absolute',
+    top: -28,
+    right: 95,
+    width: 75,
+    height: 75,
+    borderRadius: 38,
+    backgroundColor: Colors.primary,
+    transform: [{rotate: '6deg'}],
+  },
+  waveProfileInnerMain: {
+    position: 'absolute',
+    top: -50,
+    right: -25,
+    width: 185,
+    height: 125,
+    borderBottomLeftRadius: 115,
+    borderBottomRightRadius: 50,
+    borderTopLeftRadius: 40,
+    backgroundColor: Colors.primary,
+    transform: [{rotate: '-10deg'}],
+  },
+  waveProfileDropPeach: {
+    position: 'absolute',
+    top: 108,
+    right: 155,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#FFE4D0',
+    opacity: 0.9,
+  },
+  waveProfileDropOrange: {
+    position: 'absolute',
+    top: 124,
+    right: 130,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.primary,
+    opacity: 0.85,
   },
   curveOuter: {
     position: 'absolute',
@@ -240,34 +428,39 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   title: {
-    fontSize: 32,
+    fontSize: 24,
     fontWeight: '800',
     color: Colors.text,
-    letterSpacing: -0.8,
-    lineHeight: 38,
+    letterSpacing: -0.6,
+    lineHeight: 29,
+  },
+  titleTablet: {
+    fontSize: 30,
+    lineHeight: 36,
   },
   titleSmall: {
-    fontSize: 25,
-    lineHeight: 31,
+    fontSize: 20,
+    lineHeight: 24,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13.5,
     color: Colors.textSecondary,
     marginTop: 4,
     fontWeight: '500',
     letterSpacing: -0.1,
+    zIndex: 1,
   },
   subtitleSmall: {
-    fontSize: 12.5,
-    marginTop: 2,
+    fontSize: 12,
+    marginTop: 3,
   },
   rightGroup: {
-    marginLeft: 12,
+    marginLeft: 8,
     alignSelf: 'flex-start',
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   syncBtn: {
     width: 34,
@@ -296,41 +489,129 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.border,
     paddingVertical: 5,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     borderRadius: 20,
-    maxWidth: 160,
+    maxWidth: 135,
     shadowColor: '#000',
     shadowOffset: {width: 0, height: 1},
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 2,
   },
-  sessionAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+  sessionBadgeSmall: {
+    maxWidth: 110,
+    paddingHorizontal: 6,
+  },
+  sessionBadgeTablet: {
+    maxWidth: 180,
+    paddingHorizontal: 10,
+  },
+  sessionBadgeActive: {
+    borderColor: Colors.primary,
+    backgroundColor: '#FFFBF8',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
+  },
+  menuPopover: {
+    position: 'absolute',
+    minWidth: 200,
+    maxWidth: 260,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    shadowColor: '#142033',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 18,
+    elevation: 12,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  menuAvatarLarge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
+  },
+  menuHeaderCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  menuNameText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  menuRoleText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 4,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+  menuItemIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuItemText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  sessionAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 5,
   },
   sessionCol: {
     flexShrink: 1,
     minWidth: 0,
   },
   sessionRole: {
-    fontSize: 8.5,
+    fontSize: 8,
     fontWeight: '800',
     color: Colors.primary,
-    lineHeight: 10,
+    lineHeight: 9.5,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   sessionName: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '800',
     color: Colors.text,
-    lineHeight: 14,
+    lineHeight: 13,
     marginTop: 1,
   },
 });

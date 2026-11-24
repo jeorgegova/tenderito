@@ -101,3 +101,50 @@ export async function fetchCustomerPortal(filters: CustomerPortalFilters = {}) {
     payments: payments ?? [],
   };
 }
+
+export interface UpdateCustomerProfileInput {
+  name: string;
+  phone?: string | null;
+}
+
+/**
+ * Permite al cliente autenticado actualizar su propio nombre y teléfono.
+ */
+export async function updateCustomerProfile(
+  input: UpdateCustomerProfileInput,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const currentUser = session?.user;
+    if (!currentUser) throw new Error('Usuario no autenticado');
+
+    const cleanName = input.name.trim();
+    if (!cleanName) throw new Error('El nombre no puede estar vacío');
+    const cleanPhone = input.phone ? input.phone.replace(/[^0-9+]/g, '') : null;
+
+    // 1. Intentar vía función segura RPC
+    const { error: rpcErr } = await supabase.rpc('update_customer_self', {
+      p_name: cleanName,
+      p_phone: cleanPhone,
+    });
+
+    if (rpcErr) {
+      // 2. Fallback a update directo sobre la tabla customers
+      const { error: directErr } = await supabase
+        .from('customers')
+        .update({
+          name: cleanName,
+          phone: cleanPhone,
+        })
+        .eq('user_id', currentUser.id);
+
+      if (directErr) throw directErr;
+    }
+
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message || 'Error actualizando datos de cliente' };
+  }
+}

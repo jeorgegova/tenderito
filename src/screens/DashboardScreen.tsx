@@ -1,14 +1,17 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useScrollToTop } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { Card } from '../components/ui/Card';
@@ -17,6 +20,7 @@ import { Header } from '../components/ui/Header';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { fetchOverdueCredits, fetchTotalReceivable } from '../services/credits';
 import { fetchCustomers } from '../services/customers';
+import { fetchProfile } from '../services/profile';
 import { Colors, formatCOP } from '../theme';
 import { formatDateDisplay } from '../utils/format';
 import { AnimatedMoney } from '../components/ui/AnimatedMoney';
@@ -26,24 +30,73 @@ import { fetchFreePortfolioStatus } from '../services/portfolio';
 import { showAlert } from '../components/ui/AlertModal';
 import { confirmLogout } from '../lib/session';
 import { useResponsive } from '../hooks/useResponsive';
+import { FloatingActionButton } from '../components/ui/FloatingActionButton';
+import {
+  getCachedBalanceVisibility,
+  getStoredBalanceVisibility,
+  setStoredBalanceVisibility,
+} from '../services/storeContext';
 
 export function DashboardScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const { isSmall, isTablet, tabletContainerStyle } = useResponsive();
-  const [showBalance, setShowBalance] = useState(true);
-  const profile = useStore(s => s.profile);
+
+  const storeProfile = useStore(s => s.profile);
+  const profileQuery = useQuery({
+    queryKey: ['profile'],
+    queryFn: fetchProfile,
+  });
+  const profile = profileQuery.data ?? storeProfile;
+  const storeId = profile?.id;
+
+  const [showBalance, setShowBalance] = useState<boolean>(() => {
+    return getCachedBalanceVisibility(storeId);
+  });
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Al presionar el menú Inicio cuando ya está activo, desplaza suavemente al tope
+  useScrollToTop(scrollRef);
+
+  // Al pasar a Inicio desde cualquier otro menú, garantiza inicio en coordenada 0
+  useFocusEffect(
+    useCallback(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }, []),
+  );
+
+  // Al estar en Inicio o volver de otra pantalla, sincronizar con la parametrización de la base de datos local
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      getStoredBalanceVisibility(storeId).then(visible => {
+        if (isMounted) {
+          setShowBalance(visible);
+        }
+      });
+      return () => {
+        isMounted = false;
+      };
+    }, [storeId]),
+  );
+
+  const handleToggleBalance = () => {
+    setShowBalance(prev => {
+      const next = !prev;
+      setStoredBalanceVisibility(next, storeId);
+      return next;
+    });
+  };
+
   const subStatus = calculateSubscriptionStatus(profile);
 
-  // Al estar en Inicio, presionar el botón físico "Atrás" activa el modal de cerrar sesión
+  // Al estar en el Inicio principal, el botón físico Atrás debe salir naturalmente
+  // de la app mediante el comportamiento estándar de Android sin cerrar la sesión ni mostrar modales.
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
-        confirmLogout({
-          title: '¿Seguro que deseas cerrar sesión?',
-          message:
-            'Tendrás que volver a iniciar sesión para acceder a tu tienda.',
-          confirmText: 'Cerrar sesión',
-        });
-        return true;
+        // Retornar false permite que Android cierre/minimice la app a segundo plano
+        // conservando la sesión activa y los datos locales intactos.
+        return false;
       };
 
       const subscription = BackHandler.addEventListener(
@@ -117,8 +170,23 @@ export function DashboardScreen({ navigation }: any) {
   return (
     <View style={styles.wrap}>
       <DynamicBrandCurves position="bottom-left" />
-      <Header title="Inicio" subtitle="Tu plata, fácil y claro" />
+      <Header
+        title={profile?.store_name || 'Mi Tienda'}
+        subtitle={
+          subStatus.isLifetime
+            ? 'Plan Free · Vitalicio'
+            : subStatus.expiresToday
+            ? `Plan ${subStatus.planId.toUpperCase()} · ¡Vence hoy!`
+            : subStatus.inGracePeriod
+            ? `Plan ${subStatus.planId.toUpperCase()} · Vencido (${subStatus.remainingGraceDays}d de gracia)`
+            : subStatus.formattedEndDate
+            ? `Plan ${subStatus.planId.toUpperCase()} · Vence ${subStatus.formattedEndDate}`
+            : `Plan ${(profile?.subscription_plan || 'free').toUpperCase()}`
+        }
+        showCurve
+      />
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[
           styles.content,
           tabletContainerStyle(720),
@@ -221,7 +289,7 @@ export function DashboardScreen({ navigation }: any) {
               <Text style={styles.heroCaption}>PLATA QUE TE DEBEN</Text>
             </View>
             <Pressable
-              onPress={() => setShowBalance(v => !v)}
+              onPress={handleToggleBalance}
               accessibilityLabel={showBalance ? 'Ocultar saldo' : 'Ver saldo'}
               hitSlop={12}>
               <Ionicons
@@ -446,12 +514,12 @@ export function DashboardScreen({ navigation }: any) {
                         .toUpperCase()}
                     </Text>
                   </View>
-                  <View style={[styles.flex1, { minWidth: 0 }]}>
-                    <Text style={styles.customerName} numberOfLines={1}>
+                  <View style={[styles.flex1, { minWidth: 0, paddingRight: 4 }]}>
+                    <Text style={styles.customerName} numberOfLines={1} ellipsizeMode="tail">
                       {customer.alias || customer.name}
                     </Text>
                     {customer.alias ? (
-                      <Text style={styles.customerRealName} numberOfLines={1}>
+                      <Text style={styles.customerRealName} numberOfLines={1} ellipsizeMode="tail">
                         {customer.name}
                       </Text>
                     ) : null}
@@ -461,24 +529,29 @@ export function DashboardScreen({ navigation }: any) {
                         size={11}
                         color={Colors.textSecondary}
                       />
-                      <Text style={styles.muted}>
+                      <Text style={styles.muted} numberOfLines={1} ellipsizeMode="tail">
                         {customer.phone || 'Sin teléfono'}
                       </Text>
                     </View>
-                    <Text style={styles.touchHint}>
+                    <Text style={styles.touchHint} numberOfLines={1} ellipsizeMode="tail">
                       Toca para ver libreta →
                     </Text>
                   </View>
                   <View style={styles.balanceWrap}>
                     <Text style={styles.balanceLabel}>Te debe</Text>
-                    <Text style={styles.balance}>
+                    <Text
+                      style={styles.balance}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.72}>
                       {formatCOP(Number(customer.current_balance))}
                     </Text>
                   </View>
                   <Ionicons
                     name="chevron-forward"
-                    size={18}
+                    size={16}
                     color={Colors.textMuted}
+                    style={{ flexShrink: 0 }}
                   />
                 </Card>
               </Pressable>
@@ -489,13 +562,11 @@ export function DashboardScreen({ navigation }: any) {
       </ScrollView>
 
       {/* ── Botón flotante amigable: + Nuevo fiado ── */}
-      <Pressable
+      <FloatingActionButton
         onPress={() => navigation.navigate('NewCredit')}
+        label="Nuevo fiado"
         accessibilityLabel="Nuevo fiado"
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}>
-        <Ionicons name="add-circle" size={22} color="#fff" />
-        <Text style={styles.fabText}>Nuevo fiado</Text>
-      </Pressable>
+      />
     </View>
   );
 }
@@ -651,25 +722,39 @@ const styles = StyleSheet.create({
   debtorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 15,
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 13,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: '#FFFFFF',
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  avatarText: { color: Colors.primary, fontSize: 18, fontWeight: '800' },
-  balanceWrap: { alignItems: 'flex-end', gap: 2, flexShrink: 0 },
+  avatarText: { color: Colors.primary, fontSize: 16, fontWeight: '800' },
+  balanceWrap: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    minWidth: 105,
+    flexShrink: 0,
+    gap: 2,
+  },
   balanceLabel: { fontSize: 11, color: Colors.textSecondary, fontWeight: '700' },
-  balance: { fontSize: 16, color: Colors.destructive, fontWeight: '800' },
+  balance: {
+    fontSize: 15,
+    color: Colors.destructive,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    textAlign: 'right',
+  },
   touchHint: {
     fontSize: 11,
     color: Colors.primary,
@@ -752,33 +837,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ── FAB ──
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.primary,
-    paddingVertical: 13,
-    paddingHorizontal: 20,
-    borderRadius: 999,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  fabPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.96 }],
-  },
-  fabText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
   bottomSpacer: {
     height: 24,
   },

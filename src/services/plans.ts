@@ -136,6 +136,11 @@ export function calculateSubscriptionStatus(
   profile: Profile | null,
   gracePeriodDays = DEFAULT_GRACE_PERIOD_DAYS,
 ): SubscriptionStatusInfo {
+  const effectiveGraceDays =
+    typeof profile?.grace_period_days === 'number' && Number.isFinite(profile.grace_period_days)
+      ? profile.grace_period_days
+      : gracePeriodDays;
+
   const planId = (profile?.subscription_plan ?? 'free').toLowerCase();
   const isFreePlan = planId === 'free';
 
@@ -228,15 +233,15 @@ export function calculateSubscriptionStatus(
   const tEnd = new Date(`${endYMD}T12:00:00-05:00`).getTime();
   const daysDiff = Math.round((tToday - tEnd) / (1000 * 60 * 60 * 24));
 
-  // Si pasaron más de los días de gracia (10 días), vuelve automáticamente al plan Free
+  // Si pasaron más de los días de gracia, vuelve automáticamente al plan Free
   const statusStr = (profile?.subscription_status || '').toLowerCase();
   const isCancelled = statusStr === 'cancelled';
-  const isDowngradedToFree = isCancelled || (isExpired && daysDiff > gracePeriodDays);
-  const inGracePeriod = !isCancelled && isExpired && daysDiff <= gracePeriodDays;
+  const isDowngradedToFree = isCancelled || (isExpired && daysDiff > effectiveGraceDays);
+  const inGracePeriod = !isCancelled && isExpired && daysDiff <= effectiveGraceDays;
 
-  // El plan efectivo es el contratado a menos que ya hayan pasado los 10 días de gracia
+  // El plan efectivo es el contratado a menos que ya hayan pasado los días de gracia
   const effectivePlan = isDowngradedToFree ? 'free' : planId;
-  const remainingGraceDays = inGracePeriod ? Math.max(0, gracePeriodDays - daysDiff) : 0;
+  const remainingGraceDays = inGracePeriod ? Math.max(0, effectiveGraceDays - daysDiff) : 0;
 
   // Formato legible de fecha de fin en Colombia
   const formattedEndDate = formatDateDisplay(endDate);

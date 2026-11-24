@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
+import React, { useCallback, useRef } from 'react';
 import { FlatList, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Card } from '../components/ui/Card';
 import { FooterMenu } from '../components/ui/FooterMenu';
 import { MonochromeIcon } from '../components/ui/MonochromeIcon';
@@ -33,6 +35,13 @@ function formatLastMovement(lastMovement?: string | null): string {
 
 export function CustomerHistoryScreen({ route }: any) {
   const { isTablet, tabletContainerStyle } = useResponsive();
+  const listRef = useRef<FlatList>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }, []),
+  );
   const { id, customer: initialCustomer } = (route.params || {}) as {
     id: string;
     customer?: any;
@@ -68,6 +77,7 @@ export function CustomerHistoryScreen({ route }: any) {
   return (
     <View style={styles.wrap}>
       <FlatList
+        ref={listRef}
         contentContainerStyle={[styles.content, tabletContainerStyle(640)]}
         data={stores}
         keyExtractor={(item: any) => item.store_id}
@@ -184,7 +194,7 @@ export function CustomerHistoryScreen({ route }: any) {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: Colors.background },
-  content: { padding: 20, gap: 12 },
+  content: { padding: 20, gap: 12, paddingBottom: 110 },
   headerWrap: { alignItems: 'center', paddingVertical: 8, gap: 4 },
   avatarLg: {
     width: 64,

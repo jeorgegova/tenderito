@@ -1,8 +1,8 @@
-import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import React from 'react';
 import {ActivityIndicator, View} from 'react-native';
 import {MagnetTabBar} from '../components/ui/MagnetTabBar';
+import {createSwipeableTabNavigator} from './SwipeableTabNavigator';
 import {useAuth} from '../context/AuthContext';
 import {Colors} from '../theme';
 import {CustomerDetailScreen} from '../screens/CustomerDetailScreen';
@@ -22,7 +22,7 @@ import {CustomerHistoryScreen} from '../screens/CustomerHistoryScreen';
 import {FreePortfolioScreen} from '../screens/FreePortfolioScreen';
 
 const Stack = createNativeStackNavigator();
-const Tabs = createBottomTabNavigator();
+const Tabs = createSwipeableTabNavigator();
 
 function MainTabs() {
   return (
@@ -31,6 +31,12 @@ function MainTabs() {
       backBehavior="none"
       screenOptions={{
         headerShown: false,
+        tabBarStyle: {
+          position: 'absolute',
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
+          elevation: 0,
+        },
       }}>
       <Tabs.Screen name="Inicio" component={DashboardScreen} />
       <Tabs.Screen name="Clientes" component={CustomersScreen} />
@@ -61,10 +67,11 @@ export function RootNavigator() {
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
-        animation: 'fade',
-        animationDuration: 200,
+        animation: 'slide_from_right',
+        animationDuration: 220,
         contentStyle: {backgroundColor: Colors.background},
         headerTintColor: Colors.primary,
+        headerBackTitle: 'Volver',
         headerTitleStyle: {fontWeight: '700', color: Colors.text},
         headerShadowVisible: false,
       }}>
@@ -83,12 +90,19 @@ export function RootNavigator() {
             <Stack.Screen
               name="CustomerDetail"
               component={CustomerDetailScreen}
-              options={{headerShown: true, title: 'Cliente'}}
+              options={{
+                headerShown: false,
+                animation: 'fade',
+              }}
             />
             <Stack.Screen
               name="CustomerHistory"
               component={CustomerHistoryScreen}
-              options={{headerShown: true, title: 'Historial entre tiendas'}}
+              options={{
+                headerShown: true,
+                title: 'Historial entre tiendas',
+                animation: 'slide_from_right',
+              }}
             />
             <Stack.Screen
               name="FreePortfolio"

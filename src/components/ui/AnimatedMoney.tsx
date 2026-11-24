@@ -5,14 +5,26 @@ import {FormatMoney} from '../../utils/format';
 interface AnimatedMoneyProps {
   value: number | string;
   style?: StyleProp<TextStyle>;
+  formatter?: (val: number) => string;
+  duration?: number;
+  numberOfLines?: number;
+  adjustsFontSizeToFit?: boolean;
+  minimumFontScale?: number;
 }
 
-export const AnimatedMoney = ({value, style}: AnimatedMoneyProps) => {
+export const AnimatedMoney = ({
+  value,
+  style,
+  formatter,
+  duration = 1200,
+  numberOfLines,
+  adjustsFontSizeToFit,
+  minimumFontScale,
+}: AnimatedMoneyProps) => {
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
     const to = parseFloat(String(value)) || 0;
-    const duration = 1400;
     const start = Date.now();
     let raf: number;
 
@@ -31,11 +43,17 @@ export const AnimatedMoney = ({value, style}: AnimatedMoneyProps) => {
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [value]);
+  }, [value, duration]);
+
+  const formattedText = formatter ? formatter(display) : FormatMoney(display);
 
   return (
-    <Text style={style ?? {color: '#6D4AFF', fontWeight: 'bold', fontSize: 16}}>
-      {FormatMoney(display)}
+    <Text
+      style={style ?? {color: '#6D4AFF', fontWeight: 'bold', fontSize: 16}}
+      numberOfLines={numberOfLines}
+      adjustsFontSizeToFit={adjustsFontSizeToFit}
+      minimumFontScale={minimumFontScale}>
+      {formattedText}
     </Text>
   );
 };

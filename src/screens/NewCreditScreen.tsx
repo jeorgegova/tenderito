@@ -201,13 +201,13 @@ export function NewCreditScreen({route, navigation}: any) {
                 </Text>
               </View>
               <View style={styles.flex1}>
-                <Text style={styles.customerName} numberOfLines={1}>
+                <Text style={styles.customerName} numberOfLines={2}>
                   {selectedCustomer.alias && selectedCustomer.alias.trim()
                     ? selectedCustomer.alias
                     : selectedCustomer.name}
                 </Text>
                 {selectedCustomer.alias && selectedCustomer.alias.trim() ? (
-                  <Text style={styles.customerRealName} numberOfLines={1}>
+                  <Text style={styles.customerRealName} numberOfLines={2}>
                     {selectedCustomer.name}
                   </Text>
                 ) : null}
@@ -560,7 +560,7 @@ export function NewCreditScreen({route, navigation}: any) {
 
 const styles = StyleSheet.create({
   sheet: {flex: 1, backgroundColor: Colors.background, position: 'relative'},
-  content: {paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24, gap: 14},
+  content: {paddingHorizontal: 20, paddingTop: 16, paddingBottom: 48, gap: 14},
   footer: {
     padding: 16,
     paddingBottom: 26,
@@ -626,9 +626,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 12,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   balanceSummaryCol: {
     flex: 1,
+    minWidth: 80,
     alignItems: 'center',
   },
   balanceSummarySeparator: {

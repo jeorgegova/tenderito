@@ -15,10 +15,12 @@ export interface Profile {
   store_name: string;
   merchant_name: string;
   phone: string | null;
+  address?: string | null;
   subscription_plan: SubscriptionPlan | string;
   subscription_start_date?: string | null;
   subscription_end_date?: string | null;
   subscription_status?: string | null;
+  grace_period_days?: number | null;
   created_at: string;
 }
 
@@ -29,6 +31,7 @@ export interface SubscriptionPlanItem {
   price: number;
   price_text: string;
   customer_limit: number;
+  grace_period_days?: number | null;
   badge?: string | null;
   sort_order?: number;
   is_active?: boolean;
@@ -60,6 +63,7 @@ export interface FreePortfolioStatus {
   plan: SubscriptionPlan | string;
   effective_plan: SubscriptionPlan | string;
   limit: number;
+  is_unlimited?: boolean;
   active_count: number;
   portfolio_count: number;
   selection_done: boolean;
@@ -70,7 +74,7 @@ export interface FreePortfolioStatus {
 
 export interface CreditEligibility {
   allowed: boolean;
-  reason: 'paid_plan' | 'selected' | 'not_selected' | 'no_slots' | 'selection_pending' | 'unknown';
+  reason: 'paid_plan' | 'unlimited' | 'selected' | 'not_selected' | 'no_slots' | 'selection_pending' | 'unknown';
   message: string | null;
   limit: number;
   active_count: number;

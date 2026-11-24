@@ -251,9 +251,61 @@ export async function notifyCustomerMovement(params: {
       `[notifyCustomerMovement] Iniciando notificación para cliente ${params.customerId} (tipo: ${params.type}, status: ${params.status || 'active'}, monto: ${params.amount})...`,
     );
 
-    // Invocar la Edge Function en Supabase (nombre exacto desplegado: push-notification)
-    const {data, error} = await supabase.functions.invoke('push-notification', {
+    const isCancelled = params.status === 'cancelled';
+    const eventType = isCancelled
+      ? (params.type === 'credit' ? 'credit_cancelled' : 'payment_cancelled')
+      : params.type;
+
+    // 1. Broadcast instantáneo mediante Supabase Realtime (llega de inmediato a clientes conectados)
+    try {
+      const bcChannel = supabase.channel(`customer-realtime-${params.customerId}`);
+      bcChannel.subscribe(status => {
+        if (status === 'SUBSCRIBED') {
+          bcChannel.send({
+            type: 'broadcast',
+            event: 'movement',
+            payload: {
+              type: params.type,
+              eventType,
+              status: params.status || 'active',
+              amount: params.amount,
+              concept: params.concept,
+              notes: params.notes,
+              storeId: params.storeId,
+              movementId: params.movementId,
+            },
+          });
+        }
+      });
+
+      if (params.storeId) {
+        const storeBcChannel = supabase.channel(`store-realtime-${params.storeId}`);
+        storeBcChannel.subscribe(status => {
+          if (status === 'SUBSCRIBED') {
+            storeBcChannel.send({
+              type: 'broadcast',
+              event: 'movement',
+              payload: {
+                type: params.type,
+                eventType,
+                status: params.status || 'active',
+                amount: params.amount,
+                concept: params.concept,
+                notes: params.notes,
+                storeId: params.storeId,
+                movementId: params.movementId,
+              },
+            });
+          }
+        });
+      }
+    } catch (bcErr) {
+      console.warn('[notifyCustomerMovement] Broadcast en realtime omitido:', bcErr);
+    }
+
+    const payload = {
       body: {
+        eventType,
         table: params.type === 'payment' ? 'payments' : 'credits',
         record: {
           id: params.movementId,
@@ -265,15 +317,21 @@ export async function notifyCustomerMovement(params: {
           status: params.status || 'active',
         },
       },
-    });
+    };
 
-    if (error) {
-      console.warn('[notifyCustomerMovement] Error invocando Edge Function push-notification:', error.message);
-      return {success: false, message: error.message};
+    // Invocar la Edge Function en Supabase (soporta push-notifications y push-notification)
+    let res = await supabase.functions.invoke('push-notifications', payload);
+    if (res.error) {
+      res = await supabase.functions.invoke('push-notification', payload);
     }
 
-    console.log('[notifyCustomerMovement] Respuesta de la Edge Function:', data);
-    return {success: true, sent: data?.sent ?? 0, message: data?.message};
+    if (res.error) {
+      console.warn('[notifyCustomerMovement] Error invocando Edge Function push-notification:', res.error.message);
+      return {success: false, message: res.error.message};
+    }
+
+    console.log('[notifyCustomerMovement] Respuesta de la Edge Function:', res.data);
+    return {success: true, sent: res.data?.sent ?? 0, message: res.data?.message};
   } catch (err: any) {
     console.warn('[notifyCustomerMovement] Error inesperado en notificación:', err);
     return {success: false, message: err?.message};

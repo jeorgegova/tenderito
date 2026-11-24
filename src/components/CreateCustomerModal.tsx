@@ -230,16 +230,6 @@ export function CreateCustomerModal({
       return;
     }
 
-    const check = await canCreateCustomer(profile);
-    if (!check.allowed) {
-      return showAlert({
-        title: 'Límite de clientes alcanzado',
-        message: `Tu plan ${check.effectivePlan.toUpperCase()} permite hasta ${check.limit} clientes y ya tienes ${check.count}. Pásate a un plan superior para seguir agregando clientes.`,
-        type: 'warning',
-        buttons: [{ text: 'Entendido', style: 'cancel' }],
-      });
-    }
-
     if (foundCustomer) {
       if (!documentNumber.trim()) {
         return showAlert('Faltan datos', 'Identificación es obligatoria');
@@ -323,7 +313,7 @@ export function CreateCustomerModal({
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <View style={{ width: isSmall ? 85 : 100 }}>
+                <View style={{ width: isSmall ? 90 : 110, minWidth: 85 }}>
                   <Text style={styles.label}>Tipo</Text>
                   <Pressable
                     onPress={() => setShowTypePicker(true)}

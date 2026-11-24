@@ -238,3 +238,91 @@ export async function setLastAuthUserId(userId: string | null): Promise<void> {
   } catch (_e) {}
 }
 
+const BALANCE_VISIBILITY_PREFIX = '@tenderito_show_balance';
+let cachedBalanceVisibility: boolean | null = null;
+
+// Pre-cargar en memoria al inicializar el módulo para 0ms de retardo
+AsyncStorage.getItem(BALANCE_VISIBILITY_PREFIX)
+  .then(val => {
+    if (val !== null && cachedBalanceVisibility === null) {
+      cachedBalanceVisibility = val === 'true';
+    }
+  })
+  .catch(() => {});
+
+/**
+ * Obtiene de forma síncrona inmediata el estado en memoria/caché.
+ */
+export function getCachedBalanceVisibility(_storeId?: string | null): boolean {
+  if (cachedBalanceVisibility !== null) {
+    return cachedBalanceVisibility;
+  }
+  return true; // Por defecto visible
+}
+
+/**
+ * Obtiene la parametrización de visibilidad del saldo desde la base de datos local SQLite
+ * y AsyncStorage. Retorna true (visible) o false (oculto).
+ */
+export async function getStoredBalanceVisibility(storeId?: string | null): Promise<boolean> {
+  const specificKey = storeId ? `show_balance_${storeId}` : 'show_balance';
+  const asyncKey = storeId ? `${BALANCE_VISIBILITY_PREFIX}_${storeId}` : BALANCE_VISIBILITY_PREFIX;
+
+  // 1. Intentar AsyncStorage
+  try {
+    const val = await AsyncStorage.getItem(asyncKey);
+    if (val !== null) {
+      const boolVal = val === 'true';
+      cachedBalanceVisibility = boolVal;
+      return boolVal;
+    }
+  } catch (_e) {}
+
+  // 2. Base de datos local SQLite (tabla parametrizacion)
+  try {
+    const db = await getDbConnection();
+    let dbVal = await getConfigParam(db, specificKey);
+    if (!dbVal && storeId) {
+      dbVal = await getConfigParam(db, 'show_balance');
+    }
+    if (dbVal !== null) {
+      const boolVal = dbVal === 'true';
+      cachedBalanceVisibility = boolVal;
+      await AsyncStorage.setItem(asyncKey, String(boolVal));
+      return boolVal;
+    }
+  } catch (_e) {}
+
+  return true; // Por defecto visible
+}
+
+/**
+ * Guarda la parametrización de visibilidad del saldo en la base de datos local SQLite
+ * y en AsyncStorage.
+ */
+export async function setStoredBalanceVisibility(
+  visible: boolean,
+  storeId?: string | null,
+): Promise<void> {
+  cachedBalanceVisibility = visible;
+  const strVal = String(visible);
+  const specificKey = storeId ? `show_balance_${storeId}` : 'show_balance';
+  const asyncKey = storeId ? `${BALANCE_VISIBILITY_PREFIX}_${storeId}` : BALANCE_VISIBILITY_PREFIX;
+
+  // 1. AsyncStorage
+  try {
+    await AsyncStorage.setItem(asyncKey, strVal);
+    await AsyncStorage.setItem(BALANCE_VISIBILITY_PREFIX, strVal);
+  } catch (_e) {}
+
+  // 2. Base de datos local SQLite (tabla parametrizacion)
+  try {
+    const db = await getDbConnection();
+    await saveConfigParam(db, specificKey, strVal);
+    await saveConfigParam(db, 'show_balance', strVal);
+  } catch (error) {
+    console.error('[Settings] Error al guardar visibilidad de saldo en parametrizacion:', error);
+  }
+}
+
+

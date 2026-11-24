@@ -17,6 +17,7 @@ import { Card } from '../components/ui/Card';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { Input } from '../components/ui/Input';
 import { showAlert } from '../components/ui/AlertModal';
+import { showToast } from '../components/ui/Toast';
 import { useResponsive } from '../hooks/useResponsive';
 import { customerAuthEmail } from '../lib/customerAuth';
 import { supabase } from '../lib/supabase';
@@ -202,8 +203,9 @@ export function CustomerRegisterScreen({ navigation }: any) {
         data: { user_type: 'customer', customer_id: customer.customer_id, phone },
       },
     });
-    setLoading(false);
+
     if (error || !data.user) {
+      setLoading(false);
       const errMsg = (error?.message || '').toLowerCase();
       if (
         errMsg.includes('already registered') ||
@@ -240,29 +242,44 @@ export function CustomerRegisterScreen({ navigation }: any) {
         type: 'destructive',
       });
     }
+
+    // Si signUp no devolvió sesión directa, autenticar con las credenciales ingresadas
     if (!data.session) {
-      return showAlert({
-        title: 'Cuenta pendiente',
-        message: 'Desactiva la confirmación de correo en Supabase para activar inmediatamente.',
-        type: 'info',
-      });
+      const { data: signInData, error: signInError } =
+        await supabase.auth.signInWithPassword({
+          email: customerAuthEmail(cleanDoc),
+          password,
+        });
+
+      setLoading(false);
+
+      if (signInError || !signInData.session) {
+        return showAlert({
+          title: 'Cuenta activada',
+          message:
+            'Tu cuenta ha sido activada correctamente. Por favor ingresa tu contraseña para acceder a tu perfil.',
+          type: 'info',
+          buttons: [
+            {
+              text: 'Iniciar sesión',
+              onPress: () =>
+                navigation.replace('Login', {
+                  role: 'customer',
+                  document: cleanDoc,
+                }),
+            },
+          ],
+        });
+      }
+    } else {
+      setLoading(false);
     }
-    await supabase.auth.signOut();
-    showAlert({
-      title: 'Cuenta activada',
-      message: 'Ya puedes ingresar como cliente.',
-      type: 'success',
-      buttons: [
-        {
-          text: 'Ir al inicio',
-          onPress: () =>
-            navigation.replace('Login', {
-              role: 'customer',
-              document: document.trim(),
-            }),
-        },
-      ],
-    });
+
+    // Sesión establecida exitosamente: mostrar toast de bienvenida no bloqueante
+    showToast(
+      '¡Bienvenido a Tenderito!',
+      'Tu cuenta ha sido activada correctamente',
+    );
   }
 
   return (
@@ -270,19 +287,11 @@ export function CustomerRegisterScreen({ navigation }: any) {
       {/* ── Curvas abstractas dinámicas de la app ── */}
       <DynamicBrandCurves position="bottom-left" />
 
-      {/* ── Botón superior de retroceso ── */}
-      <Pressable
-        onPress={() => navigation.goBack()}
-        style={[styles.backBtn, { top: insets.top + 8 }]}
-        hitSlop={12}>
-        <Ionicons name="arrow-back" size={22} color={Colors.text} />
-      </Pressable>
-
       <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.wrap,
-          { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 32, flexGrow: 1 },
+          { paddingTop: 16, paddingBottom: insets.bottom + 32, flexGrow: 1 },
           isTablet ? { maxWidth: 480, width: '100%', alignSelf: 'center' } : null,
         ]}
         enableOnAndroid={true}
@@ -435,24 +444,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
-  },
-  backBtn: {
-    position: 'absolute',
-    left: 20,
-    zIndex: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    shadowColor: '#142033',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
   },
   scroll: {
     flex: 1,

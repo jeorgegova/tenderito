@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Colors } from '../../theme';
 import { useResponsive } from '../../hooks/useResponsive';
+import { useSwipeNavigation } from '../../context/SwipeNavigationContext';
 
 export interface MagnetFilterOption<T extends string = string> {
   key: T;
@@ -35,6 +36,7 @@ export function MagnetFilterBar<T extends string = string>({
   scrollable = false,
 }: MagnetFilterBarProps<T>) {
   const { isSmall, isTablet } = useResponsive();
+  const { innerScrollProps, setSwipeEnabled } = useSwipeNavigation();
 
   // ── MODO SCROLLABLE (para listas con múltiples opciones como rangos de fechas) ──
   const scrollViewRef = useRef<ScrollView>(null);
@@ -116,12 +118,18 @@ export function MagnetFilterBar<T extends string = string>({
 
   if (scrollable) {
     return (
-      <View style={[styles.scrollOuter, isTablet && styles.containerTablet, style]}>
+      <View
+        style={[styles.scrollOuter, isTablet && styles.containerTablet, style]}
+        onTouchStart={() => setSwipeEnabled(false)}
+        onTouchCancel={() => setSwipeEnabled(true)}>
         <ScrollView
           ref={scrollViewRef}
           horizontal
+          nestedScrollEnabled={true}
+          directionalLockEnabled={true}
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[styles.scrollContent, contentContainerStyle]}>
+          contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
+          {...innerScrollProps}>
           <View style={styles.scrollTrack}>
             {pillReady ? (
               <Animated.View
@@ -224,7 +232,8 @@ export function MagnetFilterBar<T extends string = string>({
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    width: '100%',
+    minHeight: 40,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F1F5F9',
@@ -233,7 +242,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
     position: 'relative',
-    width: '100%',
   },
   containerTablet: {
     maxWidth: 580,
@@ -248,6 +256,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   scrollTrack: {
+    minHeight: 40,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F1F5F9',

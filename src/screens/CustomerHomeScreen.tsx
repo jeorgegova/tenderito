@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -6,33 +6,49 @@ import {
   BackHandler,
   Easing,
   FlatList,
+  Keyboard,
+  LayoutAnimation,
   Linking,
   Modal,
+  Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  UIManager,
   View,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import NetInfo from '@react-native-community/netinfo';
 import { Card } from '../components/ui/Card';
+import { NotebookPaper } from '../components/ui/NotebookPaper';
 import { Button } from '../components/ui/Button';
+import { AnimatedMoney } from '../components/ui/AnimatedMoney';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { MagnetFilterBar } from '../components/ui/MagnetFilterBar';
 import { showAlert } from '../utils/alert';
 import { confirmLogout, CUSTOMER_LOGOUT_MESSAGE } from '../lib/session';
 import { fetchCustomerPortal } from '../services/customerPortal';
+import { computeCreditPaymentStatuses } from '../utils/creditStatus';
 import { Colors, Radius, formatCOP } from '../theme';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '../hooks/useResponsive';
+import { EditCustomerSelfModal } from '../components/ui/EditCustomerSelfModal';
 import {
+  formatDateCompact,
   formatDateDisplay,
   getBogotaCurrentMonthKey,
   getBogotaMonthKey,
+  isOverdueBogota,
 } from '../utils/format';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const MONTH_NAMES = [
   'Enero',
@@ -79,17 +95,11 @@ const formatMonthLabel = (monthKey: string) => {
 
 const formatMonthHeader = (monthKey: string) => {
   if (monthKey === 'all') {
-    return 'TODOS';
+    return 'Todos';
   }
-  const [yearStr, monthStr] = monthKey.split('-');
+  const [, monthStr] = monthKey.split('-');
   const monthIdx = parseInt(monthStr, 10) - 1;
-  const monthName = MONTH_NAMES[monthIdx] || monthKey;
-  const currentYear = new Date().getFullYear().toString();
-  if (yearStr === currentYear) {
-    return monthName.toUpperCase();
-  }
-  const shortMonth = MONTH_SHORT_NAMES[monthIdx] || monthKey;
-  return `${shortMonth.toUpperCase()} ${yearStr}`;
+  return MONTH_NAMES[monthIdx] || monthKey;
 };
 
 const normalizeSearchText = (text: string) =>
@@ -116,7 +126,7 @@ const generateAvailableMonths = (createdAt?: string | null) => {
           pastLimitMonths = Math.min(diffMonths + 1, 36);
         }
       }
-    } catch (_e) {}
+    } catch (_e) { }
   }
 
   for (let i = 0; i < pastLimitMonths; i++) {
@@ -129,6 +139,7 @@ const generateAvailableMonths = (createdAt?: string | null) => {
 };
 
 export function CustomerHomeScreen() {
+  const insets = useSafeAreaInsets();
   const { isSmall, isTablet, tabletContainerStyle } = useResponsive();
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'payment'>(
@@ -138,8 +149,11 @@ export function CustomerHomeScreen() {
   const [isMonthModalVisible, setIsMonthModalVisible] = useState(false);
   const [searchConcept, setSearchConcept] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [selectedDetailMovement, setSelectedDetailMovement] = useState<any | null>(null);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
-  // Animaciones suaves para la apertura y cierre del buscador
+  // Control del buscador con animación fluida en píxeles exactos
+  const [headerWidth, setHeaderWidth] = useState(340);
   const searchInputRef = useRef<TextInput>(null);
   const searchAnim = useRef(new Animated.Value(0)).current;
 
@@ -147,20 +161,21 @@ export function CustomerHomeScreen() {
     setIsSearchOpen(true);
     Animated.timing(searchAnim, {
       toValue: 1,
-      duration: 380,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
+      duration: 650,
+      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+      useNativeDriver: false,
     }).start(() => {
       searchInputRef.current?.focus();
     });
   };
 
   const handleCloseSearch = () => {
+    Keyboard.dismiss();
     Animated.timing(searchAnim, {
       toValue: 0,
-      duration: 320,
-      easing: Easing.inOut(Easing.cubic),
-      useNativeDriver: true,
+      duration: 480,
+      easing: Easing.bezier(0.4, 0, 0.2, 1),
+      useNativeDriver: false,
     }).start(({ finished }) => {
       if (finished) {
         setIsSearchOpen(false);
@@ -169,29 +184,44 @@ export function CustomerHomeScreen() {
     });
   };
 
-  const conceptRowOpacity = searchAnim.interpolate({
-    inputRange: [0, 0.4],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  const availableSearchWidth = headerWidth > 84 ? headerWidth - 84 : 240;
 
-  const conceptRowTranslateX = searchAnim.interpolate({
+  const searchBoxWidth = searchAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -10],
+    outputRange: [34, availableSearchWidth],
   });
 
-  const searchBoxOpacity = searchAnim.interpolate({
-    inputRange: [0.1, 1],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
-
-  const searchBoxScaleX = searchAnim.interpolate({
+  const searchRowHeight = searchAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.65, 1],
+    outputRange: [0, 48],
   });
 
-  const searchBoxTranslateX = searchAnim.interpolate({
+  const searchRowOpacity = searchAnim.interpolate({
+    inputRange: [0, 0.25, 1],
+    outputRange: [0, 0.5, 1],
+  });
+
+  const searchRowPaddingY = searchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 6],
+  });
+
+  const searchRowBorderWidth = searchAnim.interpolate({
+    inputRange: [0, 0.05, 1],
+    outputRange: [0, 1.5, 1.5],
+  });
+
+  const searchInputOpacity = searchAnim.interpolate({
+    inputRange: [0, 0.35, 1],
+    outputRange: [0, 0, 1],
+  });
+
+  const searchCloseOpacity = searchAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, 0, 1],
+  });
+
+  const searchCloseTranslateX = searchAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [16, 0],
   });
@@ -205,6 +235,10 @@ export function CustomerHomeScreen() {
     setFilterType('all');
   }, [selectedStoreId]);
 
+  const queryClient = useQueryClient();
+  const detailScrollRef = useRef<ScrollView>(null);
+  const homeFlatListRef = useRef<FlatList>(null);
+
   const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: ['customer-portal', selectedStoreId, selectedMonth],
     queryFn: () =>
@@ -213,6 +247,11 @@ export function CustomerHomeScreen() {
         month: selectedMonth,
       }),
   });
+
+  // Pull-to-refresh completo: invalida tanto el resumen como todos los detalles de tienda
+  const handleRefreshAll = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['customer-portal'] });
+  }, [queryClient]);
 
   // Validación de conexión a internet antes de intentar cambiar de fecha / mes
   const checkInternetConnection = async (): Promise<boolean> => {
@@ -257,24 +296,40 @@ export function CustomerHomeScreen() {
     setIsMonthModalVisible(false);
   };
 
-  // Manejo del botón físico "Atrás" en Android
+  const handleSelectStore = useCallback((storeId: string | null) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSelectedStoreId(storeId);
+    if (storeId) {
+      // Invalida inmediatamente para garantizar datos frescos al entrar al detalle
+      queryClient.invalidateQueries({ queryKey: ['customer-portal', storeId] });
+      // Reset scroll del detalle al inicio
+      setTimeout(() => {
+        detailScrollRef.current?.scrollTo({ y: 0, animated: false });
+      }, 50);
+    } else {
+      // Reset scroll del listado principal
+      setTimeout(() => {
+        homeFlatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+      }, 50);
+    }
+  }, [queryClient]);
+
+  // Manejo del botón físico "Atrás" en Android:
+  // - Si está en el detalle de una tienda, regresa al listado de tiendas.
+  // - Si está en el inicio de tiendas, sale naturalmente de la app sin cerrar sesión ni mostrar modal.
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
         if (selectedStoreId) {
-          setSelectedStoreId(null);
+          handleSelectStore(null);
           return true;
         }
-        confirmLogout({
-          title: '¿Seguro que deseas cerrar sesión?',
-          message: CUSTOMER_LOGOUT_MESSAGE,
-          confirmText: 'Cerrar sesión',
-        });
-        return true;
+        // Retornar false permite que Android salga/minimice la app a segundo plano con la sesión intacta
+        return false;
       };
       const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
       return () => sub.remove();
-    }, [selectedStoreId]),
+    }, [selectedStoreId, handleSelectStore]),
   );
 
   const stores = useMemo(() => data?.stores ?? [], [data?.stores]);
@@ -349,6 +404,22 @@ export function CustomerHomeScreen() {
     return { creditsSum, paymentsSum };
   }, [storeMovements]);
 
+  // Mapa de estados reales de pago ('paid' | 'partially_paid' | null) para las compras fiadas de la tienda
+  const creditStatusMap = useMemo(() => {
+    if (!selectedStoreId) return {};
+    const storeCredits = (data?.credits ?? []).filter(
+      (c: any) => c.store_id === selectedStoreId,
+    );
+    const storePayments = (data?.payments ?? []).filter(
+      (p: any) => p.store_id === selectedStoreId,
+    );
+    return computeCreditPaymentStatuses(
+      storeCredits,
+      storePayments,
+      selectedStore?.current_balance,
+    );
+  }, [data?.credits, data?.payments, selectedStoreId, selectedStore?.current_balance]);
+
   // Lista de meses disponibles para selección (últimos meses hacia atrás desde hoy o creación)
   const availableMonths = useMemo(() => {
     return generateAvailableMonths(data?.customer?.created_at);
@@ -407,10 +478,10 @@ export function CustomerHomeScreen() {
     return (
       <View style={styles.centerWrap}>
         <Ionicons name="alert-circle-outline" size={48} color={Colors.destructive} />
-        <Text style={[styles.loadingText, {marginTop: 8, fontWeight: '800', color: Colors.text}]}>
+        <Text style={[styles.loadingText, { marginTop: 8, fontWeight: '800', color: Colors.text }]}>
           No se pudieron cargar tus cuentas
         </Text>
-        <Text style={[styles.emptyCardText, {textAlign: 'center', marginHorizontal: 24, marginTop: 2}]}>
+        <Text style={[styles.emptyCardText, { textAlign: 'center', marginHorizontal: 24, marginTop: 2 }]}>
           Revisa tu conexión a internet e intenta nuevamente.
         </Text>
         <TouchableOpacity
@@ -422,69 +493,144 @@ export function CustomerHomeScreen() {
             paddingHorizontal: 24,
             borderRadius: Radius.md,
           }}>
-          <Text style={{color: '#fff', fontWeight: '800', fontSize: 14}}>Reintentar</Text>
+          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>Reintentar</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={handleLogout}
-          style={{marginTop: 10, paddingVertical: 8}}>
-          <Text style={{color: Colors.textSecondary, fontWeight: '600', fontSize: 13}}>Cerrar sesión</Text>
+          style={{ marginTop: 10, paddingVertical: 8 }}>
+          <Text style={{ color: Colors.textSecondary, fontWeight: '600', fontSize: 13 }}>Cerrar sesión</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   // =========================================================================
-  // VISTA 2: DETALLE DE MOVIMIENTOS DE LA TIENDA SELECCIONADA ("Libreta")
+  // VISTA 1 & 2: INICIO Y DETALLE ("Mis Tiendas" y "Libreta")
   // =========================================================================
-  if (selectedStore) {
-    const rawStores: any = selectedStore.stores;
-    const storeInfo: any = Array.isArray(rawStores) ? rawStores[0] : rawStores;
-    const storeName = storeInfo?.store_name ?? 'Tienda de barrio';
-    const currentBalance = Number(selectedStore.current_balance || 0);
-    const creditLimit = Number(selectedStore.credit_limit || 0);
-    const isPaid = currentBalance === 0;
+  const rawStores: any = selectedStore?.stores;
+  const storeInfo: any = Array.isArray(rawStores) ? rawStores[0] : rawStores;
+  const storeName = storeInfo?.store_name ?? 'Tienda de barrio';
+  const currentBalance = Number(selectedStore?.current_balance || 0);
+  const creditLimit = Number(selectedStore?.credit_limit || 0);
+  const isPaid = currentBalance === 0;
 
-    const creditCount = storeMovements.filter(m => m.kind === 'credit').length;
-    const paymentCount = storeMovements.filter(
-      m => m.kind === 'payment',
-    ).length;
+  const creditCount = storeMovements.filter(m => m.kind === 'credit').length;
+  const paymentCount = storeMovements.filter(
+    m => m.kind === 'payment',
+  ).length;
+  const allClear = totalBalance === 0 && stores.length > 0;
 
-    return (
-      <View style={styles.wrap}>
-        <DynamicBrandCurves position="bottom-left" />
-        {/* Barra superior amigable para volver */}
-        <View style={styles.topNav}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => setSelectedStoreId(null)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="arrow-back" size={20} color={Colors.primary} />
-            <Text style={styles.backBtnText}>Volver a mis tiendas</Text>
-          </TouchableOpacity>
+  return (
+    <View style={styles.wrap}>
+      <DynamicBrandCurves position={selectedStore ? 'bottom-left' : 'top-right'} />
 
-          {customerName ? (
-            <View style={styles.sessionBadge}>
-              <View style={styles.sessionAvatar}>
-                <Ionicons name="person-outline" size={13} color="#059669" />
-              </View>
-              <View style={styles.sessionCol}>
-                <Text style={styles.sessionRole}>CLIENTE</Text>
-                <Text style={styles.sessionName} numberOfLines={1}>
-                  {customerName}
-                </Text>
-              </View>
+      {/* Cabecera persistente animada con transición al crecer o reducirse */}
+      <View
+        style={[
+          styles.header,
+          selectedStore && styles.headerCompact,
+          {
+            paddingTop:
+              Math.max(insets.top, 14) + (selectedStore ? 4 : 8),
+          },
+          isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' },
+        ]}>
+        {selectedStore ? (
+          // Cabecera compacta en Detalle
+          <>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => handleSelectStore(null)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="arrow-back" size={18} color={Colors.primary} />
+              <Text style={styles.backBtnText}>Volver a mis tiendas</Text>
+            </TouchableOpacity>
+
+            {customerName ? (
+              <TouchableOpacity
+                style={styles.sessionBadge}
+                onPress={() => setIsEditProfileOpen(true)}
+                activeOpacity={0.7}>
+                <View style={styles.sessionAvatar}>
+                  <Ionicons name="person" size={12} color="#059669" />
+                </View>
+                <View style={styles.sessionCol}>
+                  <Text style={styles.sessionRole}>CLIENTE</Text>
+                  <Text style={styles.sessionName} numberOfLines={1}>
+                    {customerName}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
+          </>
+        ) : (
+          // Cabecera principal en Inicio
+          <>
+            {/* Un único ondulado sutil de fondo */}
+            <View pointerEvents="none" style={styles.headerWavesContainer}>
+              <View style={styles.headerSingleWave} />
             </View>
-          ) : null}
-        </View>
 
+            <View style={styles.flexOne}>
+              <View style={styles.headerTitleRow}>
+                <Text
+                  style={[styles.headerGreeting, isSmall && styles.headerGreetingSmall]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}>
+                  ¡Hola, {customerName}!
+                </Text>
+                <View style={styles.customerRoleTag}>
+                  <Text style={styles.customerRoleTagText}>Cliente</Text>
+                </View>
+              </View>
+              <Text style={styles.headerSubtitle}>
+                Tus cuentas en tiendas de barrio
+              </Text>
+              <TouchableOpacity
+                style={styles.editProfileBtn}
+                onPress={() => setIsEditProfileOpen(true)}
+                activeOpacity={0.7}>
+                <Ionicons name="pencil" size={12} color={Colors.primary} />
+                <Text style={styles.editProfileBtnText}>Editar mis datos</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.logoutBtn}
+              onPress={handleLogout}
+              activeOpacity={0.75}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons
+                name="log-out-outline"
+                size={18}
+                color={Colors.destructive}
+              />
+              <Text style={styles.logoutBtnText}>Salir</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
+      {/* Vista 2: Detalle de Movimientos de la Tienda ("Libreta") */}
+      {selectedStore && (
         <ScrollView
+          ref={detailScrollRef}
           contentContainerStyle={[styles.detailScroll, tabletContainerStyle(720)]}
-          showsVerticalScrollIndicator={false}>
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isFetching}
+              onRefresh={handleRefreshAll}
+              colors={[Colors.primary]}
+              tintColor={Colors.primary}
+            />
+          }>
           {/* Tarjeta de la tienda */}
           <Card style={styles.storeDetailCard}>
             <View style={styles.storeDetailHeader}>
               <View style={styles.storeDetailAvatar}>
-                <Ionicons name="storefront" size={26} color={Colors.primary} />
+                <Ionicons name="storefront" size={28} color={Colors.primary} />
               </View>
               <View style={styles.flexOne}>
                 <Text style={styles.storeDetailTitle}>{storeName}</Text>
@@ -493,7 +639,7 @@ export function CustomerHomeScreen() {
                     <Ionicons
                       name="location-outline"
                       size={14}
-                      color={Colors.textSecondary}
+                      color={Colors.destructive}
                     />
                     <Text style={styles.metaText}>{storeInfo.address}</Text>
                   </View>
@@ -503,7 +649,7 @@ export function CustomerHomeScreen() {
                     <Ionicons
                       name="call-outline"
                       size={14}
-                      color={Colors.textSecondary}
+                      color="#16A34A"
                     />
                     <Text style={styles.metaText}>{storeInfo.phone}</Text>
                   </View>
@@ -514,57 +660,65 @@ export function CustomerHomeScreen() {
             {storeInfo?.phone ? (
               <TouchableOpacity
                 style={styles.callStoreBtn}
-                onPress={() => handleCallStore(storeInfo.phone)}>
+                onPress={() => handleCallStore(storeInfo.phone)}
+                activeOpacity={0.85}>
                 <Ionicons name="call" size={16} color="#FFFFFF" />
                 <Text style={styles.callStoreBtnText}>Llamar a la tienda</Text>
               </TouchableOpacity>
             ) : null}
 
-            {/* Saldo en grande y claro */}
+            {/* Saldo en superficie diferenciada y amigable */}
             <View
               style={[
                 styles.storeBalanceBox,
-                isPaid ? styles.storeBalanceBoxPaid : null,
+                isPaid ? styles.storeBalanceBoxPaid : styles.storeBalanceBoxDebt,
               ]}>
               <Text
                 style={[
                   styles.storeBalanceLabel,
-                  isPaid ? styles.storeBalanceLabelPaid : null,
+                  isPaid ? styles.storeBalanceLabelPaid : styles.storeBalanceLabelDebt,
                 ]}>
                 {isPaid
                   ? '¡ESTÁS AL DÍA EN ESTA TIENDA!'
                   : 'EN ESTA TIENDA DEBES:'}
               </Text>
-              <Text
+              <AnimatedMoney
+                value={currentBalance}
+                formatter={formatCOP}
                 style={[
                   styles.storeBalanceAmount,
-                  isPaid ? styles.storeBalanceAmountPaid : null,
+                  isPaid ? styles.storeBalanceAmountPaid : styles.storeBalanceAmountDebt,
+                  isSmall && styles.storeBalanceAmountSmall,
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.78}
+              />
+              <Text
+                style={[
+                  styles.storeBalanceHelp,
+                  isPaid ? styles.storeBalanceHelpPaid : styles.storeBalanceHelpDebt,
                 ]}>
-                {formatCOP(currentBalance)}
-              </Text>
-              <Text style={styles.storeBalanceHelp}>
                 {isPaid
                   ? 'No tienes ninguna deuda pendiente con este tendero.'
                   : 'Este es el dinero que te falta por pagar.'}
-                {/* {creditLimit > 0
-                  ? ` Tu tope máximo de fiado aquí es de ${formatCOP(
-                    creditLimit,
-                  )}.`
-                  : ''} */}
               </Text>
             </View>
           </Card>
 
           {/* Sección de la libreta de cuentas */}
           <View style={styles.sectionHeader}>
-            <View>
+            <View style={styles.notebookTitleRow}>
+              <View style={styles.notebookIconPill}>
+                <Ionicons name="book-outline" size={16} color={Colors.primary} />
+              </View>
               <Text style={styles.sectionMainTitle}>
                 Libreta de tus cuentas
               </Text>
-              <Text style={styles.sectionSubtitle}>
-                Aquí ves exactamente cada compra y cada abono registrado:
-              </Text>
             </View>
+            <Text style={styles.sectionSubtitle}>
+              Aquí ves exactamente cada compra y cada abono registrado:
+            </Text>
           </View>
 
           {/* Filtros animados con estilo imán */}
@@ -580,36 +734,34 @@ export function CustomerHomeScreen() {
             />
           </View>
 
-          {/* Tabla / Libreta de apuntes */}
-          <View style={styles.ledgerTable}>
-            {/* Encabezado de la tabla con filtro Mes y Buscador "Qué fue" */}
-            <View style={styles.tableHeaderRow}>
-              {/* Filtro Mes (reemplaza FECHA con el mes actual y abre modal de selección) */}
-              <View style={[styles.colDate, isSmall && styles.colDateSmall]}>
-                <TouchableOpacity
-                  style={styles.headerMonthBtn}
-                  onPress={handleOpenMonthPicker}
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-                  <Text style={styles.headerMonthBtnText} numberOfLines={1}>
-                    {formatMonthHeader(selectedMonth)}
-                  </Text>
-                  <Ionicons name="caret-down" size={10} color="#9A3412" />
-                </TouchableOpacity>
-              </View>
+          {/* ── Libreta de Apuntes en Hoja Argollada ── */}
+          <NotebookPaper>
+            <View
+              style={styles.tableHeaderContainer}
+              onLayout={e => {
+                const w = e.nativeEvent.layout.width;
+                if (w > 0 && Math.abs(w - headerWidth) > 1) {
+                  setHeaderWidth(w);
+                }
+              }}>
+              {/* Encabezado de la tabla con filtro Mes y Buscador "Qué fue" */}
+              <View style={styles.tableHeaderRow}>
+                {/* Filtro Mes (Columna Fecha: 74px) */}
+                <View style={styles.colDate}>
+                  <TouchableOpacity
+                    style={styles.headerMonthBtn}
+                    onPress={handleOpenMonthPicker}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+                    <Text style={styles.headerMonthBtnText} numberOfLines={1}>
+                      {formatMonthHeader(selectedMonth)}
+                    </Text>
+                    <Ionicons name="caret-down" size={10} color="#9A3412" />
+                  </TouchableOpacity>
+                </View>
 
-              {/* Filtro QUÉ FUE con Lupa interactiva y apertura/cierre animados */}
-              <View style={[styles.colConcept, styles.colConceptHeader]}>
-                {/* Vista 1: Título y Lupa (se desvanece suavemente al abrir) */}
-                <Animated.View
-                  pointerEvents={isSearchOpen ? 'none' : 'auto'}
-                  style={[
-                    styles.headerConceptRow,
-                    {
-                      opacity: conceptRowOpacity,
-                      transform: [{ translateX: conceptRowTranslateX }],
-                    },
-                  ]}>
+                {/* Filtro QUÉ FUE con botón de búsqueda */}
+                <View style={styles.colConceptHeader}>
                   <Text
                     style={styles.tableColHeader}
                     numberOfLines={1}
@@ -619,69 +771,96 @@ export function CustomerHomeScreen() {
                   <TouchableOpacity
                     style={[
                       styles.headerSearchIconBtn,
-                      searchConcept.trim().length > 0 &&
+                      (searchConcept.trim().length > 0 || isSearchOpen) &&
                         styles.headerSearchIconBtnActive,
                     ]}
-                    onPress={handleOpenSearch}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                    onPress={() => {
+                      if (isSearchOpen) {
+                        handleCloseSearch();
+                      } else {
+                        handleOpenSearch();
+                      }
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Ionicons
                       name="search"
                       size={12}
                       color={
-                        searchConcept.trim().length > 0
+                        searchConcept.trim().length > 0 || isSearchOpen
                           ? '#FFFFFF'
                           : '#9A3412'
                       }
                     />
                   </TouchableOpacity>
-                </Animated.View>
+                </View>
 
-                {/* Vista 2: Input de Búsqueda (se expande y cierra animado despacio) */}
+                {/* Columna Valor: 78px */}
+                <View style={styles.colAmount}>
+                  <Text
+                    style={styles.tableColHeader}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit>
+                    VALOR
+                  </Text>
+                </View>
+              </View>
+
+              {/* Fila 2: Campo de búsqueda dedicado con animación fluida de expansión horizontal */}
+              <Animated.View
+                style={[
+                  styles.searchRowDedicated,
+                  {
+                    height: searchRowHeight,
+                    opacity: searchRowOpacity,
+                    paddingVertical: searchRowPaddingY,
+                    borderBottomWidth: searchRowBorderWidth,
+                    overflow: 'hidden',
+                  },
+                ]}
+                pointerEvents={isSearchOpen || searchConcept.trim().length > 0 ? 'auto' : 'none'}>
                 <Animated.View
-                  pointerEvents={isSearchOpen ? 'auto' : 'none'}
                   style={[
-                    styles.headerSearchBox,
-                    {
-                      opacity: searchBoxOpacity,
-                      transform: [
-                        { scaleX: searchBoxScaleX },
-                        { translateX: searchBoxTranslateX },
-                      ],
-                    },
+                    styles.searchBoxDedicated,
+                    { width: searchBoxWidth },
                   ]}>
-                  <Ionicons name="search" size={12} color={Colors.primary} />
-                  <TextInput
-                    ref={searchInputRef}
-                    style={styles.headerSearchInput}
-                    placeholder="Buscar..."
-                    placeholderTextColor={Colors.textMuted}
-                    value={searchConcept}
-                    onChangeText={setSearchConcept}
-                    returnKeyType="done"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
+                  <Ionicons name="search" size={13} color={Colors.primary} style={{ flexShrink: 0, marginLeft: 2 }} />
+                  <Animated.View style={{ flex: 1, opacity: searchInputOpacity }}>
+                    <TextInput
+                      ref={searchInputRef}
+                      style={styles.searchInputDedicated}
+                      placeholder="Buscar qué compraste o abonaste..."
+                      placeholderTextColor={Colors.textMuted}
+                      value={searchConcept}
+                      onChangeText={setSearchConcept}
+                      returnKeyType="done"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </Animated.View>
+                  {searchConcept.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => setSearchConcept('')}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons
+                        name="close-circle"
+                        size={16}
+                        color={Colors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </Animated.View>
+                <Animated.View
+                  style={{
+                    opacity: searchCloseOpacity,
+                    transform: [{ translateX: searchCloseTranslateX }],
+                  }}>
                   <TouchableOpacity
                     onPress={handleCloseSearch}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons
-                      name="close-circle"
-                      size={15}
-                      color={Colors.textSecondary}
-                    />
+                    style={styles.searchCloseBtn}>
+                    <Text style={styles.searchCloseBtnText}>Cerrar</Text>
                   </TouchableOpacity>
                 </Animated.View>
-              </View>
-
-              {/* Columna Valor */}
-              <View style={[styles.colAmount, isSmall && styles.colAmountSmall]}>
-                <Text
-                  style={styles.tableColHeader}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit>
-                  VALOR
-                </Text>
-              </View>
+              </Animated.View>
             </View>
 
             {/* Filas de la tabla */}
@@ -731,8 +910,8 @@ export function CustomerHomeScreen() {
                   {searchConcept.trim().length > 0
                     ? `No hay compras ni abonos que contengan "${searchConcept}".`
                     : `No hay compras ni abonos registrados para ${formatMonthLabel(
-                        selectedMonth,
-                      )}.`}
+                      selectedMonth,
+                    )}.`}
                 </Text>
                 {searchConcept.trim().length > 0 ? (
                   <TouchableOpacity
@@ -753,110 +932,153 @@ export function CustomerHomeScreen() {
                 ) : null}
               </View>
             ) : (
-              filteredStoreMovements.map((item, index) => {
-                const isCredit = item.kind === 'credit';
-                const isCancelled = item.status === 'cancelled';
-                return (
-                  <View
-                    key={item.id}
-                    style={[
-                      styles.tableRow,
-                      index % 2 === 1 && styles.tableRowAlt,
-                      index === filteredStoreMovements.length - 1 &&
-                      styles.tableRowLast,
-                      isCancelled && styles.tableRowCancelled,
-                    ]}>
-                    {/* Columna Fecha */}
-                    <View style={[styles.colDate, isSmall && styles.colDateSmall]}>
-                      <Text
-                        style={[
-                          styles.rowDateText,
-                          isCancelled && styles.textCancelled,
-                        ]}>
-                        {formatDateDisplay(item.date)}
-                      </Text>
-                    </View>
+              <>
+                {filteredStoreMovements.map(item => {
+                  const isCredit = item.kind === 'credit';
+                  const isCancelled = item.status === 'cancelled';
+                  const overdue = isCredit && !isCancelled && isOverdueBogota(item.dueDate);
+                  const paymentTag = isCredit && !isCancelled ? (creditStatusMap[item.id] ?? null) : null;
 
-                    {/* Columna Detalle */}
-                    <View style={styles.colConcept}>
-                      <Text
-                        style={[
-                          styles.rowConceptTitle,
-                          isCancelled && styles.textCancelled,
-                        ]}
-                        numberOfLines={2}>
-                        {item.title}
-                      </Text>
+                  return (
+                    <View
+                      key={item.id}
+                      style={[
+                        styles.tableRow,
+                        isCancelled && styles.tableRowCancelled,
+                      ]}>
+                      {/* Cinta diagonal de esquina (Pagado / Abonado) */}
+                      {paymentTag && (
+                        <View style={styles.cornerRibbonContainer} pointerEvents="none">
+                          <View
+                            style={[
+                              styles.cornerRibbon,
+                              paymentTag === 'paid' ? styles.cornerRibbonPaid : styles.cornerRibbonAbonado,
+                            ]}>
+                            <Text style={styles.cornerRibbonText}>
+                              {paymentTag === 'paid' ? 'PAGADO' : 'ABONADO'}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
 
-                      <View style={styles.rowBadgeWrap}>
-                        {isCancelled ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <View style={[styles.kindBadge, styles.kindBadgeCancelled]}>
-                              <Text style={[styles.kindBadgeText, styles.kindBadgeTextCancelled]}>
-                                Cancelado
-                              </Text>
+                      {/* Columna Fecha Compacta: 74px */}
+                      <View style={styles.colDate}>
+                        <Text
+                          style={[
+                            styles.rowDateText,
+                            isCancelled && styles.textCancelled,
+                          ]}>
+                          {formatDateCompact(item.date)}
+                        </Text>
+                      </View>
+
+                      {/* Columna Detalle Multilínea con toque para modal contextual */}
+                      <TouchableOpacity
+                        style={styles.colConcept}
+                        activeOpacity={0.7}
+                        onPress={() => setSelectedDetailMovement(item)}>
+                        <Text
+                          style={[
+                            styles.rowConceptTitle,
+                            isCancelled && styles.textCancelled,
+                          ]}
+                          numberOfLines={6}>
+                          {item.title}
+                        </Text>
+
+                        <View style={styles.rowBadgeWrap}>
+                          {isCancelled ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <View style={[styles.kindBadge, styles.kindBadgeCancelled]}>
+                                <Text style={[styles.kindBadgeText, styles.kindBadgeTextCancelled]}>
+                                  Cancelado
+                                </Text>
+                              </View>
+                              <View style={[styles.kindBadge, { backgroundColor: '#F1F5F9' }]}>
+                                <Text
+                                  style={[
+                                    styles.kindBadgeText,
+                                    { color: '#94A3B8', textDecorationLine: 'line-through' },
+                                  ]}>
+                                  {isCredit ? 'Compra fiada (+)' : 'Abono realizado (-)'}
+                                </Text>
+                              </View>
                             </View>
-                            <View style={[styles.kindBadge, { backgroundColor: '#F1F5F9' }]}>
+                          ) : (
+                            <View
+                              style={[
+                                styles.kindBadge,
+                                isCredit
+                                  ? styles.kindBadgeCredit
+                                  : styles.kindBadgePayment,
+                              ]}>
                               <Text
                                 style={[
                                   styles.kindBadgeText,
-                                  { color: '#94A3B8', textDecorationLine: 'line-through' },
+                                  isCredit
+                                    ? styles.kindBadgeTextCredit
+                                    : styles.kindBadgeTextPayment,
                                 ]}>
-                                {isCredit ? 'Compra fiada (+)' : 'Abono realizado (-)'}
+                                {isCredit
+                                  ? 'Compra fiada (+)'
+                                  : 'Abono realizado (-)'}
                               </Text>
                             </View>
-                          </View>
-                        ) : (
-                          <View
-                            style={[
-                              styles.kindBadge,
-                              isCredit
-                                ? styles.kindBadgeCredit
-                                : styles.kindBadgePayment,
-                            ]}>
+                          )}
+                        </View>
+
+                        {item.dueDate ? (
+                          <View style={styles.dueRow}>
+                            <Ionicons
+                              name="calendar-outline"
+                              size={11}
+                              color={
+                                isCancelled
+                                  ? '#94A3B8'
+                                  : overdue
+                                    ? Colors.destructive
+                                    : Colors.textSecondary
+                              }
+                            />
                             <Text
                               style={[
-                                styles.kindBadgeText,
-                                isCredit
-                                  ? styles.kindBadgeTextCredit
-                                  : styles.kindBadgeTextPayment,
+                                styles.rowDueDate,
+                                overdue && styles.rowDueDateOverdue,
+                                isCancelled && styles.textCancelled,
                               ]}>
-                              {isCredit
-                                ? 'Compra fiada (+)'
-                                : 'Abono realizado (-)'}
+                              {overdue
+                                ? `Vencido: ${formatDateCompact(item.dueDate)}`
+                                : `Pagar antes de: ${formatDateCompact(item.dueDate)}`}
                             </Text>
                           </View>
-                        )}
-                      </View>
+                        ) : null}
+                      </TouchableOpacity>
 
-                      {item.dueDate ? (
+                      {/* Columna Monto: 78px */}
+                      <View style={styles.colAmount}>
                         <Text
                           style={[
-                            styles.rowDueDate,
+                            styles.rowAmountText,
+                            isCredit
+                              ? styles.rowAmountCredit
+                              : styles.rowAmountPayment,
                             isCancelled && styles.textCancelled,
                           ]}>
-                          Pagar antes de: {formatDateDisplay(item.dueDate)}
+                          {isCredit ? '+' : '−'}
+                          {formatCOP(item.amount)}
                         </Text>
-                      ) : null}
+                      </View>
                     </View>
+                  );
+                })}
 
-                    {/* Columna Monto */}
-                    <View style={[styles.colAmount, isSmall && styles.colAmountSmall]}>
-                      <Text
-                        style={[
-                          styles.rowAmountText,
-                          isCredit
-                            ? styles.rowAmountCredit
-                            : styles.rowAmountPayment,
-                          isCancelled && styles.textCancelled,
-                        ]}>
-                        {isCredit ? '+' : '−'}
-                        {formatCOP(item.amount)}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })
+                {/* Renglones vacíos decorativos para completar la estética */}
+                {Array.from({
+                  length: Math.max(0, 3 - filteredStoreMovements.length),
+                }).map((_, i) => (
+                  <View key={`blank-m-${i}`} style={styles.blankLine} />
+                ))}
+              </>
             )}
 
             {/* Resumen inferior de la libreta */}
@@ -899,16 +1121,17 @@ export function CustomerHomeScreen() {
                 </View>
               </View>
             )}
-          </View>
+          </NotebookPaper>
 
           {/* Botón inferior para volver */}
           <Button
             title="Volver a ver todas mis tiendas"
             variant="secondary"
-            onPress={() => setSelectedStoreId(null)}
+            onPress={() => handleSelectStore(null)}
             style={styles.returnBtn}
           />
         </ScrollView>
+      )}
 
         {/* Modal para seleccionar el mes */}
         <Modal
@@ -1004,9 +1227,8 @@ export function CustomerHomeScreen() {
                           </View>
                           <Text style={styles.modalMonthCount}>
                             {isSelected
-                              ? `${storeMovements.length} movimiento${
-                                  storeMovements.length === 1 ? '' : 's'
-                                } en este mes`
+                              ? `${storeMovements.length} movimiento${storeMovements.length === 1 ? '' : 's'
+                              } en este mes`
                               : 'Consultar este mes'}
                           </Text>
                         </View>
@@ -1037,7 +1259,7 @@ export function CustomerHomeScreen() {
                       style={[
                         styles.modalMonthItemIcon,
                         selectedMonth === 'all' &&
-                          styles.modalMonthItemIconSelected,
+                        styles.modalMonthItemIconSelected,
                       ]}>
                       <Ionicons
                         name="layers-outline"
@@ -1054,7 +1276,7 @@ export function CustomerHomeScreen() {
                         style={[
                           styles.modalMonthName,
                           selectedMonth === 'all' &&
-                            styles.modalMonthNameSelected,
+                          styles.modalMonthNameSelected,
                         ]}>
                         Todos los meses
                       </Text>
@@ -1082,92 +1304,99 @@ export function CustomerHomeScreen() {
             </Pressable>
           </Pressable>
         </Modal>
-      </View>
-    );
-  }
 
-  // =========================================================================
-  // VISTA 1: LISTADO DE TIENDAS VINCULADAS ("Mis Tiendas")
-  // =========================================================================
-  const allClear = totalBalance === 0 && stores.length > 0;
-
-  return (
-    <View style={styles.wrap}>
-      <DynamicBrandCurves position="top-right" />
-      {/* Cabecera amigable con saludo y botón de salir */}
-      <View
-        style={[
-          styles.header,
-          isTablet && { maxWidth: 720, width: '100%', alignSelf: 'center' },
-        ]}>
-        <View style={styles.flexOne}>
-          <View style={styles.headerTitleRow}>
-            <Text style={styles.headerGreeting}>¡Hola, {customerName}!</Text>
-            <View style={styles.customerRoleTag}>
-              <Text style={styles.customerRoleTagText}>Cliente</Text>
-            </View>
-          </View>
-          <Text style={styles.headerSubtitle}>
-            Tus cuentas en tiendas de barrio
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.logoutBtn}
-          onPress={handleLogout}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Ionicons
-            name="log-out-outline"
-            size={20}
-            color={Colors.destructive}
-          />
-          <Text style={styles.logoutBtnText}>Salir</Text>
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        contentContainerStyle={[styles.content, tabletContainerStyle(720)]}
-        data={stores}
-        keyExtractor={(item: any) => item.store_id}
-        refreshing={isLoading}
-        onRefresh={refetch}
-        showsVerticalScrollIndicator={false}
+      {/* Vista 1: Listado de tiendas vinculadas ("Mis Tiendas") */}
+      {!selectedStore && (
+        <FlatList
+          ref={homeFlatListRef}
+          contentContainerStyle={[styles.content, tabletContainerStyle(720)]}
+          data={stores}
+          keyExtractor={(item: any) => item.store_id}
+          refreshing={isFetching}
+          onRefresh={handleRefreshAll}
+          showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <>
-            {/* Tarjeta del total */}
-            <Card
-              style={[styles.heroCard, allClear ? styles.heroCardClear : null]}>
+            {/* Tarjeta del total protagonista con curvas de marca */}
+            <View
+              style={[
+                styles.heroCard,
+                allClear ? styles.heroCardClear : styles.heroCardDebt,
+              ]}>
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.heroBgCurve1,
+                  allClear && styles.heroBgCurveClear,
+                ]}
+              />
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.heroBgCurve2,
+                  allClear && styles.heroBgCurveClear,
+                ]}
+              />
+
               <View style={styles.heroTop}>
-                <Ionicons
-                  name={allClear ? 'checkmark-circle' : 'wallet'}
-                  size={26}
-                  color={allClear ? Colors.success : Colors.destructive}
-                />
+                <View
+                  style={[
+                    styles.heroIconBox,
+                    allClear ? styles.heroIconBoxClear : styles.heroIconBoxDebt,
+                  ]}>
+                  <Ionicons
+                    name={allClear ? 'checkmark-circle' : 'wallet'}
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                </View>
                 <Text
                   style={[
                     styles.heroLabel,
-                    allClear ? styles.heroLabelClear : null,
+                    allClear ? styles.heroLabelClear : styles.heroLabelDebt,
                   ]}>
                   {allClear
                     ? '¡ESTÁS AL DÍA EN TUS PAGOS!'
-                    : 'TOTAL QUE DEBES EN TODAS TUS TIENDAS:'}
+                    : 'TOTAL QUE DEBES EN TODAS TUS TIENDAS'}
                 </Text>
               </View>
 
-              <Text
+              <AnimatedMoney
+                value={totalBalance}
+                formatter={formatCOP}
                 style={[
                   styles.heroAmount,
-                  allClear ? styles.heroAmountClear : null,
-                ]}>
-                {formatCOP(totalBalance)}
-              </Text>
+                  allClear ? styles.heroAmountClear : styles.heroAmountDebt,
+                  isSmall && styles.heroAmountSmall,
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.78}
+              />
 
-              <Text style={styles.heroHelpText}>
-                {allClear
-                  ? 'No tienes ninguna deuda pendiente. ¡Felicitaciones!'
-                  : `Tienes cuenta en ${stores.length} tienda${stores.length !== 1 ? 's' : ''
-                  }. Toca cualquiera de tus tiendas abajo para ver tu libreta detallada.`}
-              </Text>
-            </Card>
+              <View
+                style={[
+                  styles.heroFooterCapsule,
+                  allClear ? styles.heroFooterCapsuleClear : styles.heroFooterCapsuleDebt,
+                ]}>
+                <Ionicons
+                  name={allClear ? 'sparkles' : 'storefront-outline'}
+                  size={15}
+                  color="#FFFFFF"
+                />
+                <Text
+                  style={[
+                    styles.heroHelpText,
+                    allClear ? styles.heroHelpTextClear : styles.heroHelpTextDebt,
+                  ]}>
+                  {allClear
+                    ? 'No tienes ninguna deuda pendiente. ¡Felicitaciones!'
+                    : `Tienes cuenta en ${stores.length} tienda${
+                        stores.length !== 1 ? 's' : ''
+                      }. Toca abajo para ver tu libreta.`}
+                </Text>
+              </View>
+            </View>
 
             {/* Título de la sección de tiendas */}
             <View style={styles.sectionHeader}>
@@ -1206,8 +1435,8 @@ export function CustomerHomeScreen() {
 
           return (
             <TouchableOpacity
-              activeOpacity={0.82}
-              onPress={() => setSelectedStoreId(item.store_id)}
+              activeOpacity={0.85}
+              onPress={() => handleSelectStore(item.store_id)}
               style={styles.storeCardWrapper}>
               <Card style={styles.storeCard}>
                 <View style={styles.storeCardRow}>
@@ -1215,24 +1444,26 @@ export function CustomerHomeScreen() {
                   <View
                     style={[
                       styles.storeIconWrap,
-                      paid ? styles.storeIconWrapPaid : null,
+                      paid ? styles.storeIconWrapPaid : styles.storeIconWrapDebt,
                     ]}>
                     <Ionicons
                       name="storefront"
                       size={24}
-                      color={paid ? Colors.success : Colors.primary}
+                      color={paid ? Colors.success : Colors.destructive}
                     />
                   </View>
 
                   {/* Información de la tienda */}
                   <View style={styles.flexOne}>
-                    <Text style={styles.storeCardName}>{storeName}</Text>
+                    <Text style={styles.storeCardName} numberOfLines={2}>
+                      {storeName}
+                    </Text>
                     {store?.phone ? (
                       <View style={styles.storeCardPhoneRow}>
                         <Ionicons
                           name="call-outline"
                           size={12}
-                          color={Colors.primary}
+                          color="#16A34A"
                         />
                         <Text style={styles.storeCardPhoneText}>
                           {store.phone}
@@ -1240,9 +1471,16 @@ export function CustomerHomeScreen() {
                       </View>
                     ) : null}
                     {store?.address ? (
-                      <Text style={styles.storeCardMeta} numberOfLines={1}>
-                        {store.address}
-                      </Text>
+                      <View style={styles.storeCardAddressRow}>
+                        <Ionicons
+                          name="location-outline"
+                          size={12}
+                          color={Colors.destructive}
+                        />
+                        <Text style={styles.storeCardMeta} numberOfLines={2}>
+                          {store.address}
+                        </Text>
+                      </View>
                     ) : null}
                   </View>
 
@@ -1251,14 +1489,14 @@ export function CustomerHomeScreen() {
                     <Text
                       style={[
                         styles.storeCardBalanceLabel,
-                        paid ? styles.balanceLabelPaid : null,
+                        paid ? styles.balanceLabelPaid : styles.balanceLabelDebt,
                       ]}>
                       {paid ? 'Al día' : 'Debes'}
                     </Text>
                     <Text
                       style={[
                         styles.storeCardBalance,
-                        paid ? styles.storeCardBalancePaid : null,
+                        paid ? styles.storeCardBalancePaid : styles.storeCardBalanceDebt,
                       ]}>
                       {formatCOP(balance)}
                     </Text>
@@ -1268,11 +1506,11 @@ export function CustomerHomeScreen() {
                 {/* Botón visual para tocar y ver libreta */}
                 <View style={styles.storeCardFooterPill}>
                   <Text style={styles.storeCardFooterText}>
-                    Toca aquí para ver tus compras y abonos
+                    Consultar libreta de movimientos
                   </Text>
                   <Ionicons
                     name="chevron-forward"
-                    size={16}
+                    size={15}
                     color={Colors.primary}
                   />
                 </View>
@@ -1291,6 +1529,130 @@ export function CustomerHomeScreen() {
           </View>
         }
       />
+      )}
+
+      {/* Modal para editar datos personales del cliente */}
+      {data?.customer && (
+        <EditCustomerSelfModal
+          visible={isEditProfileOpen}
+          onClose={() => setIsEditProfileOpen(false)}
+          initialName={data.customer.name || ''}
+          initialPhone={data.customer.phone || ''}
+          documentType={data.customer.document_type}
+          documentNumber={data.customer.document_number}
+          onSaved={() => {
+            refetch();
+          }}
+        />
+      )}
+
+      {/* Modal Detalle Completo de Movimiento */}
+      <Modal
+        visible={Boolean(selectedDetailMovement)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedDetailMovement(null)}>
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setSelectedDetailMovement(null)}>
+          <Pressable
+            style={styles.detailModalCard}
+            onPress={e => e.stopPropagation()}>
+            <View style={styles.detailModalHeader}>
+              <Text style={styles.detailModalTitle}>Detalle del movimiento</Text>
+              <TouchableOpacity
+                onPress={() => setSelectedDetailMovement(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.detailModalCloseBtn}>
+                <Ionicons name="close" size={20} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {selectedDetailMovement && (
+              <View style={styles.detailModalContent}>
+                <View style={styles.detailModalBadgeRow}>
+                  <View
+                    style={[
+                      styles.kindBadge,
+                      selectedDetailMovement.kind === 'credit'
+                        ? styles.kindBadgeCredit
+                        : styles.kindBadgePayment,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.kindBadgeText,
+                        selectedDetailMovement.kind === 'credit'
+                          ? styles.kindBadgeTextCredit
+                          : styles.kindBadgeTextPayment,
+                      ]}>
+                      {selectedDetailMovement.kind === 'credit'
+                        ? 'Compra fiada (+)'
+                        : 'Abono realizado (-)'}
+                    </Text>
+                  </View>
+                  <Text style={styles.detailModalDateText}>
+                    {formatDateCompact(selectedDetailMovement.date)}
+                  </Text>
+                </View>
+
+                <Text
+                  style={[
+                    styles.detailModalAmount,
+                    selectedDetailMovement.kind === 'credit'
+                      ? styles.rowAmountCredit
+                      : styles.rowAmountPayment,
+                  ]}>
+                  {selectedDetailMovement.kind === 'credit' ? '+' : '−'}
+                  {formatCOP(selectedDetailMovement.amount)}
+                </Text>
+
+                <View style={styles.detailConceptBox}>
+                  <Text style={styles.detailConceptLabel}>Concepto registrado:</Text>
+                  <Text style={styles.detailConceptValue} selectable>
+                    {selectedDetailMovement.title}
+                  </Text>
+                </View>
+
+                {selectedDetailMovement.dueDate && (
+                  <View
+                    style={[
+                      styles.detailDueBox,
+                      isOverdueBogota(selectedDetailMovement.dueDate) &&
+                        styles.detailDueBoxOverdue,
+                    ]}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={14}
+                      color={
+                        isOverdueBogota(selectedDetailMovement.dueDate)
+                          ? Colors.destructive
+                          : Colors.textSecondary
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.detailDueText,
+                        isOverdueBogota(selectedDetailMovement.dueDate) &&
+                          styles.detailDueTextOverdue,
+                      ]}>
+                      {isOverdueBogota(selectedDetailMovement.dueDate)
+                        ? `Vencido el ${formatDateCompact(selectedDetailMovement.dueDate)}`
+                        : `Fecha límite de pago: ${formatDateCompact(selectedDetailMovement.dueDate)}`}
+                    </Text>
+                  </View>
+                )}
+
+                <Button
+                  title="Entendido"
+                  variant="secondary"
+                  onPress={() => setSelectedDetailMovement(null)}
+                  style={{ width: '100%', marginTop: 4 }}
+                />
+              </View>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1317,22 +1679,55 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
-  // Cabecera superior
+  // Cabecera superior con ondulado sutil
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingTop: 24,
-    paddingBottom: 12,
-    backgroundColor: Colors.card,
+    paddingBottom: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: '#F1F5F9',
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 10,
+  },
+  headerCompact: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  headerWavesContainer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  headerSingleWave: {
+    position: 'absolute',
+    top: -35,
+    left: -25,
+    width: 220,
+    height: 145,
+    borderBottomRightRadius: 110,
+    backgroundColor: '#FFF5EB',
+    opacity: 0.85,
+    transform: [{ rotate: '6deg' }],
   },
   headerGreeting: {
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: '900',
     color: Colors.text,
+    letterSpacing: -0.3,
+  },
+  headerGreetingSmall: {
+    fontSize: 18,
   },
   headerTitleRow: {
     flexDirection: 'row',
@@ -1361,13 +1756,38 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 2,
   },
+  editProfileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignSelf: 'flex-start',
+    shadowColor: '#142033',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  editProfileBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: Colors.text,
+  },
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#FEE2E2',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
     borderRadius: Radius.full,
   },
   logoutBtnText: {
@@ -1379,58 +1799,131 @@ const styles = StyleSheet.create({
   // Contenido de la lista principal
   content: {
     padding: 18,
-    gap: 14,
+    gap: 16,
     paddingBottom: 36,
   },
 
-  // Tarjeta Hero del Total
+  // ── Tarjeta Hero — total que debes ──
   heroCard: {
-    backgroundColor: '#FFF7ED',
-    borderWidth: 1.5,
-    borderColor: '#FED7AA',
-    borderRadius: Radius.xl,
-    padding: 20,
-    gap: 6,
+    borderRadius: 22,
+    padding: 22,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  heroCardDebt: {
+    backgroundColor: Colors.primary,
   },
   heroCardClear: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#BBF7D0',
+    backgroundColor: '#059669',
+    shadowColor: '#059669',
+    shadowOpacity: 0.22,
+  },
+  heroBgCurve1: {
+    position: 'absolute',
+    top: -35,
+    right: -25,
+    width: 190,
+    height: 150,
+    borderBottomLeftRadius: 105,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    transform: [{ rotate: '-8deg' }],
+  },
+  heroBgCurve2: {
+    position: 'absolute',
+    bottom: -30,
+    left: -20,
+    width: 135,
+    height: 115,
+    borderTopRightRadius: 75,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  heroBgCurveClear: {
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
   },
   heroTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    zIndex: 1,
+  },
+  heroIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroIconBoxDebt: {
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+  },
+  heroIconBoxClear: {
+    backgroundColor: 'rgba(255, 255, 255, 0.24)',
   },
   heroLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.destructive,
     letterSpacing: 0.8,
   },
+  heroLabelDebt: {
+    color: 'rgba(255, 255, 255, 0.95)',
+  },
   heroLabelClear: {
-    color: '#15803D',
+    color: 'rgba(255, 255, 255, 0.95)',
   },
   heroAmount: {
     fontSize: 34,
     fontWeight: '900',
-    color: Colors.destructive,
     letterSpacing: -0.5,
+    marginVertical: 4,
+    zIndex: 1,
+  },
+  heroAmountSmall: {
+    fontSize: 28,
+  },
+  heroAmountDebt: {
+    color: '#FFFFFF',
   },
   heroAmountClear: {
-    color: '#15803D',
+    color: '#FFFFFF',
+  },
+  heroFooterCapsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    marginTop: 4,
+    zIndex: 1,
+  },
+  heroFooterCapsuleDebt: {
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+  },
+  heroFooterCapsuleClear: {
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
   },
   heroHelpText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    lineHeight: 18,
-    fontWeight: '500',
-    marginTop: 2,
+    fontSize: 12.5,
+    lineHeight: 17,
+    fontWeight: '600',
+    flex: 1,
+  },
+  heroHelpTextDebt: {
+    color: '#FFFFFF',
+  },
+  heroHelpTextClear: {
+    color: '#FFFFFF',
   },
 
   // Título de sección
   sectionHeader: {
-    marginTop: 4,
-    gap: 2,
+    marginTop: 6,
+    gap: 3,
   },
   sectionMainTitle: {
     fontSize: 18,
@@ -1445,31 +1938,36 @@ const styles = StyleSheet.create({
 
   // Tarjeta de cada tienda en la lista
   storeCardWrapper: {
-    borderRadius: Radius.lg,
+    borderRadius: 20,
   },
   storeCard: {
     padding: 16,
     gap: 12,
-    borderWidth: 1.5,
+    borderRadius: 20,
+    borderWidth: 1,
     borderColor: Colors.border,
-    shadowColor: '#1C1008',
-    shadowOffset: { width: 0, height: 2 },
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#142033',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowRadius: 10,
+    elevation: 3,
   },
   storeCardRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 12,
   },
   storeIconWrap: {
     width: 48,
     height: 48,
-    borderRadius: 16,
-    backgroundColor: Colors.primaryLight,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  storeIconWrapDebt: {
+    backgroundColor: '#FEE2E2',
   },
   storeIconWrapPaid: {
     backgroundColor: '#DCFCE7',
@@ -1479,11 +1977,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.text,
   },
-  storeCardMeta: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
   storeCardPhoneRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1491,30 +1984,44 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   storeCardPhoneText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '600',
     color: Colors.textSecondary,
   },
-  storeCardLimit: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.textMuted,
+  storeCardAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     marginTop: 2,
+  },
+  storeCardMeta: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+    flexShrink: 1,
   },
   storeCardBalanceWrap: {
     alignItems: 'flex-end',
+    minWidth: 80,
   },
   storeCardBalanceLabel: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10.5,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  balanceLabelDebt: {
     color: Colors.destructive,
   },
   balanceLabelPaid: {
     color: '#15803D',
   },
   storeCardBalance: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 16.5,
+    fontWeight: '900',
+    marginTop: 1,
+  },
+  storeCardBalanceDebt: {
     color: Colors.destructive,
   },
   storeCardBalancePaid: {
@@ -1525,14 +2032,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#FFF7ED',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: '#FFEDD5',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 12,
   },
   storeCardFooterText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
     color: Colors.primary,
   },
@@ -1543,6 +2050,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 32,
     gap: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   emptyCardTitle: {
     fontSize: 16,
@@ -1556,7 +2066,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   listFooter: {
-    marginTop: 8,
+    marginTop: 10,
     alignItems: 'center',
   },
   footerLogoutBtn: {
@@ -1567,15 +2077,23 @@ const styles = StyleSheet.create({
   // Estilos de la Vista 2 (Detalle de la Tienda / Libreta)
   // =========================================================================
   topNav: {
-    backgroundColor: Colors.card,
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingBottom: 14,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: '#F1F5F9',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    overflow: 'hidden',
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 10,
   },
   sessionBadge: {
     flexDirection: 'row',
@@ -1587,8 +2105,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 20,
     maxWidth: 160,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
+    shadowColor: '#142033',
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 2,
@@ -1634,7 +2152,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFEDD5',
   },
   backBtnText: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '800',
     color: Colors.primary,
   },
@@ -1646,7 +2164,15 @@ const styles = StyleSheet.create({
   storeDetailCard: {
     padding: 18,
     gap: 14,
-    borderRadius: Radius.xl,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#142033',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
   storeDetailHeader: {
     flexDirection: 'row',
@@ -1683,8 +2209,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: '#16A34A',
-    paddingVertical: 10,
-    borderRadius: Radius.md,
+    paddingVertical: 11,
+    borderRadius: 14,
   },
   callStoreBtnText: {
     fontSize: 14,
@@ -1692,12 +2218,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   storeBalanceBox: {
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1.5,
-    borderColor: '#FECACA',
-    borderRadius: Radius.lg,
-    padding: 16,
+    borderRadius: 18,
+    padding: 18,
     alignItems: 'center',
+    borderWidth: 1.5,
+  },
+  storeBalanceBoxDebt: {
+    backgroundColor: '#FFF5F5',
+    borderColor: '#FECACA',
   },
   storeBalanceBoxPaid: {
     backgroundColor: '#F0FDF4',
@@ -1706,8 +2234,10 @@ const styles = StyleSheet.create({
   storeBalanceLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.destructive,
     letterSpacing: 0.8,
+  },
+  storeBalanceLabelDebt: {
+    color: Colors.destructive,
   },
   storeBalanceLabelPaid: {
     color: '#15803D',
@@ -1715,22 +2245,69 @@ const styles = StyleSheet.create({
   storeBalanceAmount: {
     fontSize: 32,
     fontWeight: '900',
-    color: Colors.destructive,
     marginVertical: 4,
+  },
+  storeBalanceAmountSmall: {
+    fontSize: 26,
+  },
+  storeBalanceAmountDebt: {
+    color: Colors.destructive,
   },
   storeBalanceAmountPaid: {
     color: '#15803D',
   },
   storeBalanceHelp: {
-    fontSize: 12,
-    color: Colors.textSecondary,
+    fontSize: 12.5,
     textAlign: 'center',
     fontWeight: '500',
+    lineHeight: 18,
+  },
+  storeBalanceHelpDebt: {
+    color: '#991B1B',
+  },
+  storeBalanceHelpPaid: {
+    color: '#166534',
+  },
+  notebookTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  notebookIconPill: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomBackBtnWrap: {
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 20,
+  },
+  bottomBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: Radius.full,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+  },
+  bottomBackBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
   },
 
   // Filtros de la libreta
   filterBar: {
-    marginBottom: 2,
+    marginBottom: 10,
+    width: '100%',
+    minHeight: 40,
   },
 
   // Tabla estilo Libreta
@@ -1741,15 +2318,26 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     overflow: 'hidden',
   },
+  tableHeaderContainer: {
+    width: '100%',
+    alignSelf: 'stretch',
+    overflow: 'hidden',
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 18,
+  },
   tableHeaderRow: {
+    width: '100%',
+    alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF7ED',
+    backgroundColor: '#FFF8EE',
     borderBottomWidth: 1.5,
-    borderBottomColor: Colors.border,
+    borderBottomColor: '#CFE0F1',
     paddingVertical: 8,
     paddingHorizontal: 12,
     minHeight: 46,
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 18,
   },
   tableColHeader: {
     fontSize: 11,
@@ -1758,27 +2346,34 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   colDate: {
-    width: 90,
+    minWidth: 72,
+    maxWidth: 88,
   },
   colDateSmall: {
-    width: 72,
+    minWidth: 70,
+    maxWidth: 84,
   },
   colConcept: {
     flex: 1,
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
+    minWidth: 0,
   },
   colConceptHeader: {
-    justifyContent: 'center',
-    position: 'relative',
-    height: 32,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 4,
+    minWidth: 0,
   },
   colAmount: {
-    width: 90,
+    minWidth: 80,
     alignItems: 'flex-end',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   colAmountSmall: {
-    width: 82,
+    minWidth: 76,
   },
 
   // Filtro de mes en cabecera
@@ -1786,18 +2381,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FED7AA',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
     borderRadius: Radius.sm,
-    gap: 3,
+    gap: 2,
     alignSelf: 'flex-start',
     maxWidth: '100%',
   },
   headerMonthBtnText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '800',
     color: '#9A3412',
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
   },
 
   // Filtro "Qué fue" y buscador animado
@@ -1807,7 +2402,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   headerSearchIconBtn: {
-    padding: 4,
+    padding: 3,
     borderRadius: Radius.sm,
     backgroundColor: '#FED7AA',
     alignItems: 'center',
@@ -1841,20 +2436,125 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
 
+  // Fila dedicada de buscador
+  searchRowDedicated: {
+    width: '100%',
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    backgroundColor: '#FFF8EE',
+    borderBottomColor: '#CFE0F1',
+  },
+  searchBoxDedicated: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    borderRadius: Radius.sm,
+    paddingHorizontal: 8,
+    height: 32,
+    gap: 6,
+    overflow: 'hidden',
+  },
+  searchInputDedicated: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.text,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+  },
+  searchCloseBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  searchCloseBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+
   // Filas
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 11,
     paddingHorizontal: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
+    borderBottomWidth: 1,
+    borderBottomColor: '#CFE0F1',
+    backgroundColor: 'transparent',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  cornerRibbonContainer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 48,
+    height: 48,
+    overflow: 'hidden',
+    zIndex: 10,
+  },
+  cornerRibbon: {
+    position: 'absolute',
+    top: 9,
+    right: -19,
+    width: 70,
+    height: 14,
+    transform: [{ rotate: '45deg' }],
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.22,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  cornerRibbonPaid: {
+    backgroundColor: '#16A34A',
+  },
+  cornerRibbonAbonado: {
+    backgroundColor: '#D97706',
+  },
+  cornerRibbonText: {
+    color: '#FFFFFF',
+    fontSize: 7.5,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    textAlign: 'center',
+  },
+  badgeStatusPaid: {
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  badgeStatusTextPaid: {
+    color: '#16A34A',
+    fontWeight: '800',
+  },
+  badgeStatusAbonado: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  badgeStatusTextAbonado: {
+    color: '#D97706',
+    fontWeight: '800',
+  },
+  blankLine: {
+    height: 38,
+    borderBottomWidth: 1,
+    borderBottomColor: '#CFE0F1',
   },
   tableRowAlt: {
-    backgroundColor: Colors.cardAlt,
+    backgroundColor: 'transparent',
   },
   tableRowLast: {
-    borderBottomWidth: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#CFE0F1',
   },
   rowDateText: {
     fontSize: 12,
@@ -1891,11 +2591,20 @@ const styles = StyleSheet.create({
   kindBadgeTextPayment: {
     color: '#15803D',
   },
+  dueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+  },
   rowDueDate: {
     fontSize: 10,
-    color: Colors.destructive,
+    color: Colors.textSecondary,
     fontWeight: '600',
-    marginTop: 2,
+  },
+  rowDueDateOverdue: {
+    color: Colors.destructive,
+    fontWeight: '700',
   },
   rowAmountText: {
     fontSize: 14,
@@ -1908,7 +2617,7 @@ const styles = StyleSheet.create({
     color: '#15803D',
   },
   tableRowCancelled: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F7F4EB',
     opacity: 0.72,
   },
   textCancelled: {
@@ -2099,9 +2808,9 @@ const styles = StyleSheet.create({
 
   // Resumen inferior de la tabla
   tableSummary: {
-    backgroundColor: Colors.cardAlt,
-    borderTopWidth: 1.5,
-    borderTopColor: Colors.border,
+    backgroundColor: '#FFF8EE',
+    borderTopWidth: 1,
+    borderTopColor: '#CFE0F1',
     padding: 14,
     gap: 6,
   },
@@ -2109,11 +2818,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   summaryLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: Colors.textSecondary,
+    flexShrink: 1,
   },
   summaryCreditValue: {
     fontSize: 13,
@@ -2127,13 +2839,14 @@ const styles = StyleSheet.create({
   },
   summaryDivider: {
     height: 1,
-    backgroundColor: Colors.border,
+    backgroundColor: '#CFE0F1',
     marginVertical: 4,
   },
   summaryNetLabel: {
     fontSize: 13,
     fontWeight: '800',
     color: Colors.text,
+    flexShrink: 1,
   },
   summaryNetValue: {
     fontSize: 16,
@@ -2147,5 +2860,97 @@ const styles = StyleSheet.create({
   },
   returnBtn: {
     marginTop: 8,
+  },
+
+  // Modal Detalle Movimiento
+  detailModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: Radius.xl,
+    padding: 18,
+    width: '100%',
+    maxWidth: 380,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  detailModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  detailModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  detailModalCloseBtn: {
+    padding: 4,
+  },
+  detailModalContent: {
+    gap: 12,
+  },
+  detailModalBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  detailModalDateText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  detailModalAmount: {
+    fontSize: 26,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginVertical: 4,
+  },
+  detailConceptBox: {
+    backgroundColor: '#FFFDF5',
+    borderWidth: 1,
+    borderColor: '#CFE0F1',
+    borderRadius: Radius.md,
+    padding: 12,
+    gap: 4,
+  },
+  detailConceptLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  detailConceptValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
+    lineHeight: 20,
+  },
+  detailDueBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: Radius.sm,
+  },
+  detailDueBoxOverdue: {
+    backgroundColor: '#FEE2E2',
+  },
+  detailDueText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  detailDueTextOverdue: {
+    color: Colors.destructive,
+    fontWeight: '700',
   },
 });

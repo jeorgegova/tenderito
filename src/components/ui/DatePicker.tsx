@@ -9,6 +9,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {Colors, Radius} from '../../theme';
 import {getBogotaTodayYMD} from '../../utils/format';
@@ -138,6 +139,7 @@ export function DatePicker({
   helperText,
   disabled = false,
 }: DatePickerProps) {
+  const insets = useSafeAreaInsets();
   const [modalVisible, setModalVisible] = useState(false);
 
   // Inicializar el mes visible del calendario basado en el valor actual o hoy
@@ -208,21 +210,46 @@ export function DatePicker({
     const in8 = new Date(today);
     in8.setDate(today.getDate() + 8);
 
-    // +15 días (quincena)
-    const in15 = new Date(today);
-    in15.setDate(today.getDate() + 15);
+    // Próxima Quincena (el siguiente 15 o 30 real)
+    const currentDay = today.getDate();
+    let nextQuincenaDate: Date;
+    if (currentDay < 15) {
+      nextQuincenaDate = new Date(today.getFullYear(), today.getMonth(), 15);
+    } else if (currentDay < 30) {
+      const lastDayOfMonth = new Date(
+        today.getFullYear(),
+        today.getMonth() + 1,
+        0,
+      ).getDate();
+      nextQuincenaDate = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        Math.min(30, lastDayOfMonth),
+      );
+    } else {
+      // Si hoy es 30 o 31, la próxima quincena es el 15 del siguiente mes
+      nextQuincenaDate = new Date(today.getFullYear(), today.getMonth() + 1, 15);
+    }
 
-    // Fin de mes
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    // Si hoy ya es fin de mes o faltan menos de 3 días, fin del siguiente mes
+    const quincenaYmd = formatYMD(
+      nextQuincenaDate.getFullYear(),
+      nextQuincenaDate.getMonth(),
+      nextQuincenaDate.getDate(),
+    );
+
+    // Fin de mes (último día del mes)
+    const endOfThisMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const endOfThisMonthYmd = formatYMD(
+      endOfThisMonth.getFullYear(),
+      endOfThisMonth.getMonth(),
+      endOfThisMonth.getDate(),
+    );
+
+    // Si la próxima quincena ya coincide con el fin de este mes, o faltan <= 2 días, apuntar al fin del siguiente mes
     const targetEndOfMonth =
-      endOfMonth.getDate() - today.getDate() <= 3
+      quincenaYmd === endOfThisMonthYmd || endOfThisMonth.getDate() - currentDay <= 2
         ? new Date(today.getFullYear(), today.getMonth() + 2, 0)
-        : endOfMonth;
-
-    // +30 días (un mes)
-    const in30 = new Date(today);
-    in30.setDate(today.getDate() + 30);
+        : endOfThisMonth;
 
     return [
       {
@@ -230,8 +257,8 @@ export function DatePicker({
         ymd: formatYMD(in8.getFullYear(), in8.getMonth(), in8.getDate()),
       },
       {
-        label: '+15 días (Quincena)',
-        ymd: formatYMD(in15.getFullYear(), in15.getMonth(), in15.getDate()),
+        label: 'Próxima Quincena',
+        ymd: quincenaYmd,
       },
       {
         label: 'Fin de mes',
@@ -240,10 +267,6 @@ export function DatePicker({
           targetEndOfMonth.getMonth(),
           targetEndOfMonth.getDate(),
         ),
-      },
-      {
-        label: '+30 días',
-        ymd: formatYMD(in30.getFullYear(), in30.getMonth(), in30.getDate()),
       },
     ];
   }, []);
@@ -390,7 +413,11 @@ export function DatePicker({
         <TouchableWithoutFeedback onPress={handleCloseModal}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
-              <View style={styles.modalSheet}>
+              <View
+                style={[
+                  styles.modalSheet,
+                  {paddingBottom: Math.max(insets.bottom, 14)},
+                ]}>
                 {/* Cabecera del modal */}
                 <View style={styles.modalHeader}>
                   <View style={styles.headerInfo}>
@@ -413,11 +440,19 @@ export function DatePicker({
                   </TouchableOpacity>
                 </View>
 
-                {/* Atajos Rápidos */}
-                <View style={styles.shortcutsWrap}>
+                {/* Contenedor scrolleable para evitar desbordes en pantallas compactas */}
+                <ScrollView
+                  style={styles.modalScroll}
+                  contentContainerStyle={styles.modalScrollContent}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}>
+                  {/* Atajos Rápidos */}
+                  <View style={styles.shortcutsWrap}>
                   <Text style={styles.shortcutsLabel}>PLAZO RÁPIDO</Text>
                   <ScrollView
                     horizontal
+                    nestedScrollEnabled={true}
+                    directionalLockEnabled={true}
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.shortcutsScroll}>
                     {shortcuts.map(sc => {
@@ -555,6 +590,8 @@ export function DatePicker({
                   </View>
                 ) : null}
 
+                </ScrollView>
+
                 {/* Botones de acción */}
                 <View style={styles.modalActions}>
                   {tempSelected ? (
@@ -682,20 +719,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(28, 16, 8, 0.45)',
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   modalSheet: {
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '90%',
     backgroundColor: Colors.card,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 28,
-    maxHeight: '92%',
+    paddingTop: 18,
     shadowColor: '#000',
     shadowOffset: {width: 0, height: -4},
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 8,
+  },
+  modalScroll: {
+    flexShrink: 1,
+  },
+  modalScrollContent: {
+    paddingBottom: 8,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -816,11 +861,11 @@ const styles = StyleSheet.create({
   },
   dayCell: {
     width: '14.28%',
-    height: 42,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.sm,
-    marginVertical: 2,
+    marginVertical: 1,
     position: 'relative',
   },
   dayCellSelected: {
@@ -887,7 +932,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
   },
   actionGhost: {
     paddingHorizontal: 12,

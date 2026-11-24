@@ -1,6 +1,6 @@
 import {QueryClientProvider} from '@tanstack/react-query';
 import React, {useEffect} from 'react';
-import {StatusBar} from 'react-native';
+import {StatusBar, AppState} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {NavigationContainer} from '@react-navigation/native';
 import {
@@ -14,9 +14,11 @@ import {RootNavigator} from './src/navigation/RootNavigator';
 import {useDatabase} from './src/hooks/useDatabase';
 import {useSync} from './src/hooks/useSync';
 import {AlertModal} from './src/components/ui/AlertModal';
+import {Toast} from './src/components/ui/Toast';
 import {supabase} from './src/lib/supabase';
 import {register_fcm_token, syncPendingDeviceToken} from './src/services/deviceService';
 import {AuthProvider} from './src/context/AuthContext';
+import {SwipeNavigationProvider} from './src/context/SwipeNavigationContext';
 import {queryClient} from './src/lib/queryClient';
 
 function useFirebaseNotifications() {
@@ -111,6 +113,20 @@ function useFirebaseNotifications() {
             } catch (notificationError) {
               console.warn('No fue posible mostrar la notificación:', notificationError);
             }
+
+            // Invalidar de inmediato las consultas para actualizar la interfaz en tiempo real
+            try {
+              await queryClient.invalidateQueries({ queryKey: ['customer-portal'] });
+              await queryClient.invalidateQueries({ queryKey: ['customers'] });
+              await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+              await queryClient.invalidateQueries({ queryKey: ['customer'] });
+              await queryClient.invalidateQueries({ queryKey: ['total-receivable'] });
+              await queryClient.invalidateQueries({ queryKey: ['overdue'] });
+              await queryClient.invalidateQueries({ queryKey: ['stats'] });
+              await queryClient.invalidateQueries({ queryKey: ['profile'] });
+            } catch (invErr) {
+              console.warn('Error invalidando queries tras notificación FCM:', invErr);
+            }
           });
         } catch (onMessageErr) {
           console.warn('Error en onMessage:', onMessageErr);
@@ -119,6 +135,26 @@ function useFirebaseNotifications() {
         console.warn('Excepción general en setupNotificationsSafe:', err);
       }
     };
+
+    // Actualizar consultas al regresar a la app desde segundo plano
+    const appStateSub = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        queryClient.invalidateQueries({ queryKey: ['customer-portal'] });
+        queryClient.invalidateQueries({ queryKey: ['customers'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['overdue'] });
+      }
+    });
+
+    // Actualizar cuando se interactúa o recibe evento en primer plano de notificaciones
+    let unsubscribeNotifee: (() => void) | null = null;
+    try {
+      unsubscribeNotifee = notifee.onForegroundEvent(() => {
+        queryClient.invalidateQueries({ queryKey: ['customer-portal'] });
+        queryClient.invalidateQueries({ queryKey: ['customers'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      });
+    } catch (_e) {}
 
     // Pequeño retardo (600ms) para garantizar que la Activity nativa esté totalmente lista
     const timer = setTimeout(() => {
@@ -145,6 +181,8 @@ function useFirebaseNotifications() {
       unsubscribeMessage?.();
       unsubscribeRefresh?.();
       authSubscription?.unsubscribe();
+      appStateSub.remove();
+      unsubscribeNotifee?.();
     };
   }, []);
 }
@@ -155,12 +193,13 @@ function AppContent() {
   useSync();
 
   return (
-    <>
+    <SwipeNavigationProvider>
       <NavigationContainer>
         <RootNavigator />
       </NavigationContainer>
       <AlertModal />
-    </>
+      <Toast />
+    </SwipeNavigationProvider>
   );
 }
 

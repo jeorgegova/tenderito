@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import {
   Animated,
   Modal,
+  PixelRatio,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -176,14 +177,17 @@ export function AlertModal() {
     iconBg = '#FEF3C7';
   }
 
-  const hasLongButtonText = buttons.some(b => b.text.length > 10);
-  const isTwoButtons = buttons.length === 2 && !isSmall && !hasLongButtonText;
+  const hasLongButtonText = buttons.some(b => b.text.length > 11);
+  const fontScale = PixelRatio.getFontScale ? PixelRatio.getFontScale() : 1;
+  const isTwoButtons =
+    buttons.length === 2 && !isSmall && !hasLongButtonText && fontScale <= 1.15;
 
   return (
     <Modal
       transparent
       visible={visible}
       animationType="none"
+      statusBarTranslucent={true}
       onRequestClose={() =>
         handleButtonPress(buttons.find(b => b.style === 'cancel') ?? buttons[0])
       }>
@@ -251,9 +255,7 @@ export function AlertModal() {
                           isDestructive && styles.destructiveButtonText,
                           isPrimary && styles.primaryButtonText,
                         ]}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.85}>
+                        numberOfLines={2}>
                         {btn.text}
                       </Text>
                     </Pressable>
@@ -275,6 +277,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
+    zIndex: 999999,
+    elevation: 99999,
   },
   card: {
     width: '100%',
@@ -289,7 +293,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18,
     shadowRadius: 18,
-    elevation: 10,
+    elevation: 100000,
+    zIndex: 1000000,
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -370,6 +375,9 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 14,
     fontWeight: '700',
+    textAlign: 'center',
+    flexShrink: 1,
+    lineHeight: 18,
   },
   primaryButtonText: {
     color: '#FFFFFF',

@@ -1,13 +1,15 @@
-import {useQuery} from '@tanstack/react-query';
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import { useQuery } from '@tanstack/react-query';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Easing,
   FlatList,
+  Keyboard,
   Linking,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,31 +18,36 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
-import {SyncBadge} from '../components/ui/Badge';
-import {Button} from '../components/ui/Button';
-import {Card} from '../components/ui/Card';
-import {DynamicBrandCurves} from '../components/ui/DynamicBrandCurves';
-import {FooterMenu} from '../components/ui/FooterMenu';
-import {StoreHistoryLockNotice} from '../components/ui/StoreHistoryLockNotice';
-import {MagnetFilterBar} from '../components/ui/MagnetFilterBar';
-import {showAlert} from '../utils/alert';
-import {fetchCreditsByCustomer, voidMovement} from '../services/credits';
-import {fetchCustomerById} from '../services/customers';
-import {fetchProfile} from '../services/profile';
-import {fetchPaymentsByCustomer} from '../services/payments';
-import {canCreateCreditForCustomer} from '../services/portfolio';
-import {calculateSubscriptionStatus} from '../services/plans';
-import {queryClient} from '../lib/queryClient';
-import {useStore} from '../store/useStore';
-import {Colors, Radius, formatCOP} from '../theme';
-import {useResponsive} from '../hooks/useResponsive';
+import { SyncBadge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { NotebookPaper } from '../components/ui/NotebookPaper';
+import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
+import { FooterMenu } from '../components/ui/FooterMenu';
+import { StoreHistoryLockNotice } from '../components/ui/StoreHistoryLockNotice';
+import { MagnetFilterBar } from '../components/ui/MagnetFilterBar';
+import { EditCustomerAliasLimitModal } from '../components/ui/EditCustomerAliasLimitModal';
+import { showAlert } from '../utils/alert';
+import { fetchCreditsByCustomer, voidMovement } from '../services/credits';
+import { fetchCustomerById } from '../services/customers';
+import { fetchProfile } from '../services/profile';
+import { fetchPaymentsByCustomer } from '../services/payments';
+import { canCreateCreditForCustomer } from '../services/portfolio';
+import { calculateSubscriptionStatus } from '../services/plans';
+import { computeCreditPaymentStatuses } from '../utils/creditStatus';
+import { queryClient } from '../lib/queryClient';
+import { useStore } from '../store/useStore';
+import { Colors, Radius, formatCOP } from '../theme';
+import { useResponsive } from '../hooks/useResponsive';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  formatDateCompact,
   formatDateDisplay,
   getBogotaCurrentMonthKey,
   getBogotaMonthKey,
   isOverdueBogota,
 } from '../utils/format';
-import type {CreditEligibility} from '../types';
+import type { CreditEligibility } from '../types';
 
 const MONTH_NAMES = [
   'Enero',
@@ -87,17 +94,11 @@ const formatMonthLabel = (monthKey: string) => {
 
 const formatMonthHeader = (monthKey: string) => {
   if (monthKey === 'all') {
-    return 'TODOS';
+    return 'Todos';
   }
-  const [yearStr, monthStr] = monthKey.split('-');
+  const [, monthStr] = monthKey.split('-');
   const monthIdx = parseInt(monthStr, 10) - 1;
-  const monthName = MONTH_NAMES[monthIdx] || monthKey;
-  const currentYear = new Date().getFullYear().toString();
-  if (yearStr === currentYear) {
-    return monthName.toUpperCase();
-  }
-  const shortMonth = MONTH_SHORT_NAMES[monthIdx] || monthKey;
-  return `${shortMonth.toUpperCase()} ${yearStr}`;
+  return MONTH_NAMES[monthIdx] || monthKey;
 };
 
 const normalizeSearchText = (text: string) =>
@@ -124,7 +125,7 @@ const generateAvailableMonths = (createdAt?: string | null) => {
           pastLimitMonths = Math.min(diffMonths + 1, 36);
         }
       }
-    } catch (_e) {}
+    } catch (_e) { }
   }
 
   for (let i = 0; i < pastLimitMonths; i++) {
@@ -136,11 +137,11 @@ const generateAvailableMonths = (createdAt?: string | null) => {
   return months;
 };
 
-export function CustomerDetailScreen({route, navigation}: any) {
-  const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
-  const {id} = route.params as {id: string};
+export function CustomerDetailScreen({ route, navigation }: any) {
+  const { isSmall, isTablet, tabletContainerStyle } = useResponsive();
+  const { id } = route.params as { id: string };
   const profileFromStore = useStore(s => s.profile);
-  const {data: profileQuery} = useQuery({
+  const { data: profileQuery } = useQuery({
     queryKey: ['profile'],
     queryFn: fetchProfile,
     staleTime: 60000,
@@ -162,64 +163,39 @@ export function CustomerDetailScreen({route, navigation}: any) {
   const [isMonthModalVisible, setIsMonthModalVisible] = useState(false);
   const [searchConcept, setSearchConcept] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [selectedDetailMovement, setSelectedDetailMovement] = useState<any | null>(null);
+  const [isEditAliasLimitOpen, setIsEditAliasLimitOpen] = useState(false);
+
+  const insets = useSafeAreaInsets();
+  const headerAnim = useRef(new Animated.Value(0)).current;
+  const mainScrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
-    navigation.setOptions({
-      headerRight: () =>
-        profile?.merchant_name ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: '#FFFFFF',
-              borderWidth: 1.5,
-              borderColor: Colors.border,
-              paddingVertical: 4,
-              paddingHorizontal: 10,
-              borderRadius: 20,
-              maxWidth: 150,
-              marginRight: 6,
-            }}>
-            <View
-              style={{
-                width: 20,
-                height: 20,
-                borderRadius: 10,
-                backgroundColor: Colors.primaryLight,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: 5,
-              }}>
-              <Ionicons name="person-outline" size={11} color={Colors.primary} />
-            </View>
-            <View style={{flexShrink: 1, minWidth: 0}}>
-              <Text
-                style={{
-                  fontSize: 7.5,
-                  fontWeight: '800',
-                  color: Colors.primary,
-                  textTransform: 'uppercase',
-                  lineHeight: 9,
-                }}>
-                TENDERO
-              </Text>
-              <Text
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: '800',
-                  color: Colors.text,
-                  lineHeight: 13,
-                }}
-                numberOfLines={1}>
-                {profile.merchant_name}
-              </Text>
-            </View>
-          </View>
-        ) : null,
-    });
-  }, [navigation, profile?.merchant_name]);
+    mainScrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [id]);
 
-  // Animaciones suaves para la apertura y cierre del buscador
+  useEffect(() => {
+    Animated.spring(headerAnim, {
+      toValue: 1,
+      damping: 18,
+      stiffness: 140,
+      useNativeDriver: true,
+    }).start();
+  }, [headerAnim]);
+
+  const handleBack = () => {
+    Animated.timing(headerAnim, {
+      toValue: 0,
+      duration: 180,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      navigation.goBack();
+    });
+  };
+
+  // Medición dinámica del ancho de la cabecera para interpolación fluida en píxeles exactos
+  const [headerWidth, setHeaderWidth] = useState(340);
   const searchInputRef = useRef<TextInput>(null);
   const searchAnim = useRef(new Animated.Value(0)).current;
 
@@ -227,20 +203,21 @@ export function CustomerDetailScreen({route, navigation}: any) {
     setIsSearchOpen(true);
     Animated.timing(searchAnim, {
       toValue: 1,
-      duration: 380,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
+      duration: 650,
+      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+      useNativeDriver: false,
     }).start(() => {
       searchInputRef.current?.focus();
     });
   };
 
   const handleCloseSearch = () => {
+    Keyboard.dismiss();
     Animated.timing(searchAnim, {
       toValue: 0,
-      duration: 320,
-      easing: Easing.inOut(Easing.cubic),
-      useNativeDriver: true,
+      duration: 480,
+      easing: Easing.bezier(0.4, 0, 0.2, 1),
+      useNativeDriver: false,
     }).start(({ finished }) => {
       if (finished) {
         setIsSearchOpen(false);
@@ -249,29 +226,45 @@ export function CustomerDetailScreen({route, navigation}: any) {
     });
   };
 
-  const conceptRowOpacity = searchAnim.interpolate({
-    inputRange: [0, 0.4],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  // Ancho exacto disponible para el buscador: ancho total - padding lateral (20) - gap (8) - botón cerrar (~56)
+  const availableSearchWidth = headerWidth > 84 ? headerWidth - 84 : 240;
 
-  const conceptRowTranslateX = searchAnim.interpolate({
+  const searchBoxWidth = searchAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -10],
+    outputRange: [34, availableSearchWidth],
   });
 
-  const searchBoxOpacity = searchAnim.interpolate({
-    inputRange: [0.1, 1],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
-
-  const searchBoxScaleX = searchAnim.interpolate({
+  const searchRowHeight = searchAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.65, 1],
+    outputRange: [0, 48],
   });
 
-  const searchBoxTranslateX = searchAnim.interpolate({
+  const searchRowOpacity = searchAnim.interpolate({
+    inputRange: [0, 0.25, 1],
+    outputRange: [0, 0.5, 1],
+  });
+
+  const searchRowPaddingY = searchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 6],
+  });
+
+  const searchRowBorderWidth = searchAnim.interpolate({
+    inputRange: [0, 0.05, 1],
+    outputRange: [0, 1.5, 1.5],
+  });
+
+  const searchInputOpacity = searchAnim.interpolate({
+    inputRange: [0, 0.35, 1],
+    outputRange: [0, 0, 1],
+  });
+
+  const searchCloseOpacity = searchAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, 0, 1],
+  });
+
+  const searchCloseTranslateX = searchAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [16, 0],
   });
@@ -293,6 +286,15 @@ export function CustomerDetailScreen({route, navigation}: any) {
     queryFn: () => fetchPaymentsByCustomer(id),
     enabled: !!id,
   });
+
+  // Mapa de estados reales de pago ('paid' | 'partially_paid' | null) para cada compra fiada
+  const creditStatusMap = useMemo(() => {
+    return computeCreditPaymentStatuses(
+      credits.data ?? [],
+      payments.data ?? [],
+      customer.data?.current_balance,
+    );
+  }, [credits.data, payments.data, customer.data?.current_balance]);
 
   // Movimientos combinados y ordenados por fecha más reciente
   const allMovements = useMemo(() => {
@@ -366,7 +368,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
         paymentsSum += m.amount;
       }
     });
-    return {creditsSum, paymentsSum};
+    return { creditsSum, paymentsSum };
   }, [monthMovements]);
 
   // Movimientos según filtro de tipo (todo / compra / abono)
@@ -429,6 +431,43 @@ export function CustomerDetailScreen({route, navigation}: any) {
     Linking.openURL(`tel:${cleanPhone}`).catch(() => {
       showAlert('No se pudo abrir el teléfono', `Número: ${phone}`);
     });
+  };
+
+  const handleShareWhatsApp = () => {
+    const rawPhone = (customer.data?.phone || '').replace(/[^0-9]/g, '');
+    const clientName =
+      customer.data?.alias || customer.data?.name || 'Cliente';
+    const storeName = profile?.store_name || 'La tienda';
+    const balanceStr = formatCOP(currentBalance);
+
+    const message = `Hola ${clientName}, te escribimos de ${storeName}. Tu saldo actual pendiente en nuestra libreta es de ${balanceStr}. ¡Gracias por tu compra!`;
+    const fullPhone = rawPhone
+      ? rawPhone.startsWith('57')
+        ? rawPhone
+        : `57${rawPhone}`
+      : '';
+    const webUrl = fullPhone
+      ? `https://api.whatsapp.com/send?phone=${fullPhone}&text=${encodeURIComponent(message)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+    const appUrl = fullPhone
+      ? `whatsapp://send?phone=${fullPhone}&text=${encodeURIComponent(message)}`
+      : `whatsapp://send?text=${encodeURIComponent(message)}`;
+
+    Linking.canOpenURL(appUrl)
+      .then(supported => {
+        if (supported) {
+          return Linking.openURL(appUrl);
+        }
+        return Linking.openURL(webUrl);
+      })
+      .catch(() => {
+        Linking.openURL(webUrl).catch(() => {
+          showAlert(
+            'No se pudo abrir WhatsApp',
+            'Verifica que tengas instalada la aplicación de WhatsApp o un navegador web.',
+          );
+        });
+      });
   };
 
   const handleVoidMovement = (item: any) => {
@@ -508,215 +547,426 @@ export function CustomerDetailScreen({route, navigation}: any) {
   };
 
   const isOverdue = isOverdueBogota;
+  const clientDisplayName =
+    customer.data?.alias?.trim() || customer.data?.name?.trim() || 'Cliente';
 
   return (
     <View style={styles.wrap}>
       <DynamicBrandCurves position="bottom-left" />
-      <FlatList
-        contentContainerStyle={[styles.content, tabletContainerStyle(720)]}
-        data={filteredMovements}
-        keyExtractor={item => `${item.kind}-${item.id}`}
-        refreshing={
-          customer.isLoading || credits.isLoading || payments.isLoading
-        }
-        onRefresh={() => {
-          customer.refetch();
-          credits.refetch();
-          payments.refetch();
-        }}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <>
-            {/* ── Ficha del Cliente ── */}
-            <Card style={styles.customerCard}>
-              <View style={styles.customerRow}>
-                <View
-                  style={[styles.avatar, isPaid ? styles.avatarPaid : null]}>
-                  <Text
-                    style={[
-                      styles.avatarText,
-                      isPaid ? styles.avatarTextPaid : null,
-                    ]}>
-                    {(customer.data?.alias || customer.data?.name || '?')
-                      .charAt(0)
-                      .toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.flexOne}>
-                  <View style={styles.customerNameRow}>
-                    <Text style={styles.customerName}>
-                      {customer.data?.alias ||
-                        customer.data?.name ||
-                        'Cargando...'}
-                    </Text>
-                    <SyncBadge estadoServidor={customer.data?.estadoServidor} />
-                  </View>
-                  {customer.data?.alias ? (
-                    <Text style={styles.customerRealName}>
-                      Nombre real: {customer.data.name}
-                    </Text>
-                  ) : null}
-                  <Text style={styles.customerMeta}>
-                    {customer.data?.document_type || 'CC'}{' '}
-                    {customer.data?.document_number || 'Sin cédula'}
-                  </Text>
-                </View>
-              </View>
 
-              {/* Botón rápido para llamar al cliente */}
-              {customer.data?.phone ? (
-                <TouchableOpacity
-                  style={styles.callBtn}
-                  onPress={() => handleCallCustomer(customer.data?.phone)}>
-                  <Ionicons name="call" size={15} color="#15803D" />
-                  <Text style={styles.callBtnText}>
-                    Llamar al cliente ({customer.data.phone})
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
+      {/* Header superior de Tendero con bordes redondeados inferiores, animación y goteo de marca */}
+      <Animated.View
+        style={[
+          styles.topNav,
+          {
+            paddingTop: Math.max(insets.top, 14) + 6,
+            transform: [
+              {
+                translateY: headerAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-45, 0],
+                }),
+              },
+              {
+                scaleY: headerAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.85, 1],
+                }),
+              },
+            ],
+            opacity: headerAnim,
+          },
+        ]}>
+        {/* Círculos pequeños decorativos tipo goteo ubicados exclusivamente en los extremos laterales (lejos del nombre/alias) */}
+        <View pointerEvents="none" style={styles.headerDropletsContainer}>
+          {/* Extremo izquierdo (detrás del botón de regreso) */}
+          <View
+            style={[
+              styles.droplet,
+              {
+                top: 6,
+                left: 14,
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#FFE4D0',
+                opacity: 0.9,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.droplet,
+              {
+                top: 24,
+                left: 28,
+                width: 7,
+                height: 7,
+                borderRadius: 3.5,
+                backgroundColor: Colors.primary,
+                opacity: 0.85,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.droplet,
+              {
+                top: 10,
+                left: 42,
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: '#FFE4D0',
+                opacity: 0.75,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.droplet,
+              {
+                top: 28,
+                left: 44,
+                width: 5,
+                height: 5,
+                borderRadius: 2.5,
+                backgroundColor: Colors.primary,
+                opacity: 0.7,
+              },
+            ]}
+          />
 
-              {/* Historial en otras tiendas (si aplica plan de pago) */}
-              {hasProAccess ? (
-                <TouchableOpacity
-                  style={styles.historyBtn}
-                  onPress={() =>
-                    navigation.navigate('CustomerHistory', {
-                      id,
-                      customer: customer.data,
-                    })
-                  }>
-                  <Ionicons
-                    name="storefront-outline"
-                    size={15}
-                    color={Colors.textSecondary}
-                  />
-                  <Text style={styles.historyBtnText}>
-                    Historial en otras tiendas
-                  </Text>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={14}
-                    color={Colors.textMuted}
-                  />
-                </TouchableOpacity>
-              ) : (
-                <StoreHistoryLockNotice style={{ marginTop: 8 }} />
-              )}
+          {/* Extremo derecho (detrás del badge de tendero) */}
+          <View
+            style={[
+              styles.droplet,
+              {
+                top: 6,
+                right: 14,
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#FFE4D0',
+                opacity: 0.9,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.droplet,
+              {
+                top: 24,
+                right: 28,
+                width: 7,
+                height: 7,
+                borderRadius: 3.5,
+                backgroundColor: Colors.primary,
+                opacity: 0.85,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.droplet,
+              {
+                top: 10,
+                right: 42,
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: '#FFE4D0',
+                opacity: 0.75,
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.droplet,
+              {
+                top: 28,
+                right: 44,
+                width: 5,
+                height: 5,
+                borderRadius: 2.5,
+                backgroundColor: Colors.primary,
+                opacity: 0.7,
+              },
+            ]}
+          />
+        </View>
 
-              {/* Caja de Deuda / Saldo en Grande y Claro */}
-              <View
-                style={[
-                  styles.balanceBox,
-                  isPaid ? styles.balanceBoxPaid : null,
-                ]}>
-                <Text
-                  style={[
-                    styles.balanceBoxLabel,
-                    isPaid ? styles.balanceBoxLabelPaid : null,
-                  ]}>
-                  {isPaid
-                    ? '¡ESTE CLIENTE ESTÁ AL DÍA!'
-                    : 'ESTE CLIENTE TE DEBE:'}
-                </Text>
-                <Text
-                  style={[
-                    styles.balanceBoxAmount,
-                    isPaid ? styles.balanceBoxAmountPaid : null,
-                  ]}>
-                  {formatCOP(currentBalance)}
-                </Text>
-                <Text style={styles.balanceBoxHelp}>
-                  {isPaid
-                    ? 'No tiene ninguna deuda pendiente contigo en este momento.'
-                    : 'Es el valor total que tiene pendiente por pagar en tu tienda.'}
-                  {creditLimit > 0
-                    ? ` (Tope máximo de crédito permitido: ${formatCOP(
-                        creditLimit,
-                      )})`
-                    : ''}
-                </Text>
-              </View>
-            </Card>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={handleBack}
+          activeOpacity={0.7}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="arrow-back" size={20} color={Colors.primary} />
+        </TouchableOpacity>
 
-            {/* ── Botones de Acción Principales (Grandes y Cómodos) ── */}
-            <View style={[styles.actionsRow, isSmall && styles.actionsRowSmall]}>
-              <View style={styles.flexOne}>
-                <Button
-                  title="+ Nuevo fiado"
-                  icon="credit"
-                  onPress={async () => {
-                    const check = await canCreateCreditForCustomer(id, profile);
-                    if (!check.allowed) {
-                      showAlert(
-                        'Solo abonos',
-                        check.message ?? 'Tu plan actual no permite este fiado.',
-                      );
-                      return;
-                    }
-                    navigation.navigate('NewCredit', {customerId: id});
-                  }}
-                />
-              </View>
-              <View style={styles.flexOne}>
-                <Button
-                  title="− Abonar plata"
-                  variant="secondary"
-                  icon="incoming"
-                  disabled={isPaid}
-                  onPress={() => {
-                    if (isPaid) {
-                      showAlert(
-                        'Cliente al día',
-                        'Este cliente no tiene saldo pendiente por pagar.',
-                      );
-                      return;
-                    }
-                    navigation.navigate('NewPayment', {customerId: id});
-                  }}
-                />
-              </View>
-            </View>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {clientDisplayName}
+        </Text>
 
-            {creditBlocked ? (
-              <View style={styles.freePortfolioNotice}>
+        <View style={styles.headerRightRow}>
+          {customer.data?.phone ? (
+            <TouchableOpacity
+              onPress={handleShareWhatsApp}
+              style={styles.whatsappBtn}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="logo-whatsapp" size={19} color="#16A34A" />
+            </TouchableOpacity>
+          ) : null}
+
+          {profile?.merchant_name ? (
+            <View style={styles.sessionBadge}>
+              <View style={styles.sessionAvatar}>
                 <Ionicons
-                  name="lock-closed-outline"
-                  size={16}
-                  color={Colors.destructive}
+                  name="person-outline"
+                  size={11}
+                  color={Colors.primary}
                 />
-                <Text style={styles.freePortfolioNoticeText}>
-                  {creditEligibility?.message}
+              </View>
+              <View style={styles.sessionCol}>
+                <Text style={styles.sessionRole}>TENDERO</Text>
+                <Text style={styles.sessionName} numberOfLines={1}>
+                  {profile.merchant_name}
                 </Text>
               </View>
-            ) : null}
+            </View>
+          ) : null}
+        </View>
+      </Animated.View>
 
-            {/* ── Encabezado de la Libreta de Cuentas ── */}
-            <View style={styles.sectionHeading}>
-              <Text style={styles.sectionTitle}>
-                Libreta de fiados y abonos
-              </Text>
-              <Text style={styles.sectionSubtitle}>
-                Aquí ves cada compra fiada y cada abono recibido:
+      <ScrollView
+        ref={mainScrollRef}
+        contentContainerStyle={[styles.content, tabletContainerStyle(720)]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              customer.isLoading || credits.isLoading || payments.isLoading
+            }
+            onRefresh={() => {
+              customer.refetch();
+              credits.refetch();
+              payments.refetch();
+            }}
+            colors={[Colors.primary]}
+            tintColor={Colors.primary}
+          />
+        }>
+        {/* ── Ficha del Cliente ── */}
+        <Card style={styles.customerCard}>
+          <View style={styles.customerRow}>
+            <View
+              style={[styles.avatar, isPaid ? styles.avatarPaid : null]}>
+              <Text
+                style={[
+                  styles.avatarText,
+                  isPaid ? styles.avatarTextPaid : null,
+                ]}>
+                {(customer.data?.alias || customer.data?.name || '?')
+                  .charAt(0)
+                  .toUpperCase()}
               </Text>
             </View>
+            <View style={styles.flexOne}>
+              <View style={styles.customerNameRow}>
+                <Text style={styles.customerName}>
+                  {customer.data?.alias ||
+                    customer.data?.name ||
+                    'Cargando...'}
+                </Text>
+                <SyncBadge estadoServidor={customer.data?.estadoServidor} />
+              </View>
+              {customer.data?.alias ? (
+                <Text style={styles.customerRealName}>
+                  Nombre real: {customer.data.name}
+                </Text>
+              ) : null}
+              <Text style={styles.customerMeta}>
+                {customer.data?.document_type || 'CC'}{' '}
+                {customer.data?.document_number || 'Sin cédula'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setIsEditAliasLimitOpen(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.pencilBtn}
+              activeOpacity={0.7}>
+              <Ionicons name="pencil" size={17} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
 
-            {/* ── Filtros Rápidos con animación Magnet ── */}
-            <View style={styles.filterBar}>
-              <MagnetFilterBar
-                options={[
-                  { key: 'all', label: `Todos (${monthMovements.length})` },
-                  { key: 'credit', label: `Solo compras (${creditCount})` },
-                  { key: 'payment', label: `Solo abonos (${paymentCount})` },
-                ]}
-                selectedKey={filterType}
-                onSelect={key => setFilterType(key as 'all' | 'credit' | 'payment')}
+          {/* Botón rápido para llamar al cliente */}
+          {customer.data?.phone ? (
+            <TouchableOpacity
+              style={styles.callBtn}
+              onPress={() => handleCallCustomer(customer.data?.phone)}>
+              <Ionicons name="call" size={15} color="#15803D" />
+              <Text style={styles.callBtnText}>
+                Llamar al cliente ({customer.data.phone})
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {/* Historial en otras tiendas (si aplica plan de pago) */}
+          {hasProAccess ? (
+            <TouchableOpacity
+              style={styles.historyBtn}
+              onPress={() =>
+                navigation.navigate('CustomerHistory', {
+                  id,
+                  customer: customer.data,
+                })
+              }>
+              <Ionicons
+                name="storefront-outline"
+                size={15}
+                color={Colors.textSecondary}
               />
-            </View>
+              <Text style={styles.historyBtnText}>
+                Historial en otras tiendas
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={14}
+                color={Colors.textMuted}
+              />
+            </TouchableOpacity>
+          ) : (
+            <StoreHistoryLockNotice style={{ marginTop: 8 }} />
+          )}
 
-            {/* ── Cabecera de la Tabla Libreta con Filtro Mes y Buscador Animado ── */}
-            <View style={styles.tableHeaderRow}>
-              {/* Filtro Mes (reemplaza FECHA por el mes seleccionado) */}
-              <View style={[styles.colDate, isSmall && styles.colDateSmall]}>
+          {/* Caja de Deuda / Saldo en Grande y Claro */}
+          <View
+            style={[
+              styles.balanceBox,
+              isPaid ? styles.balanceBoxPaid : null,
+            ]}>
+            <Text
+              style={[
+                styles.balanceBoxLabel,
+                isPaid ? styles.balanceBoxLabelPaid : null,
+              ]}>
+              {isPaid
+                ? '¡ESTE CLIENTE ESTÁ AL DÍA!'
+                : 'ESTE CLIENTE TE DEBE:'}
+            </Text>
+            <Text
+              style={[
+                styles.balanceBoxAmount,
+                isPaid ? styles.balanceBoxAmountPaid : null,
+              ]}>
+              {formatCOP(currentBalance)}
+            </Text>
+            <Text style={styles.balanceBoxHelp}>
+              {isPaid
+                ? 'No tiene ninguna deuda pendiente contigo en este momento.'
+                : 'Es el valor total que tiene pendiente por pagar en tu tienda.'}
+              {creditLimit > 0
+                ? ` (Tope máximo de crédito permitido: ${formatCOP(
+                  creditLimit,
+                )})`
+                : ''}
+            </Text>
+          </View>
+        </Card>
+
+        {/* ── Botones de Acción Principales (Grandes y Cómodos) ── */}
+        <View style={[styles.actionsRow, isSmall && styles.actionsRowSmall]}>
+          <View style={styles.flexOne}>
+            <Button
+              title="+ Nuevo fiado"
+              icon="credit"
+              onPress={async () => {
+                const check = await canCreateCreditForCustomer(id, profile);
+                if (!check.allowed) {
+                  showAlert(
+                    'Solo abonos',
+                    check.message ?? 'Tu plan actual no permite este fiado.',
+                  );
+                  return;
+                }
+                navigation.navigate('NewCredit', { customerId: id });
+              }}
+            />
+          </View>
+          <View style={styles.flexOne}>
+            <Button
+              title="− Abonar plata"
+              variant="secondary"
+              icon="incoming"
+              disabled={isPaid}
+              onPress={() => {
+                if (isPaid) {
+                  showAlert(
+                    'Cliente al día',
+                    'Este cliente no tiene saldo pendiente por pagar.',
+                  );
+                  return;
+                }
+                navigation.navigate('NewPayment', { customerId: id });
+              }}
+            />
+          </View>
+        </View>
+
+        {creditBlocked ? (
+          <View style={styles.freePortfolioNotice}>
+            <Ionicons
+              name="lock-closed-outline"
+              size={16}
+              color={Colors.destructive}
+            />
+            <Text style={styles.freePortfolioNoticeText}>
+              {creditEligibility?.message}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* ── Título de la sección ── */}
+        <View style={styles.sectionHeading}>
+          <Text style={styles.sectionTitle}>Libreta de fiados y abonos</Text>
+          <Text style={styles.sectionSubtitle}>
+            Aquí ves cada compra fiada y cada abono recibido:
+          </Text>
+        </View>
+
+        {/* ── Filtros Rápidos con animación Magnet ── */}
+        <View style={styles.filterBar}>
+          <MagnetFilterBar
+            options={[
+              { key: 'all', label: `Todos (${monthMovements.length})` },
+              { key: 'credit', label: `Solo compras (${creditCount})` },
+              { key: 'payment', label: `Solo abonos (${paymentCount})` },
+            ]}
+            selectedKey={filterType}
+            onSelect={key => setFilterType(key as 'all' | 'credit' | 'payment')}
+          />
+        </View>
+
+        {/* ── Libreta de Apuntes en Hoja Argollada ── */}
+        <NotebookPaper style={styles.notebookContainer}>
+          {/* Cabecera de la Libreta: Fila 1 - Columnas y Controles */}
+          <View
+            style={styles.tableHeaderContainer}
+            onLayout={e => {
+              const w = e.nativeEvent.layout.width;
+              if (w > 0 && Math.abs(w - headerWidth) > 1) {
+                setHeaderWidth(w);
+              }
+            }}>
+            <View
+              style={[
+                styles.tableHeaderRow,
+                (isSearchOpen || searchConcept.trim().length > 0) &&
+                styles.tableHeaderRowActive,
+              ]}>
+              {/* Filtro Mes (Columna Fecha: 74px) */}
+              <View style={styles.colDate}>
                 <TouchableOpacity
                   style={styles.headerMonthBtn}
                   onPress={() => setIsMonthModalVisible(true)}
@@ -729,83 +979,42 @@ export function CustomerDetailScreen({route, navigation}: any) {
                 </TouchableOpacity>
               </View>
 
-              {/* Filtro QUÉ SE LLEVÓ / ABONO con Lupa interactiva y animación */}
-              <View style={[styles.colConcept, styles.colConceptHeader]}>
-                {/* Vista 1: Título y Lupa (se desvanece suavemente al abrir) */}
-                <Animated.View
-                  pointerEvents={isSearchOpen ? 'none' : 'auto'}
+              {/* Columna QUÉ SE LLEVÓ / ABONO con botón de búsqueda */}
+              <View style={styles.colConceptHeader}>
+                <Text
+                  style={styles.tableColHeader}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit>
+                  QUÉ SE LLEVÓ / ABONO
+                </Text>
+                <TouchableOpacity
                   style={[
-                    styles.headerConceptRow,
-                    {
-                      opacity: conceptRowOpacity,
-                      transform: [{ translateX: conceptRowTranslateX }],
-                    },
-                  ]}>
-                  <Text
-                    style={styles.tableColHeader}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit>
-                    QUÉ SE LLEVÓ / ABONO
-                  </Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.headerSearchIconBtn,
-                      searchConcept.trim().length > 0 &&
-                        styles.headerSearchIconBtnActive,
-                    ]}
-                    onPress={handleOpenSearch}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                    <Ionicons
-                      name="search"
-                      size={12}
-                      color={
-                        searchConcept.trim().length > 0
-                          ? '#FFFFFF'
-                          : '#9A3412'
-                      }
-                    />
-                  </TouchableOpacity>
-                </Animated.View>
-
-                {/* Vista 2: Input de Búsqueda (se expande y cierra animado despacio) */}
-                <Animated.View
-                  pointerEvents={isSearchOpen ? 'auto' : 'none'}
-                  style={[
-                    styles.headerSearchBox,
-                    {
-                      opacity: searchBoxOpacity,
-                      transform: [
-                        { scaleX: searchBoxScaleX },
-                        { translateX: searchBoxTranslateX },
-                      ],
-                    },
-                  ]}>
-                  <Ionicons name="search" size={12} color={Colors.primary} />
-                  <TextInput
-                    ref={searchInputRef}
-                    style={styles.headerSearchInput}
-                    placeholder="Buscar qué se llevó..."
-                    placeholderTextColor={Colors.textMuted}
-                    value={searchConcept}
-                    onChangeText={setSearchConcept}
-                    returnKeyType="done"
-                    autoCapitalize="none"
-                    autoCorrect={false}
+                    styles.headerSearchIconBtn,
+                    (searchConcept.trim().length > 0 || isSearchOpen) &&
+                    styles.headerSearchIconBtnActive,
+                  ]}
+                  onPress={() => {
+                    if (isSearchOpen) {
+                      handleCloseSearch();
+                    } else {
+                      handleOpenSearch();
+                    }
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons
+                    name="search"
+                    size={12}
+                    color={
+                      searchConcept.trim().length > 0 || isSearchOpen
+                        ? '#FFFFFF'
+                        : '#9A3412'
+                    }
                   />
-                  <TouchableOpacity
-                    onPress={handleCloseSearch}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons
-                      name="close-circle"
-                      size={15}
-                      color={Colors.textSecondary}
-                    />
-                  </TouchableOpacity>
-                </Animated.View>
+                </TouchableOpacity>
               </View>
 
-              {/* Columna Valor */}
-              <View style={[styles.colAmount, isSmall && styles.colAmountSmall]}>
+              {/* Columna Valor: 78px */}
+              <View style={styles.colAmount}>
                 <Text
                   style={styles.tableColHeader}
                   numberOfLines={1}
@@ -813,11 +1022,85 @@ export function CustomerDetailScreen({route, navigation}: any) {
                   VALOR
                 </Text>
               </View>
+
+              {/* Espacio para la columna de anular: 26px */}
+              <View style={styles.voidBtnCol} />
             </View>
-          </>
-        }
-        ListEmptyComponent={
-          !credits.isLoading && !payments.isLoading ? (
+
+            {/* Fila 2: Renglón inferior para el buscador con animación fluida de expansión horizontal */}
+            <Animated.View
+              style={[
+                styles.searchRowDedicated,
+                {
+                  height: searchRowHeight,
+                  opacity: searchRowOpacity,
+                  paddingVertical: searchRowPaddingY,
+                  borderBottomWidth: searchRowBorderWidth,
+                  overflow: 'hidden',
+                },
+              ]}
+              pointerEvents={
+                isSearchOpen || searchConcept.trim().length > 0
+                  ? 'auto'
+                  : 'none'
+              }>
+              <Animated.View
+                style={[
+                  styles.searchBoxDedicated,
+                  { width: searchBoxWidth },
+                ]}>
+                <Ionicons
+                  name="search"
+                  size={13}
+                  color={Colors.primary}
+                  style={{ flexShrink: 0, marginLeft: 2 }}
+                />
+                <Animated.View style={{ flex: 1, opacity: searchInputOpacity }}>
+                  <TextInput
+                    ref={searchInputRef}
+                    style={styles.searchInputDedicated}
+                    placeholder="Buscar qué se llevó o abonó..."
+                    placeholderTextColor={Colors.textMuted}
+                    value={searchConcept}
+                    onChangeText={setSearchConcept}
+                    returnKeyType="done"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </Animated.View>
+                {searchConcept.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => setSearchConcept('')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons
+                      name="close-circle"
+                      size={15}
+                      color={Colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                )}
+              </Animated.View>
+              <Animated.View
+                style={{
+                  opacity: searchCloseOpacity,
+                  transform: [{ translateX: searchCloseTranslateX }],
+                }}>
+                <TouchableOpacity
+                  onPress={handleCloseSearch}
+                  style={styles.searchCloseBtn}>
+                  <Text style={styles.searchCloseBtnText}>Cerrar</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            </Animated.View>
+          </View>
+
+          {/* Filas de la libreta */}
+          {credits.isLoading || payments.isLoading ? (
+            <View style={styles.tableEmpty}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+              <Text style={styles.tableEmptyText}>Cargando libreta...</Text>
+            </View>
+          ) : filteredMovements.length === 0 ? (
             <View style={styles.tableEmpty}>
               <Ionicons
                 name={
@@ -837,8 +1120,8 @@ export function CustomerDetailScreen({route, navigation}: any) {
                 {searchConcept.trim().length > 0
                   ? `No hay compras ni abonos que contengan "${searchConcept}".`
                   : allMovements.length === 0
-                  ? 'Este cliente aún no tiene compras fiadas ni abonos registrados.'
-                  : `No hay compras ni abonos registrados para ${formatMonthLabel(
+                    ? 'Este cliente aún no tiene compras fiadas ni abonos registrados.'
+                    : `No hay compras ni abonos registrados para ${formatMonthLabel(
                       selectedMonth,
                     )}.`}
               </Text>
@@ -862,152 +1145,206 @@ export function CustomerDetailScreen({route, navigation}: any) {
               ) : null}
             </View>
           ) : (
-            <View style={styles.tableEmpty}>
-              <ActivityIndicator size="small" color={Colors.primary} />
-              <Text style={styles.tableEmptyText}>Cargando libreta...</Text>
-            </View>
-          )
-        }
-        renderItem={({item, index}) => {
-          const isCredit = item.kind === 'credit';
-          const isCancelled = item.status === 'cancelled';
-          const overdue = isCredit && !isCancelled && isOverdue(item.dueDate);
+            <>
+              {filteredMovements.map((item, index) => {
+                const isCredit = item.kind === 'credit';
+                const isCancelled = item.status === 'cancelled';
+                const overdue =
+                  isCredit && !isCancelled && isOverdue(item.dueDate);
+                const paymentTag = isCredit && !isCancelled ? (creditStatusMap[item.id] ?? null) : null;
 
-          return (
-            <View
-              style={[
-                styles.tableRow,
-                index % 2 === 1 && styles.tableRowAlt,
-                isCancelled && styles.tableRowCancelled,
-              ]}>
-              {/* Columna Fecha */}
-              <View style={[styles.colDate, isSmall && styles.colDateSmall]}>
-                <Text
-                  style={[
-                    styles.rowDateText,
-                    isCancelled && styles.textCancelled,
-                  ]}>
-                  {formatDateDisplay(item.date)}
-                </Text>
-              </View>
-
-              {/* Columna Detalle */}
-              <View style={styles.colConcept}>
-                <Text
-                  style={[
-                    styles.rowConceptTitle,
-                    isCancelled && styles.textCancelled,
-                  ]}
-                  numberOfLines={2}>
-                  {item.title}
-                </Text>
-
-                <View style={styles.rowBadgeWrap}>
-                  {isCancelled ? (
-                    <>
-                      <View style={[styles.kindBadge, styles.kindBadgeCancelled]}>
-                        <Text style={[styles.kindBadgeText, styles.kindBadgeTextCancelled]}>
-                          Cancelado
-                        </Text>
-                      </View>
-                      <View style={[styles.kindBadge, { backgroundColor: '#F1F5F9' }]}>
-                        <Text
+                return (
+                  <View
+                    key={`${item.kind}-${item.id}`}
+                    style={[
+                      styles.tableRow,
+                      index % 2 === 1 && styles.tableRowAlt,
+                      isCancelled && styles.tableRowCancelled,
+                    ]}>
+                    {/* Cinta diagonal de esquina (Pagado / Abonado) */}
+                    {paymentTag && (
+                      <View style={styles.cornerRibbonContainer} pointerEvents="none">
+                        <View
                           style={[
-                            styles.kindBadgeText,
-                            { color: '#94A3B8', textDecorationLine: 'line-through' },
+                            styles.cornerRibbon,
+                            paymentTag === 'paid' ? styles.cornerRibbonPaid : styles.cornerRibbonAbonado,
                           ]}>
-                          {isCredit ? 'Compra fiada (+)' : 'Abono recibido (-)'}
-                        </Text>
+                          <Text style={styles.cornerRibbonText}>
+                            {paymentTag === 'paid' ? 'PAGADO' : 'ABONADO'}
+                          </Text>
+                        </View>
                       </View>
-                    </>
-                  ) : (
-                    <View
-                      style={[
-                        styles.kindBadge,
-                        isCredit
-                          ? styles.kindBadgeCredit
-                          : styles.kindBadgePayment,
-                      ]}>
+                    )}
+
+                    {/* Columna Fecha Compacta: 74px */}
+                    <View style={styles.colDate}>
                       <Text
                         style={[
-                          styles.kindBadgeText,
-                          isCredit
-                            ? styles.kindBadgeTextCredit
-                            : styles.kindBadgeTextPayment,
+                          styles.rowDateText,
+                          isCancelled && styles.textCancelled,
                         ]}>
-                        {isCredit ? 'Compra fiada (+)' : 'Abono recibido (-)'}
+                        {formatDateCompact(item.date)}
                       </Text>
                     </View>
-                  )}
-                  <SyncBadge estadoServidor={item.estadoServidor} />
-                </View>
 
-                {item.dueDate ? (
-                  <View style={styles.dueRow}>
-                    <Ionicons
-                      name="calendar-outline"
-                      size={12}
-                      color={
-                        isCancelled
-                          ? '#94A3B8'
-                          : overdue
-                          ? Colors.destructive
-                          : Colors.textSecondary
-                      }
-                    />
-                    <Text
-                      style={[
-                        styles.rowDueDate,
-                        overdue && styles.rowDueDateOverdue,
-                        isCancelled && styles.textCancelled,
-                      ]}>
-                      {overdue
-                        ? `Vencido el: ${formatDateDisplay(item.dueDate)}`
-                        : `Vence el: ${formatDateDisplay(item.dueDate)}`}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-
-              {/* Columna Monto */}
-              <View style={[styles.colAmount, isSmall && styles.colAmountSmall]}>
-                <Text
-                  style={[
-                    styles.rowAmountText,
-                    isCredit ? styles.rowAmountCredit : styles.rowAmountPayment,
-                    isCancelled && styles.textCancelled,
-                  ]}>
-                  {isCredit ? '+' : '−'}
-                  {formatCOP(item.amount)}
-                </Text>
-              </View>
-
-              {/* Botón Anular Movimiento */}
-              <View style={{ width: 28, alignItems: 'center', justifyContent: 'center' }}>
-                {!isCancelled && (() => {
-                  const diffHours = (Date.now() - new Date(item.date).getTime()) / (1000 * 60 * 60);
-                  if (diffHours > 24) return null;
-
-                  return (
+                    {/* Columna Detalle Multilínea con toque para modal contextual */}
                     <TouchableOpacity
+                      style={styles.colConcept}
                       activeOpacity={0.7}
-                      onPress={() => handleVoidMovement(item)}
-                      hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
-                      style={styles.voidBtn}>
-                      <Ionicons
-                        name="trash-outline"
-                        size={16}
-                        color={Colors.textSecondary}
-                      />
+                      onPress={() => setSelectedDetailMovement(item)}>
+                      <Text
+                        style={[
+                          styles.rowConceptTitle,
+                          isCancelled && styles.textCancelled,
+                        ]}
+                        numberOfLines={6}>
+                        {item.title}
+                      </Text>
+
+                      <View style={styles.rowBadgeWrap}>
+                        {isCancelled ? (
+                          <>
+                            <View
+                              style={[
+                                styles.kindBadge,
+                                styles.kindBadgeCancelled,
+                              ]}>
+                              <Text
+                                style={[
+                                  styles.kindBadgeText,
+                                  styles.kindBadgeTextCancelled,
+                                ]}>
+                                Cancelado
+                              </Text>
+                            </View>
+                            <View
+                              style={[
+                                styles.kindBadge,
+                                { backgroundColor: '#F1F5F9' },
+                              ]}>
+                              <Text
+                                style={[
+                                  styles.kindBadgeText,
+                                  {
+                                    color: '#94A3B8',
+                                    textDecorationLine: 'line-through',
+                                  },
+                                ]}>
+                                {isCredit
+                                  ? 'Compra fiada (+)'
+                                  : 'Abono recibido (-)'}
+                              </Text>
+                            </View>
+                          </>
+                        ) : (
+                          <View
+                            style={[
+                              styles.kindBadge,
+                              isCredit
+                                ? styles.kindBadgeCredit
+                                : styles.kindBadgePayment,
+                            ]}>
+                            <Text
+                              style={[
+                                styles.kindBadgeText,
+                                isCredit
+                                  ? styles.kindBadgeTextCredit
+                                  : styles.kindBadgeTextPayment,
+                              ]}>
+                              {isCredit
+                                ? 'Compra fiada (+)'
+                                : 'Abono recibido (-)'}
+                            </Text>
+                          </View>
+                        )}
+                        <SyncBadge estadoServidor={item.estadoServidor} />
+                      </View>
+
+                      {item.dueDate ? (
+                        <View style={styles.dueRow}>
+                          <Ionicons
+                            name="calendar-outline"
+                            size={11}
+                            color={
+                              isCancelled
+                                ? '#94A3B8'
+                                : overdue
+                                  ? Colors.destructive
+                                  : Colors.textSecondary
+                            }
+                          />
+                          <Text
+                            style={[
+                              styles.rowDueDate,
+                              overdue && styles.rowDueDateOverdue,
+                              isCancelled && styles.textCancelled,
+                            ]}>
+                            {overdue
+                              ? `Vencido: ${formatDateCompact(item.dueDate)}`
+                              : `Vence: ${formatDateCompact(item.dueDate)}`}
+                          </Text>
+                        </View>
+                      ) : null}
                     </TouchableOpacity>
-                  );
-                })()}
-              </View>
-            </View>
-          );
-        }}
-        ListFooterComponent={
-          monthMovements.length > 0 ? (
+
+                    {/* Columna Monto: 78px */}
+                    <View style={styles.colAmount}>
+                      <Text
+                        style={[
+                          styles.rowAmountText,
+                          isCredit
+                            ? styles.rowAmountCredit
+                            : styles.rowAmountPayment,
+                          isCancelled && styles.textCancelled,
+                        ]}>
+                        {isCredit ? '+' : '−'}
+                        {formatCOP(item.amount)}
+                      </Text>
+                    </View>
+
+                    {/* Botón Anular Movimiento: 26px */}
+                    <View style={styles.voidBtnCol}>
+                      {!isCancelled &&
+                        (() => {
+                          const diffHours =
+                            (Date.now() - new Date(item.date).getTime()) /
+                            (1000 * 60 * 60);
+                          if (diffHours > 24) return null;
+
+                          return (
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              onPress={() => handleVoidMovement(item)}
+                              hitSlop={{
+                                top: 8,
+                                bottom: 8,
+                                left: 8,
+                                right: 8,
+                              }}
+                              style={styles.voidBtn}>
+                              <Ionicons
+                                name="trash-outline"
+                                size={15}
+                                color={Colors.textSecondary}
+                              />
+                            </TouchableOpacity>
+                          );
+                        })()}
+                    </View>
+                  </View>
+                );
+              })}
+
+              {/* Renglones vacíos para completar la libreta si hay pocos movimientos */}
+              {Array.from({
+                length: Math.max(0, 3 - filteredMovements.length),
+              }).map((_, i) => (
+                <View key={`blank-dt-${i}`} style={styles.blankLine} />
+              ))}
+            </>
+          )}
+
+          {monthMovements.length > 0 ? (
             <View style={styles.tableSummary}>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>
@@ -1047,9 +1384,9 @@ export function CustomerDetailScreen({route, navigation}: any) {
             </View>
           ) : (
             <View style={styles.footerSpacer} />
-          )
-        }
-      />
+          )}
+        </NotebookPaper>
+      </ScrollView>
 
       {/* Modal para seleccionar el mes */}
       <Modal
@@ -1172,7 +1509,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
                     style={[
                       styles.modalMonthItemIcon,
                       selectedMonth === 'all' &&
-                        styles.modalMonthItemIconSelected,
+                      styles.modalMonthItemIconSelected,
                     ]}>
                     <Ionicons
                       name="layers-outline"
@@ -1189,7 +1526,7 @@ export function CustomerDetailScreen({route, navigation}: any) {
                       style={[
                         styles.modalMonthName,
                         selectedMonth === 'all' &&
-                          styles.modalMonthNameSelected,
+                        styles.modalMonthNameSelected,
                       ]}>
                       Todos los meses
                     </Text>
@@ -1216,6 +1553,131 @@ export function CustomerDetailScreen({route, navigation}: any) {
         </Pressable>
       </Modal>
 
+      {/* Modal de edición de alias y tope de crédito */}
+      {customer.data && (
+        <EditCustomerAliasLimitModal
+          visible={isEditAliasLimitOpen}
+          onClose={() => setIsEditAliasLimitOpen(false)}
+          customerId={customer.data.id}
+          customerName={customer.data.name}
+          initialAlias={customer.data.alias}
+          initialCreditLimit={Number(customer.data.credit_limit || 0)}
+          onSaved={() => {
+            customer.refetch();
+            queryClient.invalidateQueries({ queryKey: ['customer', id] });
+            queryClient.invalidateQueries({ queryKey: ['customers'] });
+          }}
+        />
+      )}
+
+      {/* Modal Detalle Completo de Movimiento */}
+      <Modal
+        visible={Boolean(selectedDetailMovement)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedDetailMovement(null)}>
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setSelectedDetailMovement(null)}>
+          <Pressable
+            style={styles.detailModalCard}
+            onPress={e => e.stopPropagation()}>
+            <View style={styles.detailModalHeader}>
+              <Text style={styles.detailModalTitle}>Detalle del movimiento</Text>
+              <TouchableOpacity
+                onPress={() => setSelectedDetailMovement(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.detailModalCloseBtn}>
+                <Ionicons name="close" size={20} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {selectedDetailMovement && (
+              <View style={styles.detailModalContent}>
+                <View style={styles.detailModalBadgeRow}>
+                  <View
+                    style={[
+                      styles.kindBadge,
+                      selectedDetailMovement.kind === 'credit'
+                        ? styles.kindBadgeCredit
+                        : styles.kindBadgePayment,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.kindBadgeText,
+                        selectedDetailMovement.kind === 'credit'
+                          ? styles.kindBadgeTextCredit
+                          : styles.kindBadgeTextPayment,
+                      ]}>
+                      {selectedDetailMovement.kind === 'credit'
+                        ? 'Compra fiada (+)'
+                        : 'Abono recibido (-)'}
+                    </Text>
+                  </View>
+                  <Text style={styles.detailModalDateText}>
+                    {formatDateCompact(selectedDetailMovement.date)}
+                  </Text>
+                </View>
+
+                <Text
+                  style={[
+                    styles.detailModalAmount,
+                    selectedDetailMovement.kind === 'credit'
+                      ? styles.rowAmountCredit
+                      : styles.rowAmountPayment,
+                  ]}>
+                  {selectedDetailMovement.kind === 'credit' ? '+' : '−'}
+                  {formatCOP(selectedDetailMovement.amount)}
+                </Text>
+
+                <View style={styles.detailConceptBox}>
+                  <Text style={styles.detailConceptLabel}>Concepto registrado:</Text>
+                  <Text style={styles.detailConceptValue} selectable>
+                    {selectedDetailMovement.title}
+                  </Text>
+                </View>
+
+                {selectedDetailMovement.dueDate && (
+                  <View
+                    style={[
+                      styles.detailDueBox,
+                      isOverdueBogota(selectedDetailMovement.dueDate) &&
+                      styles.detailDueBoxOverdue,
+                    ]}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={14}
+                      color={
+                        isOverdueBogota(selectedDetailMovement.dueDate)
+                          ? Colors.destructive
+                          : Colors.textSecondary
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.detailDueText,
+                        isOverdueBogota(selectedDetailMovement.dueDate) &&
+                        styles.detailDueTextOverdue,
+                      ]}>
+                      {isOverdueBogota(selectedDetailMovement.dueDate)
+                        ? `Vencido el ${formatDateCompact(selectedDetailMovement.dueDate)}`
+                        : `Fecha límite de pago: ${formatDateCompact(selectedDetailMovement.dueDate)}`}
+                    </Text>
+                  </View>
+                )}
+
+                <Button
+                  title="Entendido"
+                  variant="secondary"
+                  onPress={() => setSelectedDetailMovement(null)}
+                  style={{ width: '100%', marginTop: 4 }}
+                />
+              </View>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <FooterMenu active="Clientes" />
     </View>
   );
@@ -1233,7 +1695,114 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 12,
     gap: 10,
-    paddingBottom: 48,
+    paddingBottom: 110,
+  },
+  notebookContainer: {
+    marginBottom: 16,
+  },
+
+  // Header superior de Tendero
+  topNav: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 10,
+    position: 'relative',
+  },
+  headerDropletsContainer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  droplet: {
+    position: 'absolute',
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.text,
+    maxWidth: '46%',
+    textAlign: 'center',
+  },
+  headerRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  whatsappBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sessionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    maxWidth: 150,
+    shadowColor: '#142033',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  sessionAvatar: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 5,
+  },
+  sessionCol: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  sessionRole: {
+    fontSize: 7.5,
+    fontWeight: '800',
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    lineHeight: 9,
+  },
+  sessionName: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: Colors.text,
+    lineHeight: 13,
   },
 
   // Ficha del Cliente
@@ -1324,6 +1893,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textSecondary,
   },
+  pencilBtn: {
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
 
   // Caja de saldo
   balanceBox: {
@@ -1413,21 +1992,36 @@ const styles = StyleSheet.create({
   // Barra de filtros
   filterBar: {
     marginBottom: 10,
+    width: '100%',
+    minHeight: 40,
   },
 
   // Tabla Libreta de Cuentas
+  tableHeaderContainer: {
+    width: '100%',
+    alignSelf: 'stretch',
+    overflow: 'hidden',
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 18,
+  },
   tableHeaderRow: {
+    width: '100%',
+    alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderTopLeftRadius: Radius.lg,
-    borderTopRightRadius: Radius.lg,
-    borderWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#E2E8F0',
+    backgroundColor: '#FFF8EE',
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#CFE0F1',
     paddingVertical: 8,
     paddingHorizontal: 12,
     minHeight: 46,
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 18,
+  },
+  tableHeaderRowActive: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#CFE0F1',
+    borderStyle: 'dashed',
   },
   tableColHeader: {
     fontSize: 11,
@@ -1436,34 +2030,47 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   colDate: {
-    width: 90,
+    minWidth: 72,
+    maxWidth: 88,
   },
   colDateSmall: {
-    width: 72,
+    minWidth: 70,
+    maxWidth: 84,
   },
   colConcept: {
     flex: 1,
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
+    minWidth: 0,
   },
   colConceptHeader: {
-    justifyContent: 'center',
-    position: 'relative',
-    height: 32,
-    paddingHorizontal: 4,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 2,
+    minWidth: 0,
   },
   colAmount: {
-    width: 90,
+    minWidth: 80,
     alignItems: 'flex-end',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   colAmountSmall: {
-    width: 82,
+    minWidth: 76,
+  },
+  voidBtnCol: {
+    width: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   voidBtn: {
-    padding: 6,
-    marginLeft: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 8,
   },
 
   // Filtro de mes en cabecera
@@ -1471,28 +2078,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FED7AA',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
     borderRadius: Radius.sm,
-    gap: 3,
+    gap: 2,
     alignSelf: 'flex-start',
     maxWidth: '100%',
   },
   headerMonthBtnText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '800',
     color: '#9A3412',
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
   },
 
-  // Filtro "Qué fue" y buscador animado
-  headerConceptRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
+  // Filtro "Qué fue" y buscador animado en fila dedicada
   headerSearchIconBtn: {
-    padding: 4,
+    padding: 3,
     borderRadius: Radius.sm,
     backgroundColor: '#FED7AA',
     alignItems: 'center',
@@ -1501,45 +2103,122 @@ const styles = StyleSheet.create({
   headerSearchIconBtnActive: {
     backgroundColor: Colors.primary,
   },
-  headerSearchBox: {
-    position: 'absolute',
-    left: 2,
-    right: 2,
-    top: 0,
-    bottom: 0,
+  searchRowDedicated: {
+    width: '100%',
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    backgroundColor: '#FFF8EE',
+    borderBottomColor: '#CFE0F1',
+  },
+  searchBoxDedicated: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
     borderColor: Colors.primary,
     borderRadius: Radius.sm,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     height: 32,
-    gap: 4,
+    gap: 6,
+    overflow: 'hidden',
   },
-  headerSearchInput: {
+  searchInputDedicated: {
     flex: 1,
     fontSize: 12,
     fontWeight: '600',
     color: Colors.text,
     paddingVertical: 0,
     paddingHorizontal: 0,
+    minWidth: 0,
+    height: '100%',
+  },
+  searchCloseBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  searchCloseBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
   },
 
   // Filas de la tabla
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 11,
     paddingHorizontal: 12,
-    backgroundColor: Colors.card,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E2E8F0',
+    backgroundColor: 'transparent',
+    borderBottomWidth: 1,
+    borderBottomColor: '#CFE0F1',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  cornerRibbonContainer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 48,
+    height: 48,
+    overflow: 'hidden',
+    zIndex: 10,
+  },
+  cornerRibbon: {
+    position: 'absolute',
+    top: 9,
+    right: -19,
+    width: 70,
+    height: 14,
+    transform: [{ rotate: '45deg' }],
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.22,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  cornerRibbonPaid: {
+    backgroundColor: '#16A34A',
+  },
+  cornerRibbonAbonado: {
+    backgroundColor: '#D97706',
+  },
+  cornerRibbonText: {
+    color: '#FFFFFF',
+    fontSize: 7.5,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    textAlign: 'center',
+  },
+  badgeStatusPaid: {
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  badgeStatusTextPaid: {
+    color: '#16A34A',
+    fontWeight: '800',
+  },
+  badgeStatusAbonado: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  badgeStatusTextAbonado: {
+    color: '#D97706',
+    fontWeight: '800',
+  },
+  blankLine: {
+    height: 38,
+    borderBottomWidth: 1,
+    borderBottomColor: '#CFE0F1',
   },
   tableRowAlt: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: 'transparent',
   },
   rowDateText: {
     fontSize: 12,
@@ -1605,7 +2284,7 @@ const styles = StyleSheet.create({
     color: '#15803D',
   },
   tableRowCancelled: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F7F4EB',
     opacity: 0.72,
   },
   textCancelled: {
@@ -1623,13 +2302,7 @@ const styles = StyleSheet.create({
 
   // Estado vacío de la tabla
   tableEmpty: {
-    backgroundColor: Colors.card,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#E2E8F0',
-    borderBottomLeftRadius: Radius.lg,
-    borderBottomRightRadius: Radius.lg,
+    backgroundColor: 'transparent',
     padding: 28,
     alignItems: 'center',
     gap: 6,
@@ -1792,13 +2465,9 @@ const styles = StyleSheet.create({
 
   // Resumen inferior de la libreta
   tableSummary: {
-    backgroundColor: '#F8FAFC',
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#E2E8F0',
-    borderBottomLeftRadius: Radius.lg,
-    borderBottomRightRadius: Radius.lg,
+    backgroundColor: '#FFF8EE',
+    borderTopWidth: 1,
+    borderTopColor: '#CFE0F1',
     padding: 14,
     gap: 6,
   },
@@ -1806,11 +2475,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   summaryLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: Colors.textSecondary,
+    flexShrink: 1,
   },
   summaryCreditValue: {
     fontSize: 13,
@@ -1824,13 +2496,14 @@ const styles = StyleSheet.create({
   },
   summaryDivider: {
     height: 1,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#CFE0F1',
     marginVertical: 4,
   },
   summaryNetLabel: {
     fontSize: 13,
     fontWeight: '800',
     color: Colors.text,
+    flexShrink: 1,
   },
   summaryNetValue: {
     fontSize: 16,
@@ -1844,5 +2517,97 @@ const styles = StyleSheet.create({
   },
   footerSpacer: {
     height: 16,
+  },
+
+  // Modal Detalle Movimiento
+  detailModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: Radius.xl,
+    padding: 18,
+    width: '100%',
+    maxWidth: 380,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  detailModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  detailModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  detailModalCloseBtn: {
+    padding: 4,
+  },
+  detailModalContent: {
+    gap: 12,
+  },
+  detailModalBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  detailModalDateText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  detailModalAmount: {
+    fontSize: 26,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginVertical: 4,
+  },
+  detailConceptBox: {
+    backgroundColor: '#FFFDF5',
+    borderWidth: 1,
+    borderColor: '#CFE0F1',
+    borderRadius: Radius.md,
+    padding: 12,
+    gap: 4,
+  },
+  detailConceptLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  detailConceptValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
+    lineHeight: 20,
+  },
+  detailDueBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: Radius.sm,
+  },
+  detailDueBoxOverdue: {
+    backgroundColor: '#FEE2E2',
+  },
+  detailDueText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  detailDueTextOverdue: {
+    color: Colors.destructive,
+    fontWeight: '700',
   },
 });

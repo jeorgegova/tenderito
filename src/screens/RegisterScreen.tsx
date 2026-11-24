@@ -185,19 +185,11 @@ export function RegisterScreen({ navigation }: any) {
       {/* ── Curvas abstractas dinámicas de la app ── */}
       <DynamicBrandCurves position="top-right" />
 
-      {/* ── Botón superior de retroceso ── */}
-      <Pressable
-        onPress={() => navigation.goBack()}
-        style={[styles.backBtn, { top: insets.top + 8 }]}
-        hitSlop={12}>
-        <Ionicons name="arrow-back" size={22} color={Colors.text} />
-      </Pressable>
-
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.wrap,
-          { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 32 },
+          { paddingTop: 16, paddingBottom: insets.bottom + 32 },
           isTablet ? { maxWidth: 480, width: '100%', alignSelf: 'center' } : null,
         ]}
         keyboardShouldPersistTaps="handled"
@@ -336,24 +328,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
-  },
-  backBtn: {
-    position: 'absolute',
-    left: 20,
-    zIndex: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    shadowColor: '#142033',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
   },
   scroll: {
     flex: 1,

@@ -58,10 +58,7 @@ export function Button({
           variant === 'secondary' && styles.darkText,
           variant === 'ghost' && styles.ghostText,
           variant === 'destructive' && styles.text,
-        ]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.82}>
+        ]}>
         {title}
       </Text>
     </Pressable>
@@ -71,19 +68,21 @@ export function Button({
 const styles = StyleSheet.create({
   base: {
     borderRadius: Radius.md,
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     minHeight: 48,
   },
   baseSmall: {
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 10,
     minHeight: 44,
     gap: 6,
+    flexWrap: 'wrap',
   },
   primary: {
     backgroundColor: Colors.primary,

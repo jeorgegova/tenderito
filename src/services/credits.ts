@@ -49,7 +49,8 @@ export async function fetchCreditsByCustomer(
 }
 
 /**
- * Créditos vencidos (due_date < hoy y no pagados) consultados exclusivamente desde SQLite local.
+ * Créditos vencidos (due_date < hoy y con saldo pendiente real > 0) consultados desde SQLite local.
+ * Considera abonos específicos y generales del cliente para reflejar únicamente deudas con saldo real.
  */
 export async function fetchOverdueCredits(): Promise<Credit[]> {
   const today = getBogotaTodayYMD();
@@ -57,7 +58,11 @@ export async function fetchOverdueCredits(): Promise<Credit[]> {
 
   try {
     const db = await getDbConnection();
-    let query = `SELECT c.*, cust.name as customer_name, cust.alias as customer_alias, cust.phone as customer_phone
+    let query = `SELECT c.*,
+            COALESCE(cust.current_balance, 0) as customer_balance,
+            cust.name as customer_name,
+            cust.alias as customer_alias,
+            cust.phone as customer_phone
        FROM credits c
        LEFT JOIN customers cust ON (c.customer_id = cust.local_id OR c.customer_id = cust.server_id)
        WHERE c.status != 'paid' AND c.status != 'cancelled' AND c.due_date IS NOT NULL AND c.due_date < ?`;
@@ -66,27 +71,118 @@ export async function fetchOverdueCredits(): Promise<Credit[]> {
       query += ` AND (c.store_id = ? OR c.store_id IS NULL OR c.store_id = "" OR c.store_id = "null")`;
       params.push(activeStoreId);
     }
-    query += ` ORDER BY c.due_date ASC;`;
+    query += ` ORDER BY c.due_date ASC, c.created_at ASC;`;
     const rows = await getData(db, query, params);
 
-    return rows.map((r: any) => ({
-      id: r.server_id || r.local_id,
-      customer_id: r.customer_id,
-      store_id: r.store_id || '',
-      concept: r.concept,
-      amount: Number(r.amount),
-      due_date: r.due_date,
-      status: r.status,
-      estadoServidor: (r.sync_status || r.estadoServidor || 'synced') as any,
-      created_by: r.created_by || '',
-      created_at: r.created_at,
-      customers: {
-        id: r.customer_id,
-        name: r.customer_name || 'Cliente',
-        alias: r.customer_alias || null,
-        phone: r.customer_phone || '',
-      },
-    })) as Credit[];
+    if (rows.length === 0) {
+      return [];
+    }
+
+    // Agrupar créditos por cliente para calcular la aplicación de abonos
+    const customerIds = Array.from(new Set(rows.map((r: any) => r.customer_id)));
+    const overdueList: Credit[] = [];
+
+    for (const custId of customerIds) {
+      const custRows = rows.filter((r: any) => r.customer_id === custId);
+      const custBalance = Number(custRows[0]?.customer_balance || 0);
+
+      // Si el cliente está al día (saldo 0 o menor), todos sus fiados están pagados
+      if (custBalance <= 0) {
+        continue;
+      }
+
+      // Consultar todos los créditos válidos del cliente (orden cronológico) y sus abonos
+      let allCreditsQuery = `SELECT local_id, server_id, amount, due_date, status, created_at
+        FROM credits
+        WHERE (customer_id = ?) AND status != 'cancelled'`;
+      const allCredParams: any[] = [custId];
+      if (activeStoreId) {
+        allCreditsQuery += ` AND (store_id = ? OR store_id IS NULL OR store_id = "" OR store_id = "null")`;
+        allCredParams.push(activeStoreId);
+      }
+      allCreditsQuery += ` ORDER BY created_at ASC;`;
+      const allCredits = await getData(db, allCreditsQuery, allCredParams);
+
+      let paymentsQuery = `SELECT credit_id, amount
+        FROM payments
+        WHERE (customer_id = ?) AND status != 'cancelled'`;
+      const payParams: any[] = [custId];
+      if (activeStoreId) {
+        paymentsQuery += ` AND (store_id = ? OR store_id IS NULL OR store_id = "" OR store_id = "null")`;
+        payParams.push(activeStoreId);
+      }
+      const allPayments = await getData(db, paymentsQuery, payParams);
+
+      // 1. Mapear abonos específicos por crédito
+      const specificPaidByCredit: Record<string, number> = {};
+      let generalPaymentsPool = 0;
+
+      for (const p of allPayments) {
+        const pAmount = Number(p.amount || 0);
+        if (p.credit_id) {
+          specificPaidByCredit[p.credit_id] = (specificPaidByCredit[p.credit_id] || 0) + pAmount;
+        } else {
+          generalPaymentsPool += pAmount;
+        }
+      }
+
+      // 2. Aplicar abonos específicos primero, luego abonos generales en orden FIFO
+      const remainingByCredit: Record<string, number> = {};
+
+      for (const cred of allCredits) {
+        const credIdLocal = cred.local_id;
+        const credIdServer = cred.server_id;
+        const origAmount = Number(cred.amount || 0);
+
+        const specificPaid =
+          (credIdLocal ? specificPaidByCredit[credIdLocal] || 0 : 0) +
+          (credIdServer ? specificPaidByCredit[credIdServer] || 0 : 0);
+
+        let remaining = Math.max(0, origAmount - specificPaid);
+
+        if (remaining > 0 && generalPaymentsPool > 0) {
+          const coveredByGeneral = Math.min(remaining, generalPaymentsPool);
+          remaining -= coveredByGeneral;
+          generalPaymentsPool -= coveredByGeneral;
+        }
+
+        if (credIdLocal) remainingByCredit[credIdLocal] = remaining;
+        if (credIdServer) remainingByCredit[credIdServer] = remaining;
+      }
+
+      // 3. Procesar los créditos vencidos de este cliente
+      for (const r of custRows) {
+        const id = r.server_id || r.local_id;
+        const remaining = remainingByCredit[r.local_id] ?? remainingByCredit[r.server_id] ?? Number(r.amount);
+        const actualPending = Math.min(remaining, custBalance);
+
+        // Si ya fue saldado completamente por los abonos, no debe aparecer en atrasados
+        if (actualPending <= 0) {
+          continue;
+        }
+
+        overdueList.push({
+          id,
+          customer_id: r.customer_id,
+          store_id: r.store_id || '',
+          concept: r.concept,
+          amount: actualPending,
+          due_date: r.due_date,
+          status: actualPending < Number(r.amount) ? 'partially_paid' : (r.status as any),
+          estadoServidor: (r.sync_status || r.estadoServidor || 'synced') as any,
+          created_by: r.created_by || '',
+          created_at: r.created_at,
+          customers: {
+            id: r.customer_id,
+            name: r.customer_name || 'Cliente',
+            alias: r.customer_alias || null,
+            phone: r.customer_phone || '',
+          },
+        });
+      }
+    }
+
+    return overdueList;
   } catch (_e) {
     return [];
   }
@@ -252,7 +348,7 @@ export async function voidMovement(params: {
     await executeInTransaction(db, async () => {
       const rows = await getData(
         db,
-        'SELECT server_id, local_id, created_at FROM credits WHERE (server_id = ? OR local_id = ?) LIMIT 1;',
+        'SELECT server_id, local_id, created_at, concept FROM credits WHERE (server_id = ? OR local_id = ?) LIMIT 1;',
         [id, id],
       );
 
@@ -293,6 +389,7 @@ export async function voidMovement(params: {
             type: 'credit',
             status: 'cancelled',
             amount,
+            concept: rows[0]?.concept,
             movementId: serverId,
           }).catch(notifErr => {
             console.warn('[voidMovement] Error notificando crédito anulado:', notifErr?.message);
@@ -318,7 +415,7 @@ export async function voidMovement(params: {
     await executeInTransaction(db, async () => {
       const rows = await getData(
         db,
-        'SELECT server_id, local_id, created_at FROM payments WHERE (server_id = ? OR local_id = ?) LIMIT 1;',
+        'SELECT server_id, local_id, created_at, notes FROM payments WHERE (server_id = ? OR local_id = ?) LIMIT 1;',
         [id, id],
       );
 
@@ -359,6 +456,7 @@ export async function voidMovement(params: {
             type: 'payment',
             status: 'cancelled',
             amount,
+            notes: rows[0]?.notes,
             movementId: serverId,
           }).catch(notifErr => {
             console.warn('[voidMovement] Error notificando abono anulado:', notifErr?.message);
