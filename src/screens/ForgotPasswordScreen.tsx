@@ -251,7 +251,7 @@ export function ForgotPasswordScreen({ route, navigation }: any) {
       {/* Botón Atrás flotante */}
       <Pressable
         onPress={() => navigation.goBack()}
-        style={[styles.backBtn, { top: insets.top + 8 }]}>
+        style={[styles.backBtn, { top: Math.max(insets.top, 14) + 8 }]}>
         <Ionicons name="arrow-back" size={20} color={Colors.primary} />
       </Pressable>
 
@@ -259,7 +259,7 @@ export function ForgotPasswordScreen({ route, navigation }: any) {
         style={styles.scroll}
         contentContainerStyle={[
           styles.wrap,
-          { paddingTop: insets.top + 28, paddingBottom: insets.bottom + 32, flexGrow: 1 },
+          { paddingTop: Math.max(insets.top, 14) + 28, paddingBottom: insets.bottom + 32, flexGrow: 1 },
         ]}
         enableOnAndroid={true}
         enableAutomaticScroll={true}

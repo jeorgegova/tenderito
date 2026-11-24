@@ -1,0 +1,12 @@
+<resources>
+
+    <!-- Base application theme in dark mode. -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <!-- Customize your theme here. -->
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        <!-- Mantener la barra de estado blanca y con iconos oscuros visibles -->
+        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+</resources>

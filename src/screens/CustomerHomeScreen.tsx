@@ -18,6 +18,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   UIManager,
   View,
 } from 'react-native';
@@ -151,6 +152,7 @@ export function CustomerHomeScreen() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedDetailMovement, setSelectedDetailMovement] = useState<any | null>(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
 
   // Control del buscador con animación fluida en píxeles exactos
   const [headerWidth, setHeaderWidth] = useState(340);
@@ -314,23 +316,61 @@ export function CustomerHomeScreen() {
     }
   }, [queryClient]);
 
-  // Manejo del botón físico "Atrás" en Android:
-  // - Si está en el detalle de una tienda, regresa al listado de tiendas.
-  // - Si está en el inicio de tiendas, sale naturalmente de la app sin cerrar sesión ni mostrar modal.
-  useFocusEffect(
-    useCallback(() => {
-      const onBackPress = () => {
-        if (selectedStoreId) {
-          handleSelectStore(null);
-          return true;
-        }
-        // Retornar false permite que Android salga/minimice la app a segundo plano con la sesión intacta
-        return false;
-      };
-      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-      return () => sub.remove();
-    }, [selectedStoreId, handleSelectStore]),
-  );
+  const selectedStoreIdRef = useRef<string | null>(selectedStoreId);
+  selectedStoreIdRef.current = selectedStoreId;
+
+  const isSearchOpenRef = useRef(isSearchOpen);
+  isSearchOpenRef.current = isSearchOpen;
+
+  const selectedDetailMovementRef = useRef(selectedDetailMovement);
+  selectedDetailMovementRef.current = selectedDetailMovement;
+
+  const isMonthModalVisibleRef = useRef(isMonthModalVisible);
+  isMonthModalVisibleRef.current = isMonthModalVisible;
+
+  const menuVisibleRef = useRef(menuVisible);
+  menuVisibleRef.current = menuVisible;
+
+  const isEditProfileOpenRef = useRef(isEditProfileOpen);
+  isEditProfileOpenRef.current = isEditProfileOpen;
+
+  // Manejo robusto del botón físico "Atrás" en Android:
+  // - Si hay modales o menús abiertos, los cierra.
+  // - Si el buscador está abierto en el detalle, lo cierra.
+  // - Si está en el detalle de la cartera de una tienda, regresa al listado/inicio de tiendas y evita cerrar la app.
+  // - Si está en el listado inicial de tiendas sin nada abierto, sale naturalmente de la app a segundo plano.
+  useEffect(() => {
+    const onBackPress = () => {
+      if (menuVisibleRef.current) {
+        setMenuVisible(false);
+        return true;
+      }
+      if (isEditProfileOpenRef.current) {
+        setIsEditProfileOpen(false);
+        return true;
+      }
+      if (selectedDetailMovementRef.current) {
+        setSelectedDetailMovement(null);
+        return true;
+      }
+      if (isMonthModalVisibleRef.current) {
+        setIsMonthModalVisible(false);
+        return true;
+      }
+      if (isSearchOpenRef.current) {
+        handleCloseSearch();
+        return true;
+      }
+      if (selectedStoreIdRef.current) {
+        handleSelectStore(null);
+        return true;
+      }
+      // Retornar false permite que Android salga/minimice la app a segundo plano con la sesión intacta
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [handleSelectStore]);
 
   const stores = useMemo(() => data?.stores ?? [], [data?.stores]);
   const customerName = data?.customer?.name ?? 'Cliente';
@@ -544,13 +584,13 @@ export function CustomerHomeScreen() {
               activeOpacity={0.7}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="arrow-back" size={18} color={Colors.primary} />
-              <Text style={styles.backBtnText}>Volver a mis tiendas</Text>
+              <Text style={[styles.backBtnText, isTablet && { fontSize: 18 }]}>Volver</Text>
             </TouchableOpacity>
 
             {customerName ? (
               <TouchableOpacity
-                style={styles.sessionBadge}
-                onPress={() => setIsEditProfileOpen(true)}
+                style={[styles.sessionBadge, menuVisible && styles.sessionBadgeActive]}
+                onPress={() => setMenuVisible(prev => !prev)}
                 activeOpacity={0.7}>
                 <View style={styles.sessionAvatar}>
                   <Ionicons name="person" size={12} color="#059669" />
@@ -561,6 +601,12 @@ export function CustomerHomeScreen() {
                     {customerName}
                   </Text>
                 </View>
+                <Ionicons
+                  name={menuVisible ? 'chevron-up' : 'chevron-down'}
+                  size={12}
+                  color={Colors.textSecondary}
+                  style={{ marginLeft: 2 }}
+                />
               </TouchableOpacity>
             ) : null}
           </>
@@ -772,7 +818,7 @@ export function CustomerHomeScreen() {
                     style={[
                       styles.headerSearchIconBtn,
                       (searchConcept.trim().length > 0 || isSearchOpen) &&
-                        styles.headerSearchIconBtnActive,
+                      styles.headerSearchIconBtnActive,
                     ]}
                     onPress={() => {
                       if (isSearchOpen) {
@@ -977,32 +1023,34 @@ export function CustomerHomeScreen() {
                         style={styles.colConcept}
                         activeOpacity={0.7}
                         onPress={() => setSelectedDetailMovement(item)}>
-                        <Text
-                          style={[
-                            styles.rowConceptTitle,
-                            isCancelled && styles.textCancelled,
-                          ]}
-                          numberOfLines={6}>
-                          {item.title}
-                        </Text>
+                        <View style={styles.rowConceptHeader}>
+                          <Text
+                            style={[
+                              styles.rowConceptTitle,
+                              isCancelled && styles.textCancelled,
+                            ]}
+                            numberOfLines={6}>
+                            {item.title}
+                          </Text>
+                          {isCancelled && (
+                            <View style={[styles.kindBadge, styles.kindBadgeCancelled]}>
+                              <Text style={[styles.kindBadgeText, styles.kindBadgeTextCancelled]}>
+                                Cancelado
+                              </Text>
+                            </View>
+                          )}
+                        </View>
 
                         <View style={styles.rowBadgeWrap}>
                           {isCancelled ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <View style={[styles.kindBadge, styles.kindBadgeCancelled]}>
-                                <Text style={[styles.kindBadgeText, styles.kindBadgeTextCancelled]}>
-                                  Cancelado
-                                </Text>
-                              </View>
-                              <View style={[styles.kindBadge, { backgroundColor: '#F1F5F9' }]}>
-                                <Text
-                                  style={[
-                                    styles.kindBadgeText,
-                                    { color: '#94A3B8', textDecorationLine: 'line-through' },
-                                  ]}>
-                                  {isCredit ? 'Compra fiada (+)' : 'Abono realizado (-)'}
-                                </Text>
-                              </View>
+                            <View style={[styles.kindBadge, { backgroundColor: '#F1F5F9' }]}>
+                              <Text
+                                style={[
+                                  styles.kindBadgeText,
+                                  { color: '#94A3B8', textDecorationLine: 'line-through' },
+                                ]}>
+                                {isCredit ? 'Compra fiada (+)' : 'Abono realizado (-)'}
+                              </Text>
                             </View>
                           ) : (
                             <View
@@ -1133,177 +1181,177 @@ export function CustomerHomeScreen() {
         </ScrollView>
       )}
 
-        {/* Modal para seleccionar el mes */}
-        <Modal
-          visible={isMonthModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setIsMonthModalVisible(false)}>
+      {/* Modal para seleccionar el mes */}
+      <Modal
+        visible={isMonthModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsMonthModalVisible(false)}>
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setIsMonthModalVisible(false)}>
           <Pressable
-            style={styles.modalBackdrop}
-            onPress={() => setIsMonthModalVisible(false)}>
-            <Pressable
-              style={styles.modalCard}
-              onPress={e => e.stopPropagation()}>
-              {/* Cabecera del modal */}
-              <View style={styles.modalHeader}>
-                <View style={styles.modalHeaderTitleWrap}>
-                  <View style={styles.modalIconWrap}>
+            style={styles.modalCard}
+            onPress={e => e.stopPropagation()}>
+            {/* Cabecera del modal */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderTitleWrap}>
+                <View style={styles.modalIconWrap}>
+                  <Ionicons
+                    name="calendar"
+                    size={20}
+                    color={Colors.primary}
+                  />
+                </View>
+                <View style={styles.flexOne}>
+                  <Text style={styles.modalTitle}>Seleccionar el mes...</Text>
+                  <Text style={styles.modalSubtitle}>
+                    Filtra tus cuentas y abonos por mes
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsMonthModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={styles.modalCloseBtn}>
+                <Ionicons
+                  name="close"
+                  size={22}
+                  color={Colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Lista de meses disponibles */}
+            <ScrollView
+              style={styles.modalMonthList}
+              showsVerticalScrollIndicator={true}>
+              {availableMonths.map(monthKey => {
+                const isSelected = selectedMonth === monthKey;
+                const isCurrent = monthKey === getCurrentMonthKey();
+                const count = storeMovements.filter(
+                  m => getMonthKeyFromDate(m.date) === monthKey,
+                ).length;
+
+                return (
+                  <TouchableOpacity
+                    key={monthKey}
+                    style={[
+                      styles.modalMonthItem,
+                      isSelected && styles.modalMonthItemSelected,
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => handleSelectMonth(monthKey)}>
+                    <View style={styles.modalMonthItemLeft}>
+                      <View
+                        style={[
+                          styles.modalMonthItemIcon,
+                          isSelected && styles.modalMonthItemIconSelected,
+                        ]}>
+                        <Ionicons
+                          name="calendar-outline"
+                          size={18}
+                          color={
+                            isSelected ? Colors.primary : Colors.textSecondary
+                          }
+                        />
+                      </View>
+                      <View style={styles.flexOne}>
+                        <View style={styles.modalMonthNameRow}>
+                          <Text
+                            style={[
+                              styles.modalMonthName,
+                              isSelected && styles.modalMonthNameSelected,
+                            ]}>
+                            {formatMonthLabel(monthKey)}
+                          </Text>
+                          {isCurrent && (
+                            <View style={styles.currentBadge}>
+                              <Text style={styles.currentBadgeText}>
+                                Mes actual
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.modalMonthCount}>
+                          {isSelected
+                            ? `${storeMovements.length} movimiento${storeMovements.length === 1 ? '' : 's'
+                            } en este mes`
+                            : 'Consultar este mes'}
+                        </Text>
+                      </View>
+                    </View>
+
                     <Ionicons
-                      name="calendar"
-                      size={20}
-                      color={Colors.primary}
+                      name={
+                        isSelected ? 'checkmark-circle' : 'ellipse-outline'
+                      }
+                      size={22}
+                      color={isSelected ? Colors.primary : Colors.border}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+
+              {/* Opción para ver todos los meses */}
+              <TouchableOpacity
+                style={[
+                  styles.modalMonthItem,
+                  selectedMonth === 'all' && styles.modalMonthItemSelected,
+                  styles.modalMonthItemAll,
+                ]}
+                activeOpacity={0.7}
+                onPress={() => handleSelectMonth('all')}>
+                <View style={styles.modalMonthItemLeft}>
+                  <View
+                    style={[
+                      styles.modalMonthItemIcon,
+                      selectedMonth === 'all' &&
+                      styles.modalMonthItemIconSelected,
+                    ]}>
+                    <Ionicons
+                      name="layers-outline"
+                      size={18}
+                      color={
+                        selectedMonth === 'all'
+                          ? Colors.primary
+                          : Colors.textSecondary
+                      }
                     />
                   </View>
                   <View style={styles.flexOne}>
-                    <Text style={styles.modalTitle}>Seleccionar el mes...</Text>
-                    <Text style={styles.modalSubtitle}>
-                      Filtra tus cuentas y abonos por mes
+                    <Text
+                      style={[
+                        styles.modalMonthName,
+                        selectedMonth === 'all' &&
+                        styles.modalMonthNameSelected,
+                      ]}>
+                      Todos los meses
+                    </Text>
+                    <Text style={styles.modalMonthCount}>
+                      {selectedMonth === 'all'
+                        ? `${storeMovements.length} movimientos en total`
+                        : 'Consultar historial completo sin filtro de fecha'}
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity
-                  onPress={() => setIsMonthModalVisible(false)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  style={styles.modalCloseBtn}>
-                  <Ionicons
-                    name="close"
-                    size={22}
-                    color={Colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
 
-              {/* Lista de meses disponibles */}
-              <ScrollView
-                style={styles.modalMonthList}
-                showsVerticalScrollIndicator={true}>
-                {availableMonths.map(monthKey => {
-                  const isSelected = selectedMonth === monthKey;
-                  const isCurrent = monthKey === getCurrentMonthKey();
-                  const count = storeMovements.filter(
-                    m => getMonthKeyFromDate(m.date) === monthKey,
-                  ).length;
-
-                  return (
-                    <TouchableOpacity
-                      key={monthKey}
-                      style={[
-                        styles.modalMonthItem,
-                        isSelected && styles.modalMonthItemSelected,
-                      ]}
-                      activeOpacity={0.7}
-                      onPress={() => handleSelectMonth(monthKey)}>
-                      <View style={styles.modalMonthItemLeft}>
-                        <View
-                          style={[
-                            styles.modalMonthItemIcon,
-                            isSelected && styles.modalMonthItemIconSelected,
-                          ]}>
-                          <Ionicons
-                            name="calendar-outline"
-                            size={18}
-                            color={
-                              isSelected ? Colors.primary : Colors.textSecondary
-                            }
-                          />
-                        </View>
-                        <View style={styles.flexOne}>
-                          <View style={styles.modalMonthNameRow}>
-                            <Text
-                              style={[
-                                styles.modalMonthName,
-                                isSelected && styles.modalMonthNameSelected,
-                              ]}>
-                              {formatMonthLabel(monthKey)}
-                            </Text>
-                            {isCurrent && (
-                              <View style={styles.currentBadge}>
-                                <Text style={styles.currentBadgeText}>
-                                  Mes actual
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={styles.modalMonthCount}>
-                            {isSelected
-                              ? `${storeMovements.length} movimiento${storeMovements.length === 1 ? '' : 's'
-                              } en este mes`
-                              : 'Consultar este mes'}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <Ionicons
-                        name={
-                          isSelected ? 'checkmark-circle' : 'ellipse-outline'
-                        }
-                        size={22}
-                        color={isSelected ? Colors.primary : Colors.border}
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
-
-                {/* Opción para ver todos los meses */}
-                <TouchableOpacity
-                  style={[
-                    styles.modalMonthItem,
-                    selectedMonth === 'all' && styles.modalMonthItemSelected,
-                    styles.modalMonthItemAll,
-                  ]}
-                  activeOpacity={0.7}
-                  onPress={() => handleSelectMonth('all')}>
-                  <View style={styles.modalMonthItemLeft}>
-                    <View
-                      style={[
-                        styles.modalMonthItemIcon,
-                        selectedMonth === 'all' &&
-                        styles.modalMonthItemIconSelected,
-                      ]}>
-                      <Ionicons
-                        name="layers-outline"
-                        size={18}
-                        color={
-                          selectedMonth === 'all'
-                            ? Colors.primary
-                            : Colors.textSecondary
-                        }
-                      />
-                    </View>
-                    <View style={styles.flexOne}>
-                      <Text
-                        style={[
-                          styles.modalMonthName,
-                          selectedMonth === 'all' &&
-                          styles.modalMonthNameSelected,
-                        ]}>
-                        Todos los meses
-                      </Text>
-                      <Text style={styles.modalMonthCount}>
-                        {selectedMonth === 'all'
-                          ? `${storeMovements.length} movimientos en total`
-                          : 'Consultar historial completo sin filtro de fecha'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Ionicons
-                    name={
-                      selectedMonth === 'all'
-                        ? 'checkmark-circle'
-                        : 'ellipse-outline'
-                    }
-                    size={22}
-                    color={
-                      selectedMonth === 'all' ? Colors.primary : Colors.border
-                    }
-                  />
-                </TouchableOpacity>
-              </ScrollView>
-            </Pressable>
+                <Ionicons
+                  name={
+                    selectedMonth === 'all'
+                      ? 'checkmark-circle'
+                      : 'ellipse-outline'
+                  }
+                  size={22}
+                  color={
+                    selectedMonth === 'all' ? Colors.primary : Colors.border
+                  }
+                />
+              </TouchableOpacity>
+            </ScrollView>
           </Pressable>
-        </Modal>
+        </Pressable>
+      </Modal>
 
       {/* Vista 1: Listado de tiendas vinculadas ("Mis Tiendas") */}
       {!selectedStore && (
@@ -1315,221 +1363,280 @@ export function CustomerHomeScreen() {
           refreshing={isFetching}
           onRefresh={handleRefreshAll}
           showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <>
-            {/* Tarjeta del total protagonista con curvas de marca */}
-            <View
-              style={[
-                styles.heroCard,
-                allClear ? styles.heroCardClear : styles.heroCardDebt,
-              ]}>
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.heroBgCurve1,
-                  allClear && styles.heroBgCurveClear,
-                ]}
-              />
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.heroBgCurve2,
-                  allClear && styles.heroBgCurveClear,
-                ]}
-              />
-
-              <View style={styles.heroTop}>
-                <View
-                  style={[
-                    styles.heroIconBox,
-                    allClear ? styles.heroIconBoxClear : styles.heroIconBoxDebt,
-                  ]}>
-                  <Ionicons
-                    name={allClear ? 'checkmark-circle' : 'wallet'}
-                    size={20}
-                    color="#FFFFFF"
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.heroLabel,
-                    allClear ? styles.heroLabelClear : styles.heroLabelDebt,
-                  ]}>
-                  {allClear
-                    ? '¡ESTÁS AL DÍA EN TUS PAGOS!'
-                    : 'TOTAL QUE DEBES EN TODAS TUS TIENDAS'}
-                </Text>
-              </View>
-
-              <AnimatedMoney
-                value={totalBalance}
-                formatter={formatCOP}
-                style={[
-                  styles.heroAmount,
-                  allClear ? styles.heroAmountClear : styles.heroAmountDebt,
-                  isSmall && styles.heroAmountSmall,
-                ]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.78}
-              />
-
+          ListHeaderComponent={
+            <>
+              {/* Tarjeta del total protagonista con curvas de marca */}
               <View
                 style={[
-                  styles.heroFooterCapsule,
-                  allClear ? styles.heroFooterCapsuleClear : styles.heroFooterCapsuleDebt,
+                  styles.heroCard,
+                  allClear ? styles.heroCardClear : styles.heroCardDebt,
                 ]}>
-                <Ionicons
-                  name={allClear ? 'sparkles' : 'storefront-outline'}
-                  size={15}
-                  color="#FFFFFF"
-                />
-                <Text
+                <View
+                  pointerEvents="none"
                   style={[
-                    styles.heroHelpText,
-                    allClear ? styles.heroHelpTextClear : styles.heroHelpTextDebt,
-                  ]}>
-                  {allClear
-                    ? 'No tienes ninguna deuda pendiente. ¡Felicitaciones!'
-                    : `Tienes cuenta en ${stores.length} tienda${
-                        stores.length !== 1 ? 's' : ''
-                      }. Toca abajo para ver tu libreta.`}
-                </Text>
-              </View>
-            </View>
+                    styles.heroBgCurve1,
+                    allClear && styles.heroBgCurveClear,
+                  ]}
+                />
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.heroBgCurve2,
+                    allClear && styles.heroBgCurveClear,
+                  ]}
+                />
 
-            {/* Título de la sección de tiendas */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionMainTitle}>
-                Tus tiendas ({stores.length})
-              </Text>
-              <Text style={styles.sectionSubtitle}>
-                Toca la tienda que deseas revisar para ver sus compras y pagos:
-              </Text>
-            </View>
-          </>
-        }
-        ListEmptyComponent={
-          <Card style={styles.emptyCard}>
-            <Ionicons
-              name="storefront-outline"
-              size={42}
-              color={Colors.textMuted}
-            />
-            <Text style={styles.emptyCardTitle}>
-              No tienes tiendas vinculadas
-            </Text>
-            <Text style={styles.emptyCardText}>
-              Pídele al tendero de tu barrio que te registre con tu número de
-              documento para que puedas ver tus cuentas aquí.
-            </Text>
-          </Card>
-        }
-        renderItem={({ item }: any) => {
-          const rawStore: any = item.stores;
-          const store: any = Array.isArray(rawStore) ? rawStore[0] : rawStore;
-          const storeName = store?.store_name ?? 'Tienda de barrio';
-          const balance = Number(item.current_balance || 0);
-          const creditLimit = Number(item.credit_limit || 0);
-          const paid = balance === 0;
-
-          return (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => handleSelectStore(item.store_id)}
-              style={styles.storeCardWrapper}>
-              <Card style={styles.storeCard}>
-                <View style={styles.storeCardRow}>
-                  {/* Icono de la tienda */}
+                <View style={styles.heroTop}>
                   <View
                     style={[
-                      styles.storeIconWrap,
-                      paid ? styles.storeIconWrapPaid : styles.storeIconWrapDebt,
+                      styles.heroIconBox,
+                      allClear ? styles.heroIconBoxClear : styles.heroIconBoxDebt,
                     ]}>
                     <Ionicons
-                      name="storefront"
-                      size={24}
-                      color={paid ? Colors.success : Colors.destructive}
+                      name={allClear ? 'checkmark-circle' : 'wallet'}
+                      size={20}
+                      color="#FFFFFF"
                     />
                   </View>
-
-                  {/* Información de la tienda */}
-                  <View style={styles.flexOne}>
-                    <Text style={styles.storeCardName} numberOfLines={2}>
-                      {storeName}
-                    </Text>
-                    {store?.phone ? (
-                      <View style={styles.storeCardPhoneRow}>
-                        <Ionicons
-                          name="call-outline"
-                          size={12}
-                          color="#16A34A"
-                        />
-                        <Text style={styles.storeCardPhoneText}>
-                          {store.phone}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {store?.address ? (
-                      <View style={styles.storeCardAddressRow}>
-                        <Ionicons
-                          name="location-outline"
-                          size={12}
-                          color={Colors.destructive}
-                        />
-                        <Text style={styles.storeCardMeta} numberOfLines={2}>
-                          {store.address}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  {/* Saldo de la tienda */}
-                  <View style={styles.storeCardBalanceWrap}>
-                    <Text
-                      style={[
-                        styles.storeCardBalanceLabel,
-                        paid ? styles.balanceLabelPaid : styles.balanceLabelDebt,
-                      ]}>
-                      {paid ? 'Al día' : 'Debes'}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.storeCardBalance,
-                        paid ? styles.storeCardBalancePaid : styles.storeCardBalanceDebt,
-                      ]}>
-                      {formatCOP(balance)}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Botón visual para tocar y ver libreta */}
-                <View style={styles.storeCardFooterPill}>
-                  <Text style={styles.storeCardFooterText}>
-                    Consultar libreta de movimientos
+                  <Text
+                    style={[
+                      styles.heroLabel,
+                      allClear ? styles.heroLabelClear : styles.heroLabelDebt,
+                    ]}>
+                    {allClear
+                      ? '¡ESTÁS AL DÍA EN TUS PAGOS!'
+                      : 'TOTAL QUE DEBES EN TODAS TUS TIENDAS'}
                   </Text>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={15}
-                    color={Colors.primary}
-                  />
                 </View>
-              </Card>
-            </TouchableOpacity>
-          );
-        }}
-        ListFooterComponent={
-          <View style={styles.listFooter}>
-            <Button
-              title="Cerrar sesión"
-              variant="ghost"
-              onPress={handleLogout}
-              style={styles.footerLogoutBtn}
-            />
-          </View>
-        }
-      />
+
+                <AnimatedMoney
+                  value={totalBalance}
+                  formatter={formatCOP}
+                  style={[
+                    styles.heroAmount,
+                    allClear ? styles.heroAmountClear : styles.heroAmountDebt,
+                    isSmall && styles.heroAmountSmall,
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                />
+
+                <View
+                  style={[
+                    styles.heroFooterCapsule,
+                    allClear ? styles.heroFooterCapsuleClear : styles.heroFooterCapsuleDebt,
+                  ]}>
+                  <Ionicons
+                    name={allClear ? 'sparkles' : 'storefront-outline'}
+                    size={15}
+                    color="#FFFFFF"
+                  />
+                  <Text
+                    style={[
+                      styles.heroHelpText,
+                      allClear ? styles.heroHelpTextClear : styles.heroHelpTextDebt,
+                    ]}>
+                    {allClear
+                      ? 'No tienes ninguna deuda pendiente. ¡Felicitaciones!'
+                      : `Tienes cuenta en ${stores.length} tienda${stores.length !== 1 ? 's' : ''
+                      }. Toca abajo para ver tu libreta.`}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Título de la sección de tiendas */}
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionMainTitle}>
+                  Tus tiendas ({stores.length})
+                </Text>
+                <Text style={styles.sectionSubtitle}>
+                  Toca la tienda que deseas revisar para ver sus compras y pagos:
+                </Text>
+              </View>
+            </>
+          }
+          ListEmptyComponent={
+            <Card style={styles.emptyCard}>
+              <Ionicons
+                name="storefront-outline"
+                size={42}
+                color={Colors.textMuted}
+              />
+              <Text style={styles.emptyCardTitle}>
+                No tienes tiendas vinculadas
+              </Text>
+              <Text style={styles.emptyCardText}>
+                Pídele al tendero de tu barrio que te registre con tu número de
+                documento para que puedas ver tus cuentas aquí.
+              </Text>
+            </Card>
+          }
+          renderItem={({ item }: any) => {
+            const rawStore: any = item.stores;
+            const store: any = Array.isArray(rawStore) ? rawStore[0] : rawStore;
+            const storeName = store?.store_name ?? 'Tienda de barrio';
+            const balance = Number(item.current_balance || 0);
+            const creditLimit = Number(item.credit_limit || 0);
+            const paid = balance === 0;
+
+            return (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => handleSelectStore(item.store_id)}
+                style={styles.storeCardWrapper}>
+                <Card style={styles.storeCard}>
+                  <View style={styles.storeCardRow}>
+                    {/* Icono de la tienda */}
+                    <View
+                      style={[
+                        styles.storeIconWrap,
+                        paid ? styles.storeIconWrapPaid : styles.storeIconWrapDebt,
+                      ]}>
+                      <Ionicons
+                        name="storefront"
+                        size={24}
+                        color={paid ? Colors.success : Colors.destructive}
+                      />
+                    </View>
+
+                    {/* Información de la tienda */}
+                    <View style={styles.flexOne}>
+                      <Text style={styles.storeCardName} numberOfLines={2}>
+                        {storeName}
+                      </Text>
+                      {store?.phone ? (
+                        <View style={styles.storeCardPhoneRow}>
+                          <Ionicons
+                            name="call-outline"
+                            size={12}
+                            color="#16A34A"
+                          />
+                          <Text style={styles.storeCardPhoneText}>
+                            {store.phone}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {store?.address ? (
+                        <View style={styles.storeCardAddressRow}>
+                          <Ionicons
+                            name="location-outline"
+                            size={12}
+                            color={Colors.destructive}
+                          />
+                          <Text style={styles.storeCardMeta} numberOfLines={2}>
+                            {store.address}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    {/* Saldo de la tienda */}
+                    <View style={styles.storeCardBalanceWrap}>
+                      <Text
+                        style={[
+                          styles.storeCardBalanceLabel,
+                          paid ? styles.balanceLabelPaid : styles.balanceLabelDebt,
+                        ]}>
+                        {paid ? 'Al día' : 'Debes'}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.storeCardBalance,
+                          paid ? styles.storeCardBalancePaid : styles.storeCardBalanceDebt,
+                        ]}>
+                        {formatCOP(balance)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Botón visual para tocar y ver libreta */}
+                  <View style={styles.storeCardFooterPill}>
+                    <Text style={styles.storeCardFooterText}>
+                      Consultar libreta de movimientos
+                    </Text>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={15}
+                      color={Colors.primary}
+                    />
+                  </View>
+                </Card>
+              </TouchableOpacity>
+            );
+          }}
+          ListFooterComponent={
+            <View style={styles.listFooter}>
+              <Button
+                title="Cerrar sesión"
+                variant="ghost"
+                onPress={handleLogout}
+                style={styles.footerLogoutBtn}
+              />
+            </View>
+          }
+        />
       )}
+
+      {/* Menú flotante al dar clic en el nombre de usuario (Cliente) */}
+      <Modal
+        transparent
+        visible={menuVisible}
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}>
+        <Pressable
+          style={styles.menuModalBackdrop}
+          onPress={() => setMenuVisible(false)}>
+          <Pressable
+            style={[
+              styles.menuPopover,
+              {
+                top: Math.max(insets.top, 14) + (isSmall ? 48 : 56),
+                right: isSmall ? 16 : isTablet ? 28 : 20,
+              },
+            ]}
+            onPress={e => e.stopPropagation()}>
+            {/* Encabezado del menú */}
+            <View style={styles.menuHeader}>
+              <View style={[styles.menuAvatarLarge, { backgroundColor: '#ECFDF5' }]}>
+                <Ionicons name="person" size={15} color="#059669" />
+              </View>
+              <View style={styles.menuHeaderCol}>
+                <Text
+                  style={styles.menuNameText}
+                  numberOfLines={2}
+                  ellipsizeMode="tail">
+                  {customerName}
+                </Text>
+                <Text
+                  style={[styles.menuRoleText, { color: '#059669' }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail">
+                  Cliente
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.menuDivider} />
+
+            {/* Opción única: Cerrar sesión */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setMenuVisible(false);
+                handleLogout();
+              }}
+              activeOpacity={0.7}>
+              <View style={[styles.menuItemIcon, { backgroundColor: '#FEE2E2' }]}>
+                <Ionicons name="log-out-outline" size={18} color={Colors.destructive} />
+              </View>
+              <Text style={[styles.menuItemText, { color: Colors.destructive }]}>
+                Cerrar sesión
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Modal para editar datos personales del cliente */}
       {data?.customer && (
@@ -1618,7 +1725,7 @@ export function CustomerHomeScreen() {
                     style={[
                       styles.detailDueBox,
                       isOverdueBogota(selectedDetailMovement.dueDate) &&
-                        styles.detailDueBoxOverdue,
+                      styles.detailDueBoxOverdue,
                     ]}>
                     <Ionicons
                       name="calendar-outline"
@@ -1633,7 +1740,7 @@ export function CustomerHomeScreen() {
                       style={[
                         styles.detailDueText,
                         isOverdueBogota(selectedDetailMovement.dueDate) &&
-                          styles.detailDueTextOverdue,
+                        styles.detailDueTextOverdue,
                       ]}>
                       {isOverdueBogota(selectedDetailMovement.dueDate)
                         ? `Vencido el ${formatDateCompact(selectedDetailMovement.dueDate)}`
@@ -2139,6 +2246,93 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     marginTop: 1,
   },
+  sessionBadgeActive: {
+    borderColor: '#059669',
+    backgroundColor: '#F0FDF4',
+  },
+  menuModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
+  },
+  menuPopover: {
+    position: 'absolute',
+    width: 235,
+    maxWidth: '85%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    shadowColor: '#142033',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 18,
+    elevation: 12,
+    overflow: 'hidden',
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  menuAvatarLarge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  menuHeaderCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  menuNameText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.text,
+    lineHeight: 16,
+    flexShrink: 1,
+  },
+  menuRoleText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#059669',
+    lineHeight: 13,
+    marginTop: 2,
+    flexShrink: 1,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 4,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+  menuItemIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuItemText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.text,
+  },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2565,6 +2759,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: Colors.text,
+  },
+  rowConceptHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   rowBadgeWrap: {
     marginTop: 3,

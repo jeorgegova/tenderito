@@ -5,6 +5,7 @@ import {
   Keyboard,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -30,6 +31,7 @@ import { fetchFreePortfolioStatus } from '../services/portfolio';
 import { showAlert } from '../components/ui/AlertModal';
 import { confirmLogout } from '../lib/session';
 import { useResponsive } from '../hooks/useResponsive';
+import { useSync } from '../hooks/useSync';
 import { FloatingActionButton } from '../components/ui/FloatingActionButton';
 import {
   getCachedBalanceVisibility,
@@ -124,6 +126,27 @@ export function DashboardScreen({ navigation }: any) {
     queryFn: fetchFreePortfolioStatus,
     enabled: Boolean(profile) && subStatus.effectivePlan === 'free',
   });
+
+  const { sync, isSyncing } = useSync();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        sync({ force: true }),
+        profileQuery.refetch(),
+        total.refetch(),
+        overdue.refetch(),
+        customers.refetch(),
+        freePortfolio.refetch(),
+      ]);
+    } catch (err) {
+      console.warn('[DashboardScreen] Error en refresco manual:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [sync, profileQuery, total, overdue, customers, freePortfolio]);
   const debtors = (customers.data ?? []).filter(
     customer => Number(customer.current_balance) > 0,
   );
@@ -183,6 +206,8 @@ export function DashboardScreen({ navigation }: any) {
             ? `Plan ${subStatus.planId.toUpperCase()} · Vence ${subStatus.formattedEndDate}`
             : `Plan ${(profile?.subscription_plan || 'free').toUpperCase()}`
         }
+        sessionName={profile?.merchant_name}
+        sessionRole="Tendero"
         showCurve
       />
       <ScrollView
@@ -191,7 +216,15 @@ export function DashboardScreen({ navigation }: any) {
           styles.content,
           tabletContainerStyle(720),
         ]}
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing || isSyncing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+            tintColor={Colors.primary}
+          />
+        }>
         {/* Selección inicial de cartera al bajar al plan Free */}
         {freePortfolio.data?.selection_pending && (
           <Pressable

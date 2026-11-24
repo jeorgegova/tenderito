@@ -6,6 +6,7 @@ import {
   Keyboard,
   Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -22,6 +23,7 @@ import { fetchCustomers } from '../services/customers';
 import { DynamicBrandCurves } from '../components/ui/DynamicBrandCurves';
 import { Colors, Radius, formatCOP } from '../theme';
 import { useResponsive } from '../hooks/useResponsive';
+import { useSync } from '../hooks/useSync';
 import { CreateCustomerModal } from '../components/CreateCustomerModal';
 import { FloatingActionButton } from '../components/ui/FloatingActionButton';
 
@@ -49,6 +51,23 @@ export function CustomersScreen({ navigation }: any) {
     queryKey: ['customers'],
     queryFn: () => fetchCustomers(),
   });
+
+  const { sync, isSyncing } = useSync();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        sync({ force: true }),
+        refetch(),
+      ]);
+    } catch (err) {
+      console.warn('[CustomersScreen] Error en refresco manual:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [sync, refetch]);
 
   // Botón físico "Atrás" en Clientes: si está en Nuevo Cliente lo cierra, de lo contrario vuelve a Inicio
   useFocusEffect(
@@ -136,8 +155,14 @@ export function CustomersScreen({ navigation }: any) {
         contentContainerStyle={[styles.listContent, tabletContainerStyle(720)]}
         data={visibleCustomers}
         keyExtractor={i => i.id}
-        refreshing={isLoading}
-        onRefresh={refetch}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing || isSyncing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+            tintColor={Colors.primary}
+          />
+        }
         ListEmptyComponent={
           !isLoading ? (
             <Card style={styles.emptyContainer}>

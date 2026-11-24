@@ -4,15 +4,17 @@ import {
   Text,
   View,
   TouchableOpacity,
-  TouchableWithoutFeedback,
+  Pressable,
   Modal,
   Animated,
   Easing,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
+import {useQuery} from '@tanstack/react-query';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import {useStore} from '../../store/useStore';
+import {fetchProfile} from '../../services/profile';
 import {Colors} from '../../theme';
 import {useResponsive} from '../../hooks/useResponsive';
 import {useSync} from '../../hooks/useSync';
@@ -41,8 +43,13 @@ export function Header({
   const navigation = useNavigation<any>();
   const {isSmall, isTablet, maxContentWidth} = useResponsive();
   const [menuVisible, setMenuVisible] = useState(false);
-  const profile = useStore(s => s.profile);
-  const activeName = sessionName || profile?.merchant_name;
+  const storeProfile = useStore(s => s.profile);
+  const profileQuery = useQuery({
+    queryKey: ['profile'],
+    queryFn: fetchProfile,
+  });
+  const profile = profileQuery.data ?? storeProfile;
+  const activeName = sessionName || profile?.merchant_name || 'Tendero';
   const activeRole = sessionRole || (profile ? 'Tendero' : '');
   const {sync, isSyncing, isOnline} = useSync();
 
@@ -96,200 +103,217 @@ export function Header({
   };
 
   return (
-    <View
-      style={[
-        styles.wrap,
-        {
-          paddingTop: insets.top + (isSmall ? 4 : 8),
-          paddingHorizontal: isSmall ? 16 : isTablet ? 28 : 20,
-          maxWidth: maxContentWidth,
-          width: '100%',
-          alignSelf: 'center',
-        },
-      ]}>
-      {/* Formas curvas decorativas de la marca en la esquina superior derecha */}
-      {showCurve && (
-        curveVariant === 'profile' ? (
-          <View pointerEvents="none" style={styles.waveProfileContainer}>
-            <View style={styles.waveProfileOuterSec} />
-            <View style={styles.waveProfileOuterMain} />
-            <View style={styles.waveProfileInnerSec} />
-            <View style={styles.waveProfileInnerMain} />
-            <View style={styles.waveProfileDropPeach} />
-            <View style={styles.waveProfileDropOrange} />
-          </View>
-        ) : (
-          <View pointerEvents="none" style={styles.curveContainer}>
-            <View style={styles.curveOuter} />
-            <View style={styles.curveInner} />
-          </View>
-        )
-      )}
+    <>
+      <View
+        style={[
+          styles.wrap,
+          {
+            paddingTop: Math.max(insets.top, 14) + (isSmall ? 4 : 8),
+            paddingHorizontal: isSmall ? 16 : isTablet ? 28 : 20,
+            maxWidth: maxContentWidth,
+            width: '100%',
+            alignSelf: 'center',
+          },
+        ]}>
+        {/* Formas curvas decorativas de la marca en la esquina superior derecha */}
+        {showCurve && (
+          curveVariant === 'profile' ? (
+            <View pointerEvents="none" style={styles.waveProfileContainer}>
+              <View style={styles.waveProfileOuterSec} />
+              <View style={styles.waveProfileOuterMain} />
+              <View style={styles.waveProfileInnerSec} />
+              <View style={styles.waveProfileInnerMain} />
+              <View style={styles.waveProfileDropPeach} />
+              <View style={styles.waveProfileDropOrange} />
+            </View>
+          ) : (
+            <View pointerEvents="none" style={styles.curveContainer}>
+              <View style={styles.curveOuter} />
+              <View style={styles.curveInner} />
+            </View>
+          )
+        )}
 
-      <View style={styles.contentRow}>
-        <View style={styles.textCol}>
-          {/* Marca Tenderito */}
-          <View style={styles.brandRow}>
-            <View style={styles.brandDot} />
-            <Text style={styles.eyebrow}>TENDERITO</Text>
-          </View>
-          <Text
-            style={[
-              styles.title,
-              isTablet && styles.titleTablet,
-              isSmall && styles.titleSmall,
-            ]}
-            numberOfLines={1}
-            ellipsizeMode="tail">
-            {title}
-          </Text>
-        </View>
-        <View style={styles.rightGroup}>
-          {showSyncButton && (
-            <TouchableOpacity
-              onPress={handleManualSync}
-              disabled={isSyncing}
-              activeOpacity={0.7}
+        <View style={styles.contentRow}>
+          <View style={styles.textCol}>
+            {/* Marca Tenderito */}
+            <View style={styles.brandRow}>
+              <View style={styles.brandDot} />
+              <Text style={styles.eyebrow}>TENDERITO</Text>
+            </View>
+            <Text
               style={[
-                styles.syncBtn,
-                isSyncing && styles.syncBtnActive,
-              ]}>
-              <Animated.View style={{transform: [{rotate: spin}]}}>
-                <Ionicons
-                  name="sync-outline"
-                  size={16}
-                  color={
-                    isSyncing
-                      ? Colors.primary
-                      : isOnline
-                      ? Colors.textSecondary
-                      : Colors.textMuted
-                  }
-                />
-              </Animated.View>
-            </TouchableOpacity>
-          )}
-
-          {rightElement ? (
-            <View style={styles.rightWrap}>{rightElement}</View>
-          ) : activeName ? (
-            <TouchableOpacity
-              style={[
-                styles.sessionBadge,
-                isSmall && styles.sessionBadgeSmall,
-                isTablet && styles.sessionBadgeTablet,
-                menuVisible && styles.sessionBadgeActive,
+                styles.title,
+                isTablet && styles.titleTablet,
+                isSmall && styles.titleSmall,
               ]}
-              onPress={() => setMenuVisible(prev => !prev)}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={`Usuario ${activeName}. Tocar para abrir menú de perfil`}>
-              <View style={styles.sessionAvatar}>
-                <Ionicons name="person-outline" size={13} color={Colors.primary} />
-              </View>
-              <View style={styles.sessionCol}>
-                {activeRole ? (
-                  <Text style={styles.sessionRole}>{activeRole}</Text>
-                ) : null}
-                <Text style={styles.sessionName} numberOfLines={1}>
-                  {activeName}
-                </Text>
-              </View>
-              <Ionicons
-                name={menuVisible ? 'chevron-up' : 'chevron-down'}
-                size={12}
-                color={Colors.textMuted}
-                style={{ marginLeft: 2 }}
-              />
-            </TouchableOpacity>
-          ) : null}
+              numberOfLines={1}
+              ellipsizeMode="tail">
+              {title}
+            </Text>
+          </View>
+          <View style={styles.rightGroup}>
+            {showSyncButton && (
+              <TouchableOpacity
+                onPress={handleManualSync}
+                disabled={isSyncing}
+                activeOpacity={0.7}
+                style={[
+                  styles.syncBtn,
+                  isSyncing && styles.syncBtnActive,
+                ]}>
+                <Animated.View style={{transform: [{rotate: spin}]}}>
+                  <Ionicons
+                    name="sync-outline"
+                    size={16}
+                    color={
+                      isSyncing
+                        ? Colors.primary
+                        : isOnline
+                        ? Colors.textSecondary
+                        : Colors.textMuted
+                    }
+                  />
+                </Animated.View>
+              </TouchableOpacity>
+            )}
+
+            {rightElement ? (
+              <View style={styles.rightWrap}>{rightElement}</View>
+            ) : activeName ? (
+              <TouchableOpacity
+                style={[
+                  styles.sessionBadge,
+                  isSmall && styles.sessionBadgeSmall,
+                  isTablet && styles.sessionBadgeTablet,
+                  menuVisible && styles.sessionBadgeActive,
+                ]}
+                onPress={() => setMenuVisible(prev => !prev)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Usuario ${activeName}. Tocar para abrir menú de perfil`}>
+                <View style={styles.sessionAvatar}>
+                  <Ionicons name="person-outline" size={13} color={Colors.primary} />
+                </View>
+                <View style={styles.sessionCol}>
+                  {activeRole ? (
+                    <Text style={styles.sessionRole}>{activeRole}</Text>
+                  ) : null}
+                  <Text style={styles.sessionName} numberOfLines={1}>
+                    {activeName}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={menuVisible ? 'chevron-up' : 'chevron-down'}
+                  size={12}
+                  color={Colors.textMuted}
+                  style={{ marginLeft: 2 }}
+                />
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
+
+        {subtitle ? (
+          <Text
+            style={[styles.subtitle, isSmall && styles.subtitleSmall]}
+            numberOfLines={2}>
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
 
-      {subtitle ? (
-        <Text
-          style={[styles.subtitle, isSmall && styles.subtitleSmall]}
-          numberOfLines={2}>
-          {subtitle}
-        </Text>
-      ) : null}
-
-      {/* Menú flotante al dar clic en el nombre de usuario */}
+      {/* Menú flotante al dar clic en el nombre de usuario (desacoplado del contenedor elevado para garantizar apertura fluida) */}
       <Modal
         transparent
         visible={menuVisible}
         animationType="fade"
         onRequestClose={() => setMenuVisible(false)}>
-        <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
-          <View style={styles.modalBackdrop}>
-            <TouchableWithoutFeedback>
-              <View
-                style={[
-                  styles.menuPopover,
-                  {
-                    top: insets.top + (isSmall ? 48 : 56),
-                    right: isSmall ? 16 : isTablet ? 28 : 20,
-                  },
-                ]}>
-                {/* Encabezado del menú */}
-                <View style={styles.menuHeader}>
-                  <View style={styles.menuAvatarLarge}>
-                    <Ionicons name="person" size={15} color={Colors.primary} />
-                  </View>
-                  <View style={styles.menuHeaderCol}>
-                    <Text style={styles.menuNameText} numberOfLines={1}>
-                      {activeName}
-                    </Text>
-                    <Text style={styles.menuRoleText}>
-                      {activeRole || 'Sesión activa'}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.menuDivider} />
-
-                {/* Opción 1: Perfil */}
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={handleGoToProfile}
-                  activeOpacity={0.7}>
-                  <View style={[styles.menuItemIcon, { backgroundColor: Colors.primaryLight }]}>
-                    <Ionicons name="person-circle-outline" size={18} color={Colors.primary} />
-                  </View>
-                  <Text style={styles.menuItemText}>Perfil</Text>
-                  <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
-                </TouchableOpacity>
-
-                <View style={styles.menuDivider} />
-
-                {/* Opción 2: Cerrar sesión */}
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={handleLogout}
-                  activeOpacity={0.7}>
-                  <View style={[styles.menuItemIcon, { backgroundColor: '#FEE2E2' }]}>
-                    <Ionicons name="log-out-outline" size={18} color={Colors.destructive} />
-                  </View>
-                  <Text style={[styles.menuItemText, { color: Colors.destructive }]}>
-                    Cerrar sesión
-                  </Text>
-                </TouchableOpacity>
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setMenuVisible(false)}>
+          <Pressable
+            style={[
+              styles.menuPopover,
+              {
+                top: Math.max(insets.top, 14) + (isSmall ? 48 : 56),
+                right: isSmall ? 16 : isTablet ? 28 : 20,
+              },
+            ]}
+            onPress={e => e.stopPropagation()}>
+            {/* Encabezado del menú */}
+            <View style={styles.menuHeader}>
+              <View style={styles.menuAvatarLarge}>
+                <Ionicons name="person" size={15} color={Colors.primary} />
               </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
+              <View style={styles.menuHeaderCol}>
+                <Text
+                  style={styles.menuNameText}
+                  numberOfLines={2}
+                  ellipsizeMode="tail">
+                  {activeName}
+                </Text>
+                <Text
+                  style={styles.menuRoleText}
+                  numberOfLines={1}
+                  ellipsizeMode="tail">
+                  {activeRole || 'Sesión activa'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.menuDivider} />
+
+            {/* Opción 1: Perfil */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleGoToProfile}
+              activeOpacity={0.7}>
+              <View style={[styles.menuItemIcon, { backgroundColor: Colors.primaryLight }]}>
+                <Ionicons name="person-circle-outline" size={18} color={Colors.primary} />
+              </View>
+              <Text style={styles.menuItemText}>Perfil</Text>
+              <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            {/* Opción 2: Cerrar sesión */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleLogout}
+              activeOpacity={0.7}>
+              <View style={[styles.menuItemIcon, { backgroundColor: '#FEE2E2' }]}>
+                <Ionicons name="log-out-outline" size={18} color={Colors.destructive} />
+              </View>
+              <Text style={[styles.menuItemText, { color: Colors.destructive }]}>
+                Cerrar sesión
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
       </Modal>
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: 20,
-    paddingBottom: 12,
-    backgroundColor: 'transparent',
+    paddingBottom: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
     position: 'relative',
-    overflow: 'hidden',
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 10,
   },
   curveContainer: {
     position: 'absolute',
@@ -297,6 +321,7 @@ const styles = StyleSheet.create({
     right: 0,
     width: 220,
     height: 140,
+    borderBottomRightRadius: 24,
     overflow: 'hidden',
   },
   waveProfileContainer: {
@@ -305,6 +330,7 @@ const styles = StyleSheet.create({
     right: 0,
     width: 250,
     height: 155,
+    borderBottomRightRadius: 24,
     overflow: 'hidden',
   },
   waveProfileOuterSec: {
@@ -516,8 +542,8 @@ const styles = StyleSheet.create({
   },
   menuPopover: {
     position: 'absolute',
-    minWidth: 200,
-    maxWidth: 260,
+    width: 235,
+    maxWidth: '85%',
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,
@@ -529,6 +555,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 18,
     elevation: 12,
+    overflow: 'hidden',
   },
   menuHeader: {
     flexDirection: 'row',
@@ -544,21 +571,27 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   menuHeaderCol: {
     flex: 1,
     minWidth: 0,
+    justifyContent: 'center',
   },
   menuNameText: {
     fontSize: 13,
     fontWeight: '800',
     color: Colors.text,
+    lineHeight: 16,
+    flexShrink: 1,
   },
   menuRoleText: {
     fontSize: 10,
     fontWeight: '600',
     color: Colors.textSecondary,
-    marginTop: 1,
+    lineHeight: 13,
+    marginTop: 2,
+    flexShrink: 1,
   },
   menuDivider: {
     height: 1,

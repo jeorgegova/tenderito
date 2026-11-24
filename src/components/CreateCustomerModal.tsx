@@ -289,7 +289,7 @@ export function CreateCustomerModal({
           styles.sheet,
           isTablet && { maxWidth: 560, width: '100%', alignSelf: 'center', borderRadius: 24, marginVertical: 32 },
         ]}>
-        <View style={[styles.modalHeader, { paddingTop: insets.top + 8 }]}>
+        <View style={[styles.modalHeader, { paddingTop: Math.max(insets.top, 14) + 8 }]}>
           <Pressable
             onPress={() => {
               resetForm();

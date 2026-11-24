@@ -208,7 +208,11 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor="#FFFFFF"
+          translucent={false}
+        />
         <AuthProvider>
           <AppContent />
         </AuthProvider>

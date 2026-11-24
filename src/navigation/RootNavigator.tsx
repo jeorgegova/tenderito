@@ -74,6 +74,9 @@ export function RootNavigator() {
         headerBackTitle: 'Volver',
         headerTitleStyle: {fontWeight: '700', color: Colors.text},
         headerShadowVisible: false,
+        statusBarStyle: 'dark',
+        statusBarColor: '#FFFFFF',
+        statusBarTranslucent: false,
       }}>
       {isAuthenticated ? (
         userType === 'customer' ? (

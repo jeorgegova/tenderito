@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Animated,
+  BackHandler,
   Easing,
   FlatList,
   Keyboard,
@@ -15,6 +16,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
@@ -28,6 +30,7 @@ import { StoreHistoryLockNotice } from '../components/ui/StoreHistoryLockNotice'
 import { MagnetFilterBar } from '../components/ui/MagnetFilterBar';
 import { EditCustomerAliasLimitModal } from '../components/ui/EditCustomerAliasLimitModal';
 import { showAlert } from '../utils/alert';
+import { confirmLogout } from '../lib/session';
 import { fetchCreditsByCustomer, voidMovement } from '../services/credits';
 import { fetchCustomerById } from '../services/customers';
 import { fetchProfile } from '../services/profile';
@@ -39,6 +42,7 @@ import { queryClient } from '../lib/queryClient';
 import { useStore } from '../store/useStore';
 import { Colors, Radius, formatCOP } from '../theme';
 import { useResponsive } from '../hooks/useResponsive';
+import { useSync } from '../hooks/useSync';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   formatDateCompact,
@@ -165,6 +169,21 @@ export function CustomerDetailScreen({ route, navigation }: any) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedDetailMovement, setSelectedDetailMovement] = useState<any | null>(null);
   const [isEditAliasLimitOpen, setIsEditAliasLimitOpen] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  const handleGoToProfile = () => {
+    setMenuVisible(false);
+    try {
+      navigation.navigate('Perfil');
+    } catch {
+      navigation.navigate('Main', { screen: 'Perfil' });
+    }
+  };
+
+  const handleLogout = () => {
+    setMenuVisible(false);
+    confirmLogout();
+  };
 
   const insets = useSafeAreaInsets();
   const headerAnim = useRef(new Animated.Value(0)).current;
@@ -183,16 +202,20 @@ export function CustomerDetailScreen({ route, navigation }: any) {
     }).start();
   }, [headerAnim]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     Animated.timing(headerAnim, {
       toValue: 0,
       duration: 180,
       easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
-      navigation.goBack();
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.navigate('Main', { screen: 'Inicio' });
+      }
     });
-  };
+  }, [headerAnim, navigation]);
 
   // Medición dinámica del ancho de la cabecera para interpolación fluida en píxeles exactos
   const [headerWidth, setHeaderWidth] = useState(340);
@@ -211,7 +234,7 @@ export function CustomerDetailScreen({ route, navigation }: any) {
     });
   };
 
-  const handleCloseSearch = () => {
+  const handleCloseSearch = useCallback(() => {
     Keyboard.dismiss();
     Animated.timing(searchAnim, {
       toValue: 0,
@@ -224,7 +247,51 @@ export function CustomerDetailScreen({ route, navigation }: any) {
         setSearchConcept('');
       }
     });
-  };
+  }, [searchAnim]);
+
+  // Refs para capturar estado actualizado sin reconectar el listener de Android
+  const menuVisibleRef = useRef(menuVisible);
+  menuVisibleRef.current = menuVisible;
+  const isEditAliasLimitOpenRef = useRef(isEditAliasLimitOpen);
+  isEditAliasLimitOpenRef.current = isEditAliasLimitOpen;
+  const selectedDetailMovementRef = useRef(selectedDetailMovement);
+  selectedDetailMovementRef.current = selectedDetailMovement;
+  const isMonthModalVisibleRef = useRef(isMonthModalVisible);
+  isMonthModalVisibleRef.current = isMonthModalVisible;
+  const isSearchOpenRef = useRef(isSearchOpen);
+  isSearchOpenRef.current = isSearchOpen;
+
+  // Manejo robusto del botón físico "Atrás" en Android:
+  // Cierra modales/menús/buscador si están activos, o regresa a la vista Inicio/Clientes de forma segura sin salir de la app
+  useEffect(() => {
+    const onBackPress = () => {
+      if (menuVisibleRef.current) {
+        setMenuVisible(false);
+        return true;
+      }
+      if (isEditAliasLimitOpenRef.current) {
+        setIsEditAliasLimitOpen(false);
+        return true;
+      }
+      if (selectedDetailMovementRef.current) {
+        setSelectedDetailMovement(null);
+        return true;
+      }
+      if (isMonthModalVisibleRef.current) {
+        setIsMonthModalVisible(false);
+        return true;
+      }
+      if (isSearchOpenRef.current) {
+        handleCloseSearch();
+        return true;
+      }
+      handleBack();
+      return true;
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [handleBack, handleCloseSearch]);
 
   // Ancho exacto disponible para el buscador: ancho total - padding lateral (20) - gap (8) - botón cerrar (~56)
   const availableSearchWidth = headerWidth > 84 ? headerWidth - 84 : 240;
@@ -286,6 +353,25 @@ export function CustomerDetailScreen({ route, navigation }: any) {
     queryFn: () => fetchPaymentsByCustomer(id),
     enabled: !!id,
   });
+
+  const { sync, isSyncing } = useSync();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        sync({ force: true }),
+        customer.refetch(),
+        credits.refetch(),
+        payments.refetch(),
+      ]);
+    } catch (err) {
+      console.warn('[CustomerDetailScreen] Error en refresco manual:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [sync, customer, credits, payments]);
 
   // Mapa de estados reales de pago ('paid' | 'partially_paid' | null) para cada compra fiada
   const creditStatusMap = useMemo(() => {
@@ -720,7 +806,15 @@ export function CustomerDetailScreen({ route, navigation }: any) {
           ) : null}
 
           {profile?.merchant_name ? (
-            <View style={styles.sessionBadge}>
+            <TouchableOpacity
+              style={[
+                styles.sessionBadge,
+                menuVisible && styles.sessionBadgeActive,
+              ]}
+              onPress={() => setMenuVisible(prev => !prev)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Usuario ${profile.merchant_name}. Tocar para abrir menú de perfil`}>
               <View style={styles.sessionAvatar}>
                 <Ionicons
                   name="person-outline"
@@ -734,10 +828,87 @@ export function CustomerDetailScreen({ route, navigation }: any) {
                   {profile.merchant_name}
                 </Text>
               </View>
-            </View>
+              <Ionicons
+                name={menuVisible ? 'chevron-up' : 'chevron-down'}
+                size={11}
+                color={Colors.textMuted}
+                style={{ marginLeft: 2 }}
+              />
+            </TouchableOpacity>
           ) : null}
         </View>
       </Animated.View>
+
+      {/* Menú flotante al dar clic en el nombre de usuario (Tendero) */}
+      <Modal
+        transparent
+        visible={menuVisible}
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}>
+        <Pressable
+          style={styles.menuModalBackdrop}
+          onPress={() => setMenuVisible(false)}>
+          <Pressable
+            style={[
+              styles.menuPopover,
+              {
+                top: Math.max(insets.top, 14) + (isSmall ? 48 : 56),
+                right: isSmall ? 16 : isTablet ? 28 : 20,
+              },
+            ]}
+            onPress={e => e.stopPropagation()}>
+            {/* Encabezado del menú */}
+            <View style={styles.menuHeader}>
+              <View style={styles.menuAvatarLarge}>
+                <Ionicons name="person" size={15} color={Colors.primary} />
+              </View>
+              <View style={styles.menuHeaderCol}>
+                <Text
+                  style={styles.menuNameText}
+                  numberOfLines={2}
+                  ellipsizeMode="tail">
+                  {profile?.merchant_name}
+                </Text>
+                <Text
+                  style={styles.menuRoleText}
+                  numberOfLines={1}
+                  ellipsizeMode="tail">
+                  {profile?.store_name || 'Tendero'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.menuDivider} />
+
+            {/* Opción 1: Perfil */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleGoToProfile}
+              activeOpacity={0.7}>
+              <View style={[styles.menuItemIcon, { backgroundColor: Colors.primaryLight }]}>
+                <Ionicons name="person-circle-outline" size={18} color={Colors.primary} />
+              </View>
+              <Text style={styles.menuItemText}>Perfil</Text>
+              <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            {/* Opción 2: Cerrar sesión */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleLogout}
+              activeOpacity={0.7}>
+              <View style={[styles.menuItemIcon, { backgroundColor: '#FEE2E2' }]}>
+                <Ionicons name="log-out-outline" size={18} color={Colors.destructive} />
+              </View>
+              <Text style={[styles.menuItemText, { color: Colors.destructive }]}>
+                Cerrar sesión
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <ScrollView
         ref={mainScrollRef}
@@ -745,14 +916,8 @@ export function CustomerDetailScreen({ route, navigation }: any) {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={
-              customer.isLoading || credits.isLoading || payments.isLoading
-            }
-            onRefresh={() => {
-              customer.refetch();
-              credits.refetch();
-              payments.refetch();
-            }}
+            refreshing={refreshing || isSyncing}
+            onRefresh={handleRefresh}
             colors={[Colors.primary]}
             tintColor={Colors.primary}
           />
@@ -1192,50 +1357,52 @@ export function CustomerDetailScreen({ route, navigation }: any) {
                       style={styles.colConcept}
                       activeOpacity={0.7}
                       onPress={() => setSelectedDetailMovement(item)}>
-                      <Text
-                        style={[
-                          styles.rowConceptTitle,
-                          isCancelled && styles.textCancelled,
-                        ]}
-                        numberOfLines={6}>
-                        {item.title}
-                      </Text>
+                      <View style={styles.rowConceptHeader}>
+                        <Text
+                          style={[
+                            styles.rowConceptTitle,
+                            isCancelled && styles.textCancelled,
+                          ]}
+                          numberOfLines={6}>
+                          {item.title}
+                        </Text>
+                        {isCancelled && (
+                          <View
+                            style={[
+                              styles.kindBadge,
+                              styles.kindBadgeCancelled,
+                            ]}>
+                            <Text
+                              style={[
+                                styles.kindBadgeText,
+                                styles.kindBadgeTextCancelled,
+                              ]}>
+                              Cancelado
+                            </Text>
+                          </View>
+                        )}
+                      </View>
 
                       <View style={styles.rowBadgeWrap}>
                         {isCancelled ? (
-                          <>
-                            <View
+                          <View
+                            style={[
+                              styles.kindBadge,
+                              { backgroundColor: '#F1F5F9' },
+                            ]}>
+                            <Text
                               style={[
-                                styles.kindBadge,
-                                styles.kindBadgeCancelled,
+                                styles.kindBadgeText,
+                                {
+                                  color: '#94A3B8',
+                                  textDecorationLine: 'line-through',
+                                },
                               ]}>
-                              <Text
-                                style={[
-                                  styles.kindBadgeText,
-                                  styles.kindBadgeTextCancelled,
-                                ]}>
-                                Cancelado
-                              </Text>
-                            </View>
-                            <View
-                              style={[
-                                styles.kindBadge,
-                                { backgroundColor: '#F1F5F9' },
-                              ]}>
-                              <Text
-                                style={[
-                                  styles.kindBadgeText,
-                                  {
-                                    color: '#94A3B8',
-                                    textDecorationLine: 'line-through',
-                                  },
-                                ]}>
-                                {isCredit
-                                  ? 'Compra fiada (+)'
-                                  : 'Abono recibido (-)'}
-                              </Text>
-                            </View>
-                          </>
+                              {isCredit
+                                ? 'Compra fiada (+)'
+                                : 'Abono recibido (-)'}
+                            </Text>
+                          </View>
                         ) : (
                           <View
                             style={[
@@ -1804,6 +1971,93 @@ const styles = StyleSheet.create({
     color: Colors.text,
     lineHeight: 13,
   },
+  sessionBadgeActive: {
+    borderColor: Colors.primary,
+    backgroundColor: '#FFFBF8',
+  },
+  menuModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
+  },
+  menuPopover: {
+    position: 'absolute',
+    width: 235,
+    maxWidth: '85%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    shadowColor: '#142033',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 18,
+    elevation: 12,
+    overflow: 'hidden',
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  menuAvatarLarge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  menuHeaderCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  menuNameText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.text,
+    lineHeight: 16,
+    flexShrink: 1,
+  },
+  menuRoleText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    lineHeight: 13,
+    marginTop: 2,
+    flexShrink: 1,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 4,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+  menuItemIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuItemText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.text,
+  },
 
   // Ficha del Cliente
   customerCard: {
@@ -2229,6 +2483,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: Colors.text,
+  },
+  rowConceptHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   rowBadgeWrap: {
     flexDirection: 'row',

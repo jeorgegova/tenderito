@@ -237,19 +237,13 @@ export function DatePicker({
       nextQuincenaDate.getDate(),
     );
 
-    // Fin de mes (último día del mes)
+    // Fin de mes: siempre el último día del mes en curso
     const endOfThisMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const endOfThisMonthYmd = formatYMD(
       endOfThisMonth.getFullYear(),
       endOfThisMonth.getMonth(),
       endOfThisMonth.getDate(),
     );
-
-    // Si la próxima quincena ya coincide con el fin de este mes, o faltan <= 2 días, apuntar al fin del siguiente mes
-    const targetEndOfMonth =
-      quincenaYmd === endOfThisMonthYmd || endOfThisMonth.getDate() - currentDay <= 2
-        ? new Date(today.getFullYear(), today.getMonth() + 2, 0)
-        : endOfThisMonth;
 
     return [
       {
@@ -262,11 +256,7 @@ export function DatePicker({
       },
       {
         label: 'Fin de mes',
-        ymd: formatYMD(
-          targetEndOfMonth.getFullYear(),
-          targetEndOfMonth.getMonth(),
-          targetEndOfMonth.getDate(),
-        ),
+        ymd: endOfThisMonthYmd,
       },
     ];
   }, []);

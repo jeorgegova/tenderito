@@ -101,7 +101,7 @@ export function LoginScreen({ route, navigation }: any) {
         style={styles.scroll}
         contentContainerStyle={[
           styles.wrap,
-          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32, flexGrow: 1 },
+          { paddingTop: Math.max(insets.top, 14) + 24, paddingBottom: insets.bottom + 32, flexGrow: 1 },
         ]}
         enableOnAndroid={true}
         enableAutomaticScroll={true}
