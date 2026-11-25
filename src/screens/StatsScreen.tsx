@@ -1,4 +1,4 @@
-import {useQuery} from '@tanstack/react-query';
+import {useQuery, keepPreviousData} from '@tanstack/react-query';
 import {useCallback, useMemo, useRef, useState} from 'react';
 import {
   BackHandler,
@@ -108,6 +108,8 @@ export function StatsScreen({navigation}: any) {
   const {data: stats, isLoading} = useQuery({
     queryKey: ['stats', filters.from, filters.to, selectedIds, preset],
     queryFn: () => fetchStats(filters),
+    placeholderData: keepPreviousData,
+    staleTime: 1000 * 60 * 5,
   });
 
   function toggleCustomer(id: string) {
@@ -184,7 +186,7 @@ export function StatsScreen({navigation}: any) {
         ]}
         showsVerticalScrollIndicator={false}>
 
-        {isLoading ? (
+        {!stats && isLoading ? (
           <Card style={s.loadingCard}>
             <Text style={s.loadingText}>Calculando cartera y estadísticas…</Text>
           </Card>
