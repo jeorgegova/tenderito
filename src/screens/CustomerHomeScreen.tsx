@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Animated,
   BackHandler,
+  DeviceEventEmitter,
   Easing,
   FlatList,
   Keyboard,
@@ -35,10 +36,13 @@ import { confirmLogout, CUSTOMER_LOGOUT_MESSAGE } from '../lib/session';
 import { fetchCustomerPortal } from '../services/customerPortal';
 import { computeCreditPaymentStatuses } from '../utils/creditStatus';
 import { Colors, Radius, formatCOP } from '../theme';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '../hooks/useResponsive';
 import { EditCustomerSelfModal } from '../components/ui/EditCustomerSelfModal';
+import { StoreStatusRing } from '../components/ui/StoreStatusRing';
+import { StoreStatusViewerModal } from '../components/StoreStatusViewerModal';
+import { fetchCustomerStoreStatuses, StoreStatus } from '../services/storeStatuses';
 import {
   formatDateCompact,
   formatDateDisplay,
@@ -140,6 +144,7 @@ const generateAvailableMonths = (createdAt?: string | null) => {
 };
 
 export function CustomerHomeScreen() {
+  const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { isSmall, isTablet, width, tabletContainerStyle } = useResponsive();
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
@@ -250,6 +255,75 @@ export function CustomerHomeScreen() {
       }),
   });
 
+  const [selectedStoreForStatus, setSelectedStoreForStatus] = useState<{
+    storeId: string;
+    storeName: string;
+    statuses: StoreStatus[];
+    initialIndex?: number;
+  } | null>(null);
+
+  const customerId = data?.customer?.id;
+  const storeIdsKey = (data?.stores || []).map((s: any) => s.store_id).sort().join(',');
+
+  const { data: storeStatusesMap = {}, refetch: refetchStatuses } = useQuery({
+    queryKey: ['customer-stores-statuses', customerId, storeIdsKey],
+    queryFn: async () => {
+      if (!customerId || !data?.stores || data.stores.length === 0) return {};
+      const map: Record<string, StoreStatus[]> = {};
+      await Promise.all(
+        data.stores.map(async (item: any) => {
+          const list = await fetchCustomerStoreStatuses(item.store_id, customerId);
+          map[item.store_id] = list;
+        }),
+      );
+      return map;
+    },
+    enabled: Boolean(customerId && data?.stores && data.stores.length > 0),
+  });
+
+  // Escuchar evento de notificación push para abrir directamente el visor de estados
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      'tenderito-open-status',
+      async ({ storeId, statusId }: { storeId?: string; statusId?: string }) => {
+        if (!storeId) return;
+
+        let statuses = storeStatusesMap[storeId];
+        if (!statuses || statuses.length === 0) {
+          if (customerId) {
+            try {
+              statuses = await fetchCustomerStoreStatuses(storeId, customerId);
+            } catch (_e) {
+              statuses = [];
+            }
+          }
+        }
+
+        if (statuses && statuses.length > 0) {
+          const storeItem: any = (data?.stores || []).find((s: any) => s.store_id === storeId);
+          const rawStore: any = storeItem?.stores;
+          const store: any = Array.isArray(rawStore) ? rawStore[0] : rawStore;
+          const storeName = store?.store_name || storeItem?.store_name || 'Tienda';
+          let initialIndex = 0;
+          if (statusId) {
+            const foundIdx = statuses.findIndex((s: any) => s.id === statusId);
+            if (foundIdx >= 0) initialIndex = foundIdx;
+          }
+          setSelectedStoreForStatus({
+            storeId,
+            storeName,
+            statuses,
+            initialIndex,
+          });
+        }
+      },
+    );
+
+    return () => {
+      sub.remove();
+    };
+  }, [storeStatusesMap, customerId, data?.stores]);
+
   // Pull-to-refresh completo: invalida tanto el resumen como todos los detalles de tienda
   const handleRefreshAll = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ['customer-portal'] });
@@ -334,43 +408,93 @@ export function CustomerHomeScreen() {
   const isEditProfileOpenRef = useRef(isEditProfileOpen);
   isEditProfileOpenRef.current = isEditProfileOpen;
 
-  // Manejo robusto del botón físico "Atrás" en Android:
-  // - Si hay modales o menús abiertos, los cierra.
-  // - Si el buscador está abierto en el detalle, lo cierra.
-  // - Si está en el detalle de la cartera de una tienda, regresa al listado/inicio de tiendas y evita cerrar la app.
-  // - Si está en el listado inicial de tiendas sin nada abierto, sale naturalmente de la app a segundo plano.
+  const selectedStoreForStatusRef = useRef(selectedStoreForStatus);
+  selectedStoreForStatusRef.current = selectedStoreForStatus;
+
+  // Interceptar la salida / remoción de la pantalla por gestos de navegación nativos de React Navigation (Android/iOS)
   useEffect(() => {
-    const onBackPress = () => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      if (selectedStoreForStatusRef.current) {
+        e.preventDefault();
+        setSelectedStoreForStatus(null);
+        return;
+      }
       if (menuVisibleRef.current) {
+        e.preventDefault();
         setMenuVisible(false);
-        return true;
+        return;
       }
       if (isEditProfileOpenRef.current) {
+        e.preventDefault();
         setIsEditProfileOpen(false);
-        return true;
+        return;
       }
       if (selectedDetailMovementRef.current) {
+        e.preventDefault();
         setSelectedDetailMovement(null);
-        return true;
+        return;
       }
       if (isMonthModalVisibleRef.current) {
+        e.preventDefault();
         setIsMonthModalVisible(false);
-        return true;
+        return;
       }
       if (isSearchOpenRef.current) {
+        e.preventDefault();
         handleCloseSearch();
-        return true;
+        return;
       }
       if (selectedStoreIdRef.current) {
+        e.preventDefault();
         handleSelectStore(null);
-        return true;
+        return;
       }
-      // Retornar false permite que Android salga/minimice la app a segundo plano con la sesión intacta
-      return false;
-    };
-    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-    return () => sub.remove();
-  }, [handleSelectStore]);
+      // Si está en el listado de tiendas sin nada abierto, permite la salida normal
+    });
+
+    return unsubscribe;
+  }, [navigation, handleSelectStore]);
+
+  // Manejo robusto del botón físico / barra de navegación "Atrás" en Android:
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        if (selectedStoreForStatusRef.current) {
+          setSelectedStoreForStatus(null);
+          return true;
+        }
+        if (menuVisibleRef.current) {
+          setMenuVisible(false);
+          return true;
+        }
+        if (isEditProfileOpenRef.current) {
+          setIsEditProfileOpen(false);
+          return true;
+        }
+        if (selectedDetailMovementRef.current) {
+          setSelectedDetailMovement(null);
+          return true;
+        }
+        if (isMonthModalVisibleRef.current) {
+          setIsMonthModalVisible(false);
+          return true;
+        }
+        if (isSearchOpenRef.current) {
+          handleCloseSearch();
+          return true;
+        }
+        if (selectedStoreIdRef.current) {
+          handleSelectStore(null);
+          return true;
+        }
+        // Retornar false permite que Android salga/minimice la app a segundo plano con la sesión intacta
+        return false;
+      };
+
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [handleSelectStore])
+  );
 
   const stores = useMemo(() => data?.stores ?? [], [data?.stores]);
   const customerName = data?.customer?.name ?? 'Cliente';
@@ -1481,77 +1605,107 @@ export function CustomerHomeScreen() {
             const paid = balance === 0;
 
             return (
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => handleSelectStore(item.store_id)}
-                style={styles.storeCardWrapper}>
+              <View style={styles.storeCardWrapper}>
                 <Card style={styles.storeCard}>
                   <View style={styles.storeCardRow}>
-                    {/* Icono de la tienda */}
-                    <View
-                      style={[
-                        styles.storeIconWrap,
-                        paid ? styles.storeIconWrapPaid : styles.storeIconWrapDebt,
-                      ]}>
-                      <Ionicons
-                        name="storefront"
-                        size={24}
-                        color={paid ? Colors.success : Colors.destructive}
-                      />
-                    </View>
+                    {/* Icono de la tienda con anillo de estados estilo WhatsApp (Independiente) */}
+                    {(() => {
+                      const statusesForStore = storeStatusesMap[item.store_id] || [];
+                      const unviewedCount = statusesForStore.filter((s: any) => !s.has_viewed).length;
 
-                    {/* Información de la tienda */}
-                    <View style={styles.flexOne}>
-                      <Text style={styles.storeCardName} numberOfLines={2}>
-                        {storeName}
-                      </Text>
-                      {store?.phone ? (
-                        <View style={styles.storeCardPhoneRow}>
-                          <Ionicons
-                            name="call-outline"
-                            size={12}
-                            color="#16A34A"
-                          />
-                          <Text style={styles.storeCardPhoneText}>
-                            {store.phone}
-                          </Text>
-                        </View>
-                      ) : null}
-                      {store?.address ? (
-                        <View style={styles.storeCardAddressRow}>
-                          <Ionicons
-                            name="location-outline"
-                            size={12}
-                            color={Colors.destructive}
-                          />
-                          <Text style={styles.storeCardMeta} numberOfLines={2}>
-                            {store.address}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
+                      return (
+                        <StoreStatusRing
+                          size={54}
+                          strokeWidth={2.5}
+                          count={statusesForStore.length}
+                          unviewedCount={unviewedCount}
+                          onPress={
+                            statusesForStore.length > 0
+                              ? () => {
+                                  setSelectedStoreForStatus({
+                                    storeId: item.store_id,
+                                    storeName,
+                                    statuses: statusesForStore,
+                                  });
+                                }
+                              : () => handleSelectStore(item.store_id)
+                          }>
+                          <View
+                            style={[
+                              styles.storeIconWrap,
+                              paid ? styles.storeIconWrapPaid : styles.storeIconWrapDebt,
+                            ]}>
+                            <Ionicons
+                              name="storefront"
+                              size={24}
+                              color={paid ? Colors.success : Colors.destructive}
+                            />
+                          </View>
+                        </StoreStatusRing>
+                      );
+                    })()}
 
-                    {/* Saldo de la tienda */}
-                    <View style={styles.storeCardBalanceWrap}>
-                      <Text
-                        style={[
-                          styles.storeCardBalanceLabel,
-                          paid ? styles.balanceLabelPaid : styles.balanceLabelDebt,
-                        ]}>
-                        {paid ? 'Al día' : 'Debes'}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.storeCardBalance,
-                          paid ? styles.storeCardBalancePaid : styles.storeCardBalanceDebt,
-                        ]}>
-                        {formatCOP(balance)}
-                      </Text>
-                    </View>
+                    {/* Información y saldo de la tienda (Al tocar abre el detalle de la tienda) */}
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => handleSelectStore(item.store_id)}
+                      style={[styles.flexOne, { flexDirection: 'row', alignItems: 'center' }]}>
+                      {/* Información de la tienda */}
+                      <View style={styles.flexOne}>
+                        <Text style={styles.storeCardName} numberOfLines={2}>
+                          {storeName}
+                        </Text>
+                        {store?.phone ? (
+                          <View style={styles.storeCardPhoneRow}>
+                            <Ionicons
+                              name="call-outline"
+                              size={12}
+                              color="#16A34A"
+                            />
+                            <Text style={styles.storeCardPhoneText}>
+                              {store.phone}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {store?.address ? (
+                          <View style={styles.storeCardAddressRow}>
+                            <Ionicons
+                              name="location-outline"
+                              size={12}
+                              color={Colors.destructive}
+                            />
+                            <Text style={styles.storeCardMeta} numberOfLines={2}>
+                              {store.address}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+
+                      {/* Saldo de la tienda */}
+                      <View style={styles.storeCardBalanceWrap}>
+                        <Text
+                          style={[
+                            styles.storeCardBalanceLabel,
+                            paid ? styles.balanceLabelPaid : styles.balanceLabelDebt,
+                          ]}>
+                          {paid ? 'Al día' : 'Debes'}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.storeCardBalance,
+                            paid ? styles.storeCardBalancePaid : styles.storeCardBalanceDebt,
+                          ]}>
+                          {formatCOP(balance)}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
                   </View>
 
                   {/* Botón visual para tocar y ver libreta */}
-                  <View style={styles.storeCardFooterPill}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => handleSelectStore(item.store_id)}
+                    style={styles.storeCardFooterPill}>
                     <Text style={styles.storeCardFooterText}>
                       Consultar libreta de movimientos
                     </Text>
@@ -1560,9 +1714,9 @@ export function CustomerHomeScreen() {
                       size={15}
                       color={Colors.primary}
                     />
-                  </View>
+                  </TouchableOpacity>
                 </Card>
-              </TouchableOpacity>
+              </View>
             );
           }}
           ListFooterComponent={
@@ -1763,6 +1917,21 @@ export function CustomerHomeScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      {/* Visor de estados para el cliente */}
+      {selectedStoreForStatus ? (
+        <StoreStatusViewerModal
+          visible={Boolean(selectedStoreForStatus)}
+          onClose={() => {
+            setSelectedStoreForStatus(null);
+            refetchStatuses();
+          }}
+          statuses={selectedStoreForStatus.statuses}
+          initialIndex={selectedStoreForStatus.initialIndex || 0}
+          storeName={selectedStoreForStatus.storeName}
+          isMerchant={false}
+          customerId={customerId}
+        />
+      ) : null}
     </View>
   );
 }

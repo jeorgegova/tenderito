@@ -29,6 +29,10 @@ import {
 import {syncAll} from '../services/sync';
 import {fetchProfile} from '../services/profile';
 import type {SubscriptionPlanItem} from '../types';
+import {StoreStatusRing} from '../components/ui/StoreStatusRing';
+import {CreateStoreStatusModal} from '../components/CreateStoreStatusModal';
+import {StoreStatusViewerModal} from '../components/StoreStatusViewerModal';
+import {fetchMerchantStoreStatuses} from '../services/storeStatuses';
 
 export function ProfileScreen({navigation}: any) {
   const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
@@ -83,7 +87,18 @@ export function ProfileScreen({navigation}: any) {
     }
   }, [data, setProfile]);
 
+  const [isCreateStatusOpen, setIsCreateStatusOpen] = useState(false);
+  const [isViewStatusOpen, setIsViewStatusOpen] = useState(false);
+
+  const activeStoreId = currentStoreId || activeStore?.store_id || (data as any)?.id;
+  const {data: storeStatuses = [], refetch: refetchStatuses} = useQuery({
+    queryKey: ['store-statuses-merchant', activeStoreId],
+    queryFn: () => (activeStoreId ? fetchMerchantStoreStatuses(activeStoreId) : []),
+    enabled: Boolean(activeStoreId),
+  });
+
   const subStatus = calculateSubscriptionStatus(data as any);
+  const hasActivePaidPlan = subStatus.effectivePlan !== 'free' && !subStatus.isExpired;
   const currentPlan = (plans || []).find(
     (p: any) => p.id?.toLowerCase() === subStatus.effectivePlan?.toLowerCase(),
   );
@@ -173,9 +188,34 @@ export function ProfileScreen({navigation}: any) {
         contentContainerStyle={[styles.content, tabletContainerStyle(620)]}
         showsVerticalScrollIndicator={false}>
         <Card style={styles.accountCard}>
-          <View style={styles.storeIcon}>
-            <MonochromeIcon name="store" color={Colors.primary} size={22} />
-          </View>
+          <StoreStatusRing
+            size={66}
+            strokeWidth={3}
+            count={storeStatuses.length}
+            unviewedCount={storeStatuses.length}
+            showAddBadge={hasActivePaidPlan}
+            onAddPress={() => {
+              if (storeStatuses.length >= 3) {
+                showAlert(
+                  'Límite alcanzado',
+                  'Tu tienda ya cuenta con el máximo de 3 estados activos simultáneos. Espera a que expire uno o elimínalo para publicar otro.',
+                );
+                return;
+              }
+              setIsCreateStatusOpen(true);
+            }}
+            onPress={() => {
+              if (storeStatuses.length > 0) {
+                setIsViewStatusOpen(true);
+              } else if (hasActivePaidPlan) {
+                setIsCreateStatusOpen(true);
+              }
+            }}
+            style={{marginBottom: 10}}>
+            <View style={styles.storeIcon}>
+              <MonochromeIcon name="store" color={Colors.primary} size={22} />
+            </View>
+          </StoreStatusRing>
           <Text style={styles.store}>{(data as any)?.store_name ?? 'Cargando tienda…'}</Text>
           <Text style={styles.merchant}>
             {(data as any)?.merchant_name ?? ''}
@@ -453,6 +493,40 @@ export function ProfileScreen({navigation}: any) {
           queryClient.invalidateQueries({ queryKey: ['active-store'] });
         }}
       />
+
+      {/* Modal para crear nuevo estado */}
+      {activeStoreId ? (
+        <CreateStoreStatusModal
+          visible={isCreateStatusOpen}
+          onClose={() => setIsCreateStatusOpen(false)}
+          storeId={activeStoreId}
+          storeName={(data as any)?.store_name || ''}
+          currentActiveCount={storeStatuses.length}
+          onCreated={async () => {
+            await refetchStatuses();
+            queryClient.invalidateQueries({
+              queryKey: ['store-statuses-merchant', activeStoreId],
+            });
+          }}
+        />
+      ) : null}
+
+      {/* Visor de estados para el tendero */}
+      {isViewStatusOpen && storeStatuses.length > 0 ? (
+        <StoreStatusViewerModal
+          visible={isViewStatusOpen}
+          onClose={() => setIsViewStatusOpen(false)}
+          statuses={storeStatuses}
+          storeName={(data as any)?.store_name || ''}
+          isMerchant={true}
+          onStatusDeleted={async () => {
+            await refetchStatuses();
+            queryClient.invalidateQueries({
+              queryKey: ['store-statuses-merchant', activeStoreId],
+            });
+          }}
+        />
+      ) : null}
     </View>
   );
 }

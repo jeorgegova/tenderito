@@ -203,16 +203,23 @@ serve(async (req: Request) => {
       (opType === "UPDATE" && (statusStr === "cancelled" || statusStr === "canceled" || statusStr === "anulado")) ||
       (oldStatusStr !== "" && oldStatusStr !== "cancelled" && (statusStr === "cancelled" || statusStr === "canceled"));
 
-    // Detección de fiado/crédito vs abono/pago
+    // Detección de fiado/crédito vs abono/pago vs estado publicitario
+    const isStoreStatus =
+      table === "store_statuses" ||
+      table === "store_status" ||
+      eventType === "store_status" ||
+      bodyType === "store_status";
+
     const isCredit =
-      table === "credits" ||
-      table === "credit" ||
-      eventType === "credit" ||
-      eventType === "credit_cancelled" ||
-      bodyType === "credit" ||
-      bodyType === "credit_cancelled" ||
-      Boolean(record.concept) ||
-      Boolean(body.concept);
+      !isStoreStatus &&
+      (table === "credits" ||
+        table === "credit" ||
+        eventType === "credit" ||
+        eventType === "credit_cancelled" ||
+        bodyType === "credit" ||
+        bodyType === "credit_cancelled" ||
+        Boolean(record.concept) ||
+        Boolean(body.concept));
 
     // Si es un evento UPDATE disparado por un Webhook/Trigger de base de datos y NO es una cancelación,
     // omitir para evitar falsas notificaciones de "Nuevo fiado" o "Abono registrado" al recalcular saldos
@@ -228,9 +235,16 @@ serve(async (req: Request) => {
       );
     }
 
-    if (!customerId) {
+    if (!isStoreStatus && !customerId) {
       return new Response(
         JSON.stringify({ error: "customer_id es requerido para enviar la notificación" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (isStoreStatus && !storeId) {
+      return new Response(
+        JSON.stringify({ error: "store_id es requerido para notificar estados de tienda" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -261,33 +275,6 @@ serve(async (req: Request) => {
       }
     }
 
-    // 3. Obtener saldo actual del cliente
-    let balanceNum = 0;
-    if (customerId && storeId) {
-      const { data: customerStore } = await supabase
-        .from("customer_stores")
-        .select("current_balance")
-        .eq("customer_id", customerId)
-        .eq("store_id", storeId)
-        .maybeSingle();
-      if (customerStore?.current_balance != null) {
-        balanceNum = Number(customerStore.current_balance);
-      }
-    }
-    if (balanceNum === 0 && customerId) {
-      const { data: cust } = await supabase
-        .from("customers")
-        .select("current_balance")
-        .eq("id", customerId)
-        .maybeSingle();
-      if (cust?.current_balance != null) {
-        balanceNum = Number(cust.current_balance);
-      }
-    }
-
-    const currentBalance = formatCOP(balanceNum);
-    const amountFormatted = formatCOP(amount);
-
     let title = body.title || "";
     let messageBody = body.message || body.body || "";
     const customData: Record<string, string> = {};
@@ -298,79 +285,145 @@ serve(async (req: Request) => {
       }
     }
 
-    if (isCancelled) {
-      if (isCredit) {
-        title = "Fiado cancelado ❌";
+    // Rama para Estados / Publicidad de Tienda
+    if (isStoreStatus) {
+      const captionText = String(
+        record.caption || body.caption || messageBody || "Nueva publicidad disponible"
+      ).trim();
+      title = title || `📢 ${storeName}`;
+      messageBody = captionText;
+      customData.type = "store_status";
+      customData.store_id = String(storeId);
+      customData.status_id = String(recordId);
+      customData.caption = captionText;
+      customData.url = `/?openStatusStoreId=${storeId}&statusId=${recordId}`;
+    } else {
+      // 3. Obtener saldo actual del cliente
+      let balanceNum = 0;
+      if (customerId && storeId) {
+        const { data: customerStore } = await supabase
+          .from("customer_stores")
+          .select("current_balance")
+          .eq("customer_id", customerId)
+          .eq("store_id", storeId)
+          .maybeSingle();
+        if (customerStore?.current_balance != null) {
+          balanceNum = Number(customerStore.current_balance);
+        }
+      }
+      if (balanceNum === 0 && customerId) {
+        const { data: cust } = await supabase
+          .from("customers")
+          .select("current_balance")
+          .eq("id", customerId)
+          .maybeSingle();
+        if (cust?.current_balance != null) {
+          balanceNum = Number(cust.current_balance);
+        }
+      }
+
+      const currentBalance = formatCOP(balanceNum);
+      const amountFormatted = formatCOP(amount);
+
+      if (isCancelled) {
+        if (isCredit) {
+          title = "Fiado cancelado ❌";
+          const conceptText = concept ? ` (${concept})` : "";
+          messageBody = `Se canceló el fiado de ${amountFormatted}${conceptText} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
+          customData.type = "credit_cancelled";
+          customData.status = "cancelled";
+          customData.credit_id = String(recordId);
+          customData.amount = String(amount);
+        } else {
+          title = "Abono cancelado ❌";
+          messageBody = `Se canceló el abono de ${amountFormatted} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
+          customData.type = "payment_cancelled";
+          customData.status = "cancelled";
+          customData.payment_id = String(recordId);
+          customData.amount = String(amount);
+        }
+      } else if (table === "payments" || eventType === "payment" || bodyType === "payment" || (!isCredit && amount > 0)) {
+        title = "Abono registrado 💳";
+        messageBody = `Se registró un abono de ${amountFormatted} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
+        customData.type = "payment";
+        customData.status = "active";
+        customData.payment_id = String(recordId);
+        customData.amount = String(amount);
+      } else if (isCredit) {
+        title = "Nuevo fiado registrado 🛒";
         const conceptText = concept ? ` (${concept})` : "";
-        messageBody = `Se canceló el fiado de ${amountFormatted}${conceptText} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
-        customData.type = "credit_cancelled";
-        customData.status = "cancelled";
+        messageBody = `Se registró un fiado de ${amountFormatted}${conceptText} en ${storeName}. Saldo pendiente: ${currentBalance}.`;
+        customData.type = "credit";
+        customData.status = "active";
         customData.credit_id = String(recordId);
         customData.amount = String(amount);
       } else {
-        title = "Abono cancelado ❌";
-        messageBody = `Se canceló el abono de ${amountFormatted} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
-        customData.type = "payment_cancelled";
-        customData.status = "cancelled";
-        customData.payment_id = String(recordId);
-        customData.amount = String(amount);
+        if (!title) title = "Notificación de Tenderito";
+        if (!messageBody) messageBody = `Tu saldo actual en ${storeName} es ${currentBalance}.`;
       }
-    } else if (table === "payments" || eventType === "payment" || bodyType === "payment" || (!isCredit && amount > 0)) {
-      title = "Abono registrado 💳";
-      messageBody = `Se registró un abono de ${amountFormatted} en ${storeName}. Tu saldo actual es ${currentBalance}.`;
-      customData.type = "payment";
-      customData.status = "active";
-      customData.payment_id = String(recordId);
-      customData.amount = String(amount);
-    } else if (isCredit) {
-      title = "Nuevo fiado registrado 🛒";
-      const conceptText = concept ? ` (${concept})` : "";
-      messageBody = `Se registró un fiado de ${amountFormatted}${conceptText} en ${storeName}. Saldo pendiente: ${currentBalance}.`;
-      customData.type = "credit";
-      customData.status = "active";
-      customData.credit_id = String(recordId);
-      customData.amount = String(amount);
-    } else {
-      if (!title) title = "Notificación de Tenderito";
-      if (!messageBody) messageBody = `Tu saldo actual en ${storeName} es ${currentBalance}.`;
     }
 
-    // 4. Consultar tokens FCM activos del cliente
+    // 4. Consultar tokens FCM activos
     let tokens: { fcm_token: string; platform?: string; device_name?: string }[] = [];
-    const { data: rpcTokens, error: tokenError } = await supabase.rpc(
-      "obtener_tokens_cliente",
-      { p_customer_id: customerId }
-    );
+    let queryError: any = null;
 
-    if (!tokenError && rpcTokens && rpcTokens.length > 0) {
-      tokens = rpcTokens;
+    if (isStoreStatus) {
+      console.log(`[Push] Consultando tokens de clientes para la tienda: ${storeId}`);
+      const { data: storeTokens, error: storeTokenError } = await supabase.rpc(
+        "obtener_tokens_clientes_tienda",
+        { p_store_id: storeId }
+      );
+      if (storeTokenError) {
+        queryError = storeTokenError;
+        console.error("[Push] Error en obtener_tokens_clientes_tienda:", storeTokenError);
+      } else if (storeTokens && storeTokens.length > 0) {
+        tokens = storeTokens;
+        console.log(`[Push] Se encontraron ${tokens.length} tokens para la tienda ${storeId}`);
+      }
     } else {
-      // Fallback: Si customerId recibido fuera directamente el user_id de auth
-      const { data: directTokens } = await supabase
-        .from("dispositivos_vinculados")
-        .select("fcm_token, platform, device_name")
-        .eq("user_id", customerId)
-        .eq("is_active", true);
+      const { data: rpcTokens, error: tokenError } = await supabase.rpc(
+        "obtener_tokens_cliente",
+        { p_customer_id: customerId }
+      );
 
-      if (directTokens && directTokens.length > 0) {
-        tokens = directTokens;
+      if (tokenError) {
+        queryError = tokenError;
+      } else if (rpcTokens && rpcTokens.length > 0) {
+        tokens = rpcTokens;
+      } else {
+        // Fallback: Si customerId recibido fuera directamente el user_id de auth
+        const { data: directTokens } = await supabase
+          .from("dispositivos_vinculados")
+          .select("fcm_token, platform, device_name")
+          .eq("user_id", customerId)
+          .eq("is_active", true);
+
+        if (directTokens && directTokens.length > 0) {
+          tokens = directTokens;
+        }
       }
     }
 
-    if (tokenError && tokens.length === 0) {
-      console.error("[Push] Error en obtener_tokens_cliente:", tokenError);
-      return new Response(JSON.stringify({ error: tokenError.message }), {
+    if (queryError && tokens.length === 0) {
+      console.error("[Push] Error al obtener tokens:", queryError);
+      return new Response(JSON.stringify({ error: queryError.message || String(queryError) }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }
 
     if (!tokens || tokens.length === 0) {
-      console.log(`[Push] Cliente ${customerId} no tiene dispositivos vinculados activos.`);
+      console.log(
+        `[Push] No hay dispositivos activos vinculados para ${
+          isStoreStatus ? `la tienda ${storeId}` : `el cliente ${customerId}`
+        }.`
+      );
       return new Response(
         JSON.stringify({
           success: true,
-          message: "El cliente no tiene dispositivos vinculados a su cuenta.",
+          message: isStoreStatus
+            ? "Ningún cliente de la tienda tiene dispositivos vinculados activos."
+            : "El cliente no tiene dispositivos vinculados a su cuenta.",
           sent: 0,
         }),
         { headers: { "Content-Type": "application/json" } }
@@ -417,7 +470,7 @@ serve(async (req: Request) => {
               vibrate: [200, 100, 200],
             },
             fcm_options: {
-              link: "/",
+              link: customData.url || "/",
             },
           },
           apns: {

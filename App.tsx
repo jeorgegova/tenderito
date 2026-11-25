@@ -1,6 +1,6 @@
 import {QueryClientProvider} from '@tanstack/react-query';
 import React, {useEffect} from 'react';
-import {StatusBar, AppState} from 'react-native';
+import {StatusBar, AppState, DeviceEventEmitter} from 'react-native';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {NavigationContainer} from '@react-navigation/native';
 import {
@@ -8,8 +8,10 @@ import {
   getToken,
   onMessage,
   onTokenRefresh,
+  onNotificationOpenedApp,
+  getInitialNotification,
 } from '@react-native-firebase/messaging';
-import notifee, {AndroidImportance} from 'react-native-notify-kit';
+import notifee, {AndroidImportance, EventType} from 'react-native-notify-kit';
 import {RootNavigator} from './src/navigation/RootNavigator';
 import {useDatabase} from './src/hooks/useDatabase';
 import {useSync} from './src/hooks/useSync';
@@ -27,6 +29,7 @@ function useFirebaseNotifications() {
     let mounted = true;
     let unsubscribeMessage: (() => void) | null = null;
     let unsubscribeRefresh: (() => void) | null = null;
+    let unsubscribeOpenedApp: (() => void) | null = null;
     let authSubscription: {unsubscribe: () => void} | null = null;
 
     const setupNotificationsSafe = async () => {
@@ -104,6 +107,7 @@ function useFirebaseNotifications() {
               const notificationId = await notifee.displayNotification({
                 title,
                 body,
+                data: (remoteMessage?.data as any) || {},
                 android: {
                   channelId: 'mensajes',
                   pressAction: {id: 'default'},
@@ -125,6 +129,8 @@ function useFirebaseNotifications() {
               await queryClient.invalidateQueries({ queryKey: ['overdue'] });
               await queryClient.invalidateQueries({ queryKey: ['stats'] });
               await queryClient.invalidateQueries({ queryKey: ['profile'] });
+              await queryClient.invalidateQueries({ queryKey: ['customer-stores-statuses'] });
+              await queryClient.invalidateQueries({ queryKey: ['store-statuses-merchant'] });
             } catch (invErr) {
               console.warn('Error invalidando queries tras notificación FCM:', invErr);
             }
@@ -132,6 +138,46 @@ function useFirebaseNotifications() {
         } catch (onMessageErr) {
           console.warn('Error en onMessage:', onMessageErr);
         }
+
+        // 6. Apertura de la app desde notificación en segundo plano
+        try {
+          unsubscribeOpenedApp = onNotificationOpenedApp(messaging, remoteMessage => {
+            console.log('FCM_ABIERTA_DESDE_BACKGROUND:', JSON.stringify(remoteMessage));
+            if (remoteMessage?.data?.type === 'store_status') {
+              DeviceEventEmitter.emit('tenderito-open-status', {
+                storeId: remoteMessage.data.store_id,
+                statusId: remoteMessage.data.status_id,
+              });
+            }
+          });
+        } catch (openedAppErr) {
+          console.warn('Error en onNotificationOpenedApp:', openedAppErr);
+        }
+
+        // 7. Apertura en frío (cold start) desde notificación terminada
+        try {
+          getInitialNotification(messaging).then(remoteMessage => {
+            if (remoteMessage?.data?.type === 'store_status') {
+              setTimeout(() => {
+                DeviceEventEmitter.emit('tenderito-open-status', {
+                  storeId: remoteMessage.data?.store_id,
+                  statusId: remoteMessage.data?.status_id,
+                });
+              }, 1200);
+            }
+          }).catch(() => {});
+
+          notifee.getInitialNotification().then(initial => {
+            if (initial?.notification?.data?.type === 'store_status') {
+              setTimeout(() => {
+                DeviceEventEmitter.emit('tenderito-open-status', {
+                  storeId: initial.notification?.data?.store_id,
+                  statusId: initial.notification?.data?.status_id,
+                });
+              }, 1200);
+            }
+          }).catch(() => {});
+        } catch (_coldErr) {}
       } catch (err) {
         console.warn('Excepción general en setupNotificationsSafe:', err);
       }
@@ -150,10 +196,19 @@ function useFirebaseNotifications() {
     // Actualizar cuando se interactúa o recibe evento en primer plano de notificaciones
     let unsubscribeNotifee: (() => void) | null = null;
     try {
-      unsubscribeNotifee = notifee.onForegroundEvent(() => {
+      unsubscribeNotifee = notifee.onForegroundEvent(({ type, detail }) => {
         queryClient.invalidateQueries({ queryKey: ['customer-portal'] });
         queryClient.invalidateQueries({ queryKey: ['customers'] });
         queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['customer-stores-statuses'] });
+        queryClient.invalidateQueries({ queryKey: ['store-statuses-merchant'] });
+
+        if (type === EventType.PRESS && detail.notification?.data?.type === 'store_status') {
+          DeviceEventEmitter.emit('tenderito-open-status', {
+            storeId: detail.notification.data.store_id,
+            statusId: detail.notification.data.status_id,
+          });
+        }
       });
     } catch (_e) {}
 
@@ -181,6 +236,7 @@ function useFirebaseNotifications() {
       clearTimeout(timer);
       unsubscribeMessage?.();
       unsubscribeRefresh?.();
+      unsubscribeOpenedApp?.();
       authSubscription?.unsubscribe();
       appStateSub.remove();
       unsubscribeNotifee?.();
