@@ -799,9 +799,42 @@ export function CustomerHomeScreen() {
           {/* Tarjeta de la tienda */}
           <Card style={styles.storeDetailCard}>
             <View style={styles.storeDetailHeader}>
-              <View style={styles.storeDetailAvatar}>
-                <Ionicons name="storefront" size={28} color={Colors.primary} />
-              </View>
+              {(() => {
+                const statusesForSelectedStore = storeStatusesMap[selectedStore.store_id] || [];
+                const unviewedCount = statusesForSelectedStore.filter((s: any) => !s.has_viewed).length;
+
+                return (
+                  <StoreStatusRing
+                    size={56}
+                    strokeWidth={2.5}
+                    count={statusesForSelectedStore.length}
+                    unviewedCount={unviewedCount}
+                    onPress={
+                      statusesForSelectedStore.length > 0
+                        ? () => {
+                            setSelectedStoreForStatus({
+                              storeId: selectedStore.store_id,
+                              storeName,
+                              statuses: statusesForSelectedStore,
+                            });
+                          }
+                        : undefined
+                    }>
+                    <View
+                      style={[
+                        styles.storeIconWrap,
+                        isPaid ? styles.storeIconWrapPaid : styles.storeIconWrapDebt,
+                        { width: '100%', height: '100%', borderRadius: 28 },
+                      ]}>
+                      <Ionicons
+                        name="storefront"
+                        size={26}
+                        color={isPaid ? Colors.success : Colors.destructive}
+                      />
+                    </View>
+                  </StoreStatusRing>
+                );
+              })()}
               <View style={styles.flexOne}>
                 <Text style={styles.storeDetailTitle}>{storeName}</Text>
                 {storeInfo?.address ? (

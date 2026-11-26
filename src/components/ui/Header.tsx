@@ -19,6 +19,7 @@ import {Colors} from '../../theme';
 import {useResponsive} from '../../hooks/useResponsive';
 import {useSync} from '../../hooks/useSync';
 import {confirmLogout} from '../../lib/session';
+import {calculateSubscriptionStatus} from '../../services/plans';
 
 export function Header({
   title,
@@ -51,6 +52,13 @@ export function Header({
   const profile = profileQuery.data ?? storeProfile;
   const activeName = sessionName || profile?.merchant_name || 'Tendero';
   const activeRole = sessionRole || (profile ? 'Tendero' : '');
+
+  // Detectar si la suscripción es de pago activa (Todo plan de pago es PRO)
+  const subStatus = profile ? calculateSubscriptionStatus(profile) : null;
+  const isPro = subStatus
+    ? subStatus.effectivePlan.toLowerCase() !== 'free' && !subStatus.isExpired
+    : Boolean(profile?.subscription_plan && profile.subscription_plan.toLowerCase() !== 'free');
+
   const {sync, isSyncing, isOnline} = useSync();
 
   const handleGoToProfile = () => {
@@ -195,8 +203,21 @@ export function Header({
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Usuario ${activeName}. Tocar para abrir menú de perfil`}>
-                <View style={styles.sessionAvatar}>
-                  <Ionicons name="person-outline" size={13} color={Colors.primary} />
+                <View style={styles.avatarWrap}>
+                  <View
+                    style={[
+                      styles.sessionAvatar,
+                      isPro && styles.sessionAvatarPro,
+                    ]}>
+                    <Ionicons name="person-outline" size={13} color={Colors.primary} />
+                  </View>
+                  {isPro && (
+                    <View style={styles.proBadgeBubble} pointerEvents="none">
+                      <Text style={styles.proBadgeText} numberOfLines={1}>
+                        PRO
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.sessionCol}>
                   {activeRole ? (
@@ -249,8 +270,19 @@ export function Header({
             ]}>
             {/* Encabezado del menú */}
             <View style={styles.menuHeader}>
-              <View style={styles.menuAvatarLarge}>
-                <Ionicons name="person" size={15} color={Colors.primary} />
+              <View style={styles.menuAvatarLargeWrap}>
+                <View
+                  style={[
+                    styles.menuAvatarLarge,
+                    isPro && {borderWidth: 2, borderColor: Colors.primary, backgroundColor: '#FFF7ED'},
+                  ]}>
+                  <Ionicons name="person" size={15} color={Colors.primary} />
+                </View>
+                {isPro && (
+                  <View style={[styles.proBadgeBubble, {bottom: -5, paddingHorizontal: 4}]} pointerEvents="none">
+                    <Text style={[styles.proBadgeText, {fontSize: 7.5, lineHeight: 8.5}]} numberOfLines={1}>PRO</Text>
+                  </View>
+                )}
               </View>
               <View style={styles.menuHeaderCol}>
                 <Text
@@ -259,12 +291,19 @@ export function Header({
                   ellipsizeMode="tail">
                   {activeName}
                 </Text>
-                <Text
-                  style={styles.menuRoleText}
-                  numberOfLines={1}
-                  ellipsizeMode="tail">
-                  {activeRole || 'Sesión activa'}
-                </Text>
+                <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1}}>
+                  <Text
+                    style={styles.menuRoleText}
+                    numberOfLines={1}
+                    ellipsizeMode="tail">
+                    {activeRole || 'Sesión activa'}
+                  </Text>
+                  {isPro && (
+                    <View style={{backgroundColor: '#FFEDD5', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6}}>
+                      <Text style={{fontSize: 9, fontWeight: '800', color: Colors.primary}}>Plan Pro</Text>
+                    </View>
+                  )}
+                </View>
               </View>
             </View>
 
@@ -625,14 +664,62 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.text,
   },
+  avatarWrap: {
+    width: 26,
+    height: 26,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
   sessionAvatar: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 5,
+  },
+  sessionAvatarPro: {
+    borderWidth: 1.8,
+    borderColor: Colors.primary,
+    backgroundColor: '#FFF7ED',
+  },
+  proBadgeBubble: {
+    position: 'absolute',
+    bottom: -4,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 3.5,
+    paddingVertical: 0.5,
+    borderRadius: 5,
+    borderWidth: 1.2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 18,
+    zIndex: 10,
+    elevation: 3,
+    shadowColor: Colors.primary,
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.3,
+    shadowRadius: 1.5,
+  },
+  proBadgeText: {
+    fontSize: 6.5,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.4,
+    includeFontPadding: false,
+    textAlign: 'center',
+    lineHeight: 8,
+  },
+  menuAvatarLargeWrap: {
+    width: 32,
+    height: 32,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
   sessionCol: {
     flexShrink: 1,

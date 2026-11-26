@@ -5,6 +5,7 @@ import {
   Image,
   Modal,
   PanResponder,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { Colors } from '../theme';
+import { showAlert, AlertModal } from './ui/AlertModal';
 import {
   StoreStatus,
   StoreStatusViewItem,
@@ -225,23 +227,58 @@ export function StoreStatusViewerModal({
     setIsPaused(false);
   };
 
-  const handleDelete = async () => {
-    if (!currentStatus) return;
-    setIsDeleting(true);
+  const handleDelete = () => {
+    if (!currentStatus || isDeleting) return;
     setIsPaused(true);
-    const res = await deleteStoreStatus(currentStatus.id, currentStatus.media_path);
-    setIsDeleting(false);
 
-    if (res.success) {
-      onStatusDeleted?.(currentStatus.id);
-      if (statuses.length <= 1) {
-        onClose();
-      } else {
-        goToNext();
-      }
-    } else {
-      setIsPaused(false);
-    }
+    showAlert({
+      title: '¿Eliminar estado publicitario?',
+      message: 'Esta acción no se puede deshacer. ¿Deseas eliminar este estado?',
+      type: 'destructive',
+      buttons: [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+          onPress: () => {
+            setIsPaused(false);
+          },
+        },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              const res = await deleteStoreStatus(currentStatus.id, currentStatus.media_path);
+              if (res.success) {
+                onStatusDeleted?.(currentStatus.id);
+                if (statuses.length <= 1) {
+                  onClose();
+                } else {
+                  goToNext();
+                }
+              } else {
+                showAlert({
+                  title: 'Error',
+                  message: res.error || 'No se pudo eliminar el estado.',
+                  type: 'destructive',
+                });
+                setIsPaused(false);
+              }
+            } catch (error) {
+              showAlert({
+                title: 'Error',
+                message: 'Ocurrió un error inesperado al eliminar el estado.',
+                type: 'destructive',
+              });
+              setIsPaused(false);
+            } finally {
+              setIsDeleting(false);
+            }
+          },
+        },
+      ],
+    });
   };
 
   if (!visible || !currentStatus) return null;
@@ -297,7 +334,11 @@ export function StoreStatusViewerModal({
                 onPress={handleDelete}
                 disabled={isDeleting}
                 style={styles.headerBtn}>
-                <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="#FF6B6B" />
+                ) : (
+                  <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+                )}
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onClose} style={[styles.headerBtn, styles.closeBtn]}>
@@ -424,6 +465,9 @@ export function StoreStatusViewerModal({
             </View>
           </View>
         )}
+
+        {/* Modal de alertas personalizado para iOS sobre el modal actual */}
+        {Platform.OS === 'ios' && <AlertModal />}
       </View>
     </Modal>
   );

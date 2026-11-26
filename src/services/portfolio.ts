@@ -137,8 +137,7 @@ export async function getPlanCustomerLimit(planId: string): Promise<number> {
     }
   } catch (_e) {}
 
-  if (normPlan === 'pro') return 999999;
-  if (normPlan === 'basic') return 100;
+  if (normPlan !== 'free') return 999999;
   return FREE_LIMIT_FALLBACK;
 }
 

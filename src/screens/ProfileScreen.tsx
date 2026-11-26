@@ -34,6 +34,18 @@ import {CreateStoreStatusModal} from '../components/CreateStoreStatusModal';
 import {StoreStatusViewerModal} from '../components/StoreStatusViewerModal';
 import {fetchMerchantStoreStatuses} from '../services/storeStatuses';
 
+function formatPlanDescription(description?: string | null): string {
+  if (!description) return '';
+  const parts = description.split('+').map(p => p.trim()).filter(Boolean);
+  if (parts.length <= 1) return description;
+  return parts
+    .map((part, idx) => {
+      const capitalized = part.charAt(0).toUpperCase() + part.slice(1);
+      return idx < parts.length - 1 ? `${capitalized} +` : capitalized;
+    })
+    .join('\n');
+}
+
 export function ProfileScreen({navigation}: any) {
   const {isSmall, isTablet, tabletContainerStyle} = useResponsive();
   const [isEditStoreOpen, setIsEditStoreOpen] = useState(false);
@@ -102,7 +114,7 @@ export function ProfileScreen({navigation}: any) {
   const currentPlan = (plans || []).find(
     (p: any) => p.id?.toLowerCase() === subStatus.effectivePlan?.toLowerCase(),
   );
-  const customerLimit = currentPlan?.customer_limit ?? (subStatus.effectivePlan === 'pro' ? 999999 : 10);
+  const customerLimit = currentPlan?.customer_limit ?? (subStatus.effectivePlan !== 'free' ? 999999 : 10);
   const scrollRef = useRef<ScrollView>(null);
 
   // Al tocar el menú Perfil cuando ya está activo, desplaza suavemente al tope
@@ -189,12 +201,20 @@ export function ProfileScreen({navigation}: any) {
         showsVerticalScrollIndicator={false}>
         <Card style={styles.accountCard}>
           <StoreStatusRing
-            size={66}
+            size={68}
             strokeWidth={3}
             count={storeStatuses.length}
             unviewedCount={storeStatuses.length}
-            showAddBadge={hasActivePaidPlan}
+            showAddBadge={true}
             onAddPress={() => {
+              if (!hasActivePaidPlan) {
+                showAlert(
+                  'Función de suscripción',
+                  'Los estados publicitarios están incluidos en la suscripción de pago. Activa o renueva tu plan para promocionar ofertas y productos a tus clientes.',
+                );
+                return;
+              }
+
               if (storeStatuses.length >= 3) {
                 showAlert(
                   'Límite alcanzado',
@@ -209,11 +229,16 @@ export function ProfileScreen({navigation}: any) {
                 setIsViewStatusOpen(true);
               } else if (hasActivePaidPlan) {
                 setIsCreateStatusOpen(true);
+              } else {
+                showAlert(
+                  'Función de suscripción',
+                  'Los estados publicitarios están incluidos en la suscripción de pago. Activa o renueva tu plan para promocionar ofertas y productos a tus clientes.',
+                );
               }
             }}
-            style={{marginBottom: 10}}>
+            style={{marginBottom: 12}}>
             <View style={styles.storeIcon}>
-              <MonochromeIcon name="store" color={Colors.primary} size={22} />
+              <MonochromeIcon name="store" color={Colors.primary} size={26} />
             </View>
           </StoreStatusRing>
           <Text style={styles.store}>{(data as any)?.store_name ?? 'Cargando tienda…'}</Text>
@@ -416,7 +441,7 @@ export function ProfileScreen({navigation}: any) {
                     </Text>
                   ) : null}
                 </View>
-                <Text style={styles.planDesc}>{p.description}</Text>
+                <Text style={styles.planDesc}>{formatPlanDescription(p.description)}</Text>
                 {isContracted ? (
                   <Text
                     style={[
@@ -543,13 +568,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   storeIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
   },
   store: {fontSize: 22, fontWeight: '800', color: Colors.text},
   merchant: {color: Colors.textSecondary, fontSize: 14, marginTop: 2},
@@ -610,7 +634,7 @@ const styles = StyleSheet.create({
   planTitleRow: {flexDirection: 'row', alignItems: 'center', gap: 7},
   planName: {fontWeight: '800', color: Colors.text},
   currentTag: {fontSize: 8, fontWeight: '800', color: Colors.primary, letterSpacing: 0.5},
-  planDesc: {color: Colors.textSecondary, fontSize: 12},
+  planDesc: {color: Colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 2},
   planDateText: {
     fontSize: 11,
     fontWeight: '700',

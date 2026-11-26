@@ -384,9 +384,11 @@ export function DashboardScreen({ navigation }: any) {
               Pasaron su fecha de pago acordada
             </Text>
           </View>
-          <Pressable onPress={() => navigation.navigate('Alertas')} hitSlop={8}>
-            <Text style={styles.sectionLink}>Ver todo</Text>
-          </Pressable>
+          {(overdue.data ?? []).length > 0 && (
+            <Pressable onPress={() => navigation.navigate('Alertas')} hitSlop={8}>
+              <Text style={styles.sectionLink}>Ver más</Text>
+            </Pressable>
+          )}
         </View>
 
         {overdue.isLoading ? (

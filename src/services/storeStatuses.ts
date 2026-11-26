@@ -32,11 +32,30 @@ export interface StoreStatusRingSummary {
 }
 
 /**
+ * Purga preventiva de estados vencidos llamando a la RPC de base de datos.
+ * Elimina registros caducados y limpia automáticamente sus imágenes de Storage.
+ */
+export async function purgeExpiredStoreStatuses(): Promise<number> {
+  try {
+    const { data, error } = await supabase.rpc('purgar_estados_caducados');
+    if (error) {
+      return 0;
+    }
+    return typeof data === 'number' ? data : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Consulta los estados de la tienda para la vista del tendero (vigentes o futuros).
  * Incluye el conteo de visualizaciones por estado.
  */
 export async function fetchMerchantStoreStatuses(storeId: string): Promise<StoreStatus[]> {
   if (!storeId) return [];
+
+  // Purga pasiva en segundo plano de estados que hayan caducado
+  purgeExpiredStoreStatuses().catch(() => {});
 
   const now = new Date().toISOString();
 

@@ -23,17 +23,6 @@ export const DEFAULT_PLANS: SubscriptionPlanItem[] = [
     is_active: true,
   },
   {
-    id: 'basic',
-    name: 'Basic',
-    description: 'Hasta 100 clientes',
-    price: 29900,
-    price_text: '$29.900/mes',
-    customer_limit: 100,
-    badge: 'Popular',
-    sort_order: 2,
-    is_active: true,
-  },
-  {
     id: 'pro',
     name: 'Pro',
     description: 'Clientes ilimitados + funciones avanzadas',
@@ -41,7 +30,7 @@ export const DEFAULT_PLANS: SubscriptionPlanItem[] = [
     price_text: '$59.900/mes',
     customer_limit: 999999,
     badge: 'Recomendado',
-    sort_order: 3,
+    sort_order: 2,
     is_active: true,
   },
 ];
