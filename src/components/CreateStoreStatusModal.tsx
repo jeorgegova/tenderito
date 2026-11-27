@@ -151,8 +151,8 @@ export function CreateStoreStatusModal({
       return;
     }
 
-    if (trimmedCaption.length > 120) {
-      setErrorMessage('La descripción no puede exceder 120 caracteres.');
+    if (trimmedCaption.length > 150) {
+      setErrorMessage('La descripción no puede exceder 150 caracteres.');
       return;
     }
 
@@ -204,8 +204,14 @@ export function CreateStoreStatusModal({
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
+      onRequestClose={() => {
+        if (!isSubmitting) onClose();
+      }}>
+      <Pressable
+        style={styles.overlay}
+        onPress={() => {
+          if (!isSubmitting) onClose();
+        }}>
         <Pressable style={styles.modalCard} onPress={e => e.stopPropagation()}>
           {/* Header */}
           <View style={styles.header}>
@@ -221,7 +227,12 @@ export function CreateStoreStatusModal({
               </View>
             </View>
 
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+            <TouchableOpacity
+              style={[styles.closeBtn, isSubmitting && { opacity: 0.5 }]}
+              onPress={() => {
+                if (!isSubmitting) onClose();
+              }}
+              disabled={isSubmitting}>
               <Ionicons name="close" size={20} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -242,14 +253,18 @@ export function CreateStoreStatusModal({
                 <View style={styles.previewContainer}>
                   <Image source={{ uri: selectedPhoto.uri }} style={styles.previewImage} resizeMode="contain" />
                   <TouchableOpacity
-                    style={styles.removeImageBtn}
-                    onPress={() => setSelectedPhoto(null)}>
+                    style={[styles.removeImageBtn, isSubmitting && { opacity: 0.5 }]}
+                    onPress={() => setSelectedPhoto(null)}
+                    disabled={isSubmitting}>
                     <Ionicons name="trash-outline" size={14} color="#FF6B6B" />
                     <Text style={styles.removeImageText}>Cambiar</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity style={styles.uploadBox} onPress={handlePickImage}>
+                <TouchableOpacity
+                  style={[styles.uploadBox, isSubmitting && { opacity: 0.5 }]}
+                  onPress={handlePickImage}
+                  disabled={isSubmitting}>
                   <Ionicons name="image-outline" size={22} color={Colors.primary} />
                   <Text style={styles.uploadText}>Subir imagen</Text>
                   <Text style={styles.uploadSubtext}>(JPG, PNG hasta 5MB)</Text>
@@ -264,21 +279,23 @@ export function CreateStoreStatusModal({
                 <Text
                   style={[
                     styles.counterText,
-                    caption.length > 120 && styles.counterError,
+                    caption.length > 150 && styles.counterError,
                   ]}>
-                  {caption.length}/120
+                  {caption.length}/150
                 </Text>
               </View>
               <TextInput
                 style={[
                   styles.textArea,
-                  caption.length > 120 && styles.textAreaError,
+                  caption.length > 150 && styles.textAreaError,
+                  isSubmitting && { backgroundColor: '#F8FAFC', opacity: 0.7 },
                 ]}
                 multiline
                 numberOfLines={2}
-                maxLength={120}
+                maxLength={150}
                 value={caption}
                 onChangeText={setCaption}
+                editable={!isSubmitting}
                 placeholder="Ej: Huevos en rebaja, cubeta a $15.000"
                 placeholderTextColor="#94A3B8"
               />
@@ -300,9 +317,11 @@ export function CreateStoreStatusModal({
                     <TouchableOpacity
                       key={preset.key}
                       onPress={() => handleApplyPreset(preset.key as any)}
+                      disabled={isSubmitting}
                       style={[
                         styles.presetChip,
                         isSelected && styles.presetChipActive,
+                        isSubmitting && { opacity: 0.6 },
                       ]}>
                       <Text
                         style={[
@@ -317,10 +336,11 @@ export function CreateStoreStatusModal({
               </View>
 
               {/* Fila de fechas ajustada */}
-              <View style={styles.singleLineDateRow}>
+              <View style={[styles.singleLineDateRow, isSubmitting && { opacity: 0.6 }]}>
                 <TouchableOpacity
                   style={styles.datePill}
-                  onPress={() => setPickerMode('start')}>
+                  onPress={() => setPickerMode('start')}
+                  disabled={isSubmitting}>
                   <Ionicons name="calendar-outline" size={15} color={Colors.primary} />
                   <Text style={styles.datePillText}>
                     Desde: {formatDateDisplay(startDateYMD)}
@@ -331,7 +351,8 @@ export function CreateStoreStatusModal({
 
                 <TouchableOpacity
                   style={styles.datePill}
-                  onPress={() => setPickerMode('end')}>
+                  onPress={() => setPickerMode('end')}
+                  disabled={isSubmitting}>
                   <Ionicons name="calendar-outline" size={15} color={Colors.primary} />
                   <Text style={styles.datePillText}>
                     Hasta: {formatDateDisplay(endDateYMD)}
@@ -358,6 +379,19 @@ export function CreateStoreStatusModal({
               disabled={isSubmitting || isLimitReached || !caption.trim()}
             />
           </View>
+
+          {/* Overlay de carga y bloqueo total durante la publicación */}
+          {isSubmitting ? (
+            <View style={styles.loadingOverlay}>
+              <View style={styles.loadingCard}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text style={styles.loadingTitle}>Publicando publicidad…</Text>
+                <Text style={styles.loadingSubtitle}>
+                  Subiendo imagen y configurando la vigencia de tu estado. Por favor espera un momento.
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </Pressable>
       </Pressable>
 
@@ -402,6 +436,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     overflow: 'hidden',
+    position: 'relative',
   },
   header: {
     paddingHorizontal: 20,
@@ -614,5 +649,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     backgroundColor: '#FAFAFA',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+    padding: 24,
+  },
+  loadingCard: {
+    alignItems: 'center',
+    gap: 12,
+    maxWidth: 280,
+  },
+  loadingTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  loadingSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

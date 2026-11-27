@@ -244,8 +244,8 @@ export async function createStoreStatus(params: {
     if (!trimmedCaption) {
       return { success: false, error: 'Debes ingresar una descripción para el estado.' };
     }
-    if (trimmedCaption.length > 120) {
-      return { success: false, error: 'La descripción no puede superar los 120 caracteres.' };
+    if (trimmedCaption.length > 150) {
+      return { success: false, error: 'La descripción no puede superar los 150 caracteres.' };
     }
 
     const statusId = generateLocalId();
